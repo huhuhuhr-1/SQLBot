@@ -1,3 +1,7 @@
+"""数据源管理接口。
+
+提供连接校验、表字段维护与 Excel 导入等能力。"""
+
 import asyncio
 import hashlib
 import os
@@ -27,6 +31,7 @@ path = settings.EXCEL_PATH
 
 @router.get("/ws/{oid}", include_in_schema=False)
 async def query_by_oid(session: SessionDep, user: CurrentUser, oid: int) -> List[CoreDatasource]:
+    """根据工作区 ID 获取数据源列表。"""
     if not user.isAdmin:
         raise Exception("no permission to execute")
     return get_datasource_list(session=session, user=user, oid=oid)
@@ -34,16 +39,19 @@ async def query_by_oid(session: SessionDep, user: CurrentUser, oid: int) -> List
 
 @router.get("/list")
 async def datasource_list(session: SessionDep, user: CurrentUser):
+    """获取当前用户可见的数据源列表。"""
     return get_datasource_list(session=session, user=user)
 
 
 @router.post("/get/{id}")
 async def get_datasource(session: SessionDep, id: int):
+    """根据 ID 获取数据源详情。"""
     return get_ds(session, id)
 
 
 @router.post("/check")
 async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
+    """校验数据源连接。"""
     def inner():
         return check_status(session, trans, ds, True)
 
@@ -52,6 +60,7 @@ async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
 
 @router.get("/check/{ds_id}")
 async def check_by_id(session: SessionDep, trans: Trans, ds_id: int):
+    """通过 ID 校验数据源连接。"""
     def inner():
         return check_status_by_id(session, trans, ds_id, True)
 
@@ -60,6 +69,7 @@ async def check_by_id(session: SessionDep, trans: Trans, ds_id: int):
 
 @router.post("/add", response_model=CoreDatasource)
 async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDatasource):
+    """创建新的数据源配置。"""
     def inner():
         return create_ds(session, trans, user, ds)
 
@@ -68,6 +78,7 @@ async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDa
 
 @router.post("/chooseTables/{id}")
 async def choose_tables(session: SessionDep, trans: Trans, id: int, tables: List[CoreTable]):
+    """选择需要同步的表。"""
     def inner():
         chooseTables(session, trans, id, tables)
 
@@ -76,6 +87,7 @@ async def choose_tables(session: SessionDep, trans: Trans, id: int, tables: List
 
 @router.post("/update", response_model=CoreDatasource)
 async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
+    """更新数据源配置。"""
     def inner():
         return update_ds(session, trans, user, ds)
 
@@ -84,16 +96,19 @@ async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreD
 
 @router.post("/delete/{id}", response_model=CoreDatasource)
 async def delete(session: SessionDep, id: int):
+    """删除数据源。"""
     return delete_ds(session, id)
 
 
 @router.post("/getTables/{id}")
 async def get_tables(session: SessionDep, id: int):
+    """获取数据源下的表列表。"""
     return getTables(session, id)
 
 
 @router.post("/getTablesByConf")
 async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
+    """根据配置获取表列表并检查连接。"""
     try:
         return getTablesByDs(session, ds)
     except Exception as e:
@@ -109,6 +124,7 @@ async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
 
 @router.post("/getFields/{id}/{table_name}")
 async def get_fields(session: SessionDep, id: int, table_name: str):
+    """获取指定表的字段列表。"""
     return getFields(session, id, table_name)
 
 
@@ -121,6 +137,7 @@ class TestObj(BaseModel):
 
 @router.post("/execSql/{id}")
 async def exec_sql(session: SessionDep, id: int, obj: TestObj):
+    """在指定数据源上执行 SQL。"""
     def inner():
         data = execSql(session, id, obj.sql)
         try:
@@ -137,31 +154,37 @@ async def exec_sql(session: SessionDep, id: int, obj: TestObj):
 
 @router.post("/tableList/{id}")
 async def table_list(session: SessionDep, id: int):
+    """获取数据源下的表信息列表。"""
     return get_tables_by_ds_id(session, id)
 
 
 @router.post("/fieldList/{id}")
 async def field_list(session: SessionDep, id: int):
+    """获取表的字段信息列表。"""
     return get_fields_by_table_id(session, id)
 
 
 @router.post("/editLocalComment")
 async def edit_local(session: SessionDep, data: TableObj):
+    """更新本地表及字段注释。"""
     update_table_and_fields(session, data)
 
 
 @router.post("/editTable")
 async def edit_table(session: SessionDep, table: CoreTable):
+    """修改表信息。"""
     updateTable(session, table)
 
 
 @router.post("/editField")
 async def edit_field(session: SessionDep, field: CoreField):
+    """修改字段信息。"""
     updateField(session, field)
 
 
 @router.post("/previewData/{id}")
 async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentUser, id: int, data: TableObj):
+    """预览表数据。"""
     def inner():
         try:
             return preview(session, current_user, id, data)
@@ -178,6 +201,7 @@ async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentU
 
 @router.post("/fieldEnum/{id}")
 async def field_enum(session: SessionDep, id: int):
+    """获取字段枚举值。"""
     def inner():
         return fieldEnum(session, id)
 
@@ -250,6 +274,7 @@ async def field_enum(session: SessionDep, id: int):
 
 @router.post("/uploadExcel")
 async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
+    """上传 Excel/CSV 并导入为数据表。"""
     ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv"}
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
         raise HTTPException(400, "Only support .xlsx/.xls/.csv")
@@ -285,6 +310,7 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
 
 
 def insert_pg(df, tableName, engine):
+    """将 DataFrame 数据写入 PostgreSQL。"""
     conn = engine.raw_connection()
     cursor = conn.cursor()
     try:
