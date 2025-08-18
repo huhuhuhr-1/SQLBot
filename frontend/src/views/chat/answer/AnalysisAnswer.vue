@@ -118,61 +118,54 @@ const sendMessage = async () => {
         break
       }
 
-      let chunk = decoder.decode(value, { stream: true })
+      const chunk = decoder.decode(value, { stream: true })
       tempResult += chunk
-      const split = tempResult.match(/data:.*}\n\n/g)
-      if (split) {
-        chunk = split.join('')
-        tempResult = tempResult.replace(chunk, '')
-      } else {
-        continue
-      }
-      if (chunk && chunk.startsWith('data:{')) {
-        if (split) {
-          for (const str of split) {
-            let data
-            try {
-              data = JSON.parse(str.replace('data:{', '{'))
-            } catch (err) {
-              console.error('JSON string:', str)
-              throw err
-            }
-
-            if (data.code && data.code !== 200) {
-              ElMessage({
-                message: data.msg,
-                type: 'error',
-                showClose: true,
-              })
-              _loading.value = false
-              return
-            }
-
-            switch (data.type) {
-              case 'id':
-                currentRecord.id = data.id
-                _currentChat.value.records[index.value].id = data.id
-                break
-              case 'info':
-                console.info(data.msg)
-                break
-              case 'error':
-                currentRecord.error = data.content
-                emits('error')
-                break
-              case 'analysis-result':
-                analysis_answer += data.content
-                analysis_answer_thinking += data.reasoning_content
-                _currentChat.value.records[index.value].analysis = analysis_answer
-                _currentChat.value.records[index.value].analysis_thinking = analysis_answer_thinking
-                break
-              case 'analysis_finish':
-                emits('finish', currentRecord.id)
-                break
-            }
-            await nextTick()
-          }
+      // eslint-disable-next-line no-control-regex
+      const events = tempResult.split(new RegExp('\x0d?\x0a\x0d?\x0a'))
+      tempResult = events.pop() || ''
+      for (const evt of events) {
+        if (!evt.startsWith('data:')) continue
+        let data
+        try {
+          data = JSON.parse(evt.slice(5))
+        } catch (err) {
+          console.error('JSON string:', evt)
+          throw err
         }
+
+        if (data.code && data.code !== 200) {
+          ElMessage({
+            message: data.msg,
+            type: 'error',
+            showClose: true,
+          })
+          _loading.value = false
+          return
+        }
+
+        switch (data.type) {
+          case 'id':
+            currentRecord.id = data.id
+            _currentChat.value.records[index.value].id = data.id
+            break
+          case 'info':
+            console.info(data.msg)
+            break
+          case 'error':
+            currentRecord.error = data.content
+            emits('error')
+            break
+          case 'analysis-result':
+            analysis_answer += data.content
+            analysis_answer_thinking += data.reasoning_content
+            _currentChat.value.records[index.value].analysis = analysis_answer
+            _currentChat.value.records[index.value].analysis_thinking = analysis_answer_thinking
+            break
+          case 'analysis_finish':
+            emits('finish', currentRecord.id)
+            break
+        }
+        await nextTick()
       }
     }
   } catch (error) {
