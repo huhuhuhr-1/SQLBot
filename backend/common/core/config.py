@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     LOG_DIR: str = "logs"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
     SQL_DEBUG: bool = False
+    
+    UPLOAD_DIR: str = "/opt/sqlbot/data/file"
 
     @computed_field  # type: ignore[prop-decorator]
     @property

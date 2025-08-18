@@ -7,7 +7,7 @@
           v-model="search"
           :validate-event="false"
           :placeholder="$t('datasource.search')"
-          style="width: 364px"
+          style="width: 364px; margin-left: 16px"
           clearable
         >
           <template #prefix>
@@ -20,6 +20,7 @@
           <el-checkbox
             v-model="checkAll"
             class="mb-8"
+            style="margin-left: 16px"
             :indeterminate="isIndeterminate"
             @change="handleCheckAllChange"
           >
@@ -35,6 +36,7 @@
               :key="space.id"
               :label="space.name"
               :value="space"
+              class="hover-bg"
             >
               <div class="flex">
                 <el-icon size="28">
@@ -52,7 +54,7 @@
         </div>
       </div>
       <div class="p-16 w-full">
-        <div class="flex-between mb-16">
+        <div class="flex-between mb-16" style="margin: 0 16px">
           <span class="lighter">
             {{ $t('workspace.selected_2_people', { msg: checkTableList.length }) }}
           </span>
@@ -61,7 +63,12 @@
             {{ $t('workspace.clear') }}
           </el-button>
         </div>
-        <div v-for="ele in checkTableList" :key="ele.name" class="flex-between">
+        <div
+          v-for="ele in checkTableList"
+          :key="ele.name"
+          style="margin: 0 16px; position: relative"
+          class="flex-between align-center hover-bg_select"
+        >
           <div class="flex align-center ellipsis" style="width: 100%">
             <el-icon size="28">
               <avatar_personal></avatar_personal>
@@ -176,8 +183,46 @@ defineExpose({
 </script>
 <style lang="less">
 .select-user_permission {
+  .lighter-bold {
+    margin-bottom: 16px;
+    font-weight: 500;
+    font-size: 16px;
+    line-height: 24px;
+  }
+
   .mb-8 {
     margin-bottom: 8px;
+  }
+
+  .ed-checkbox {
+    margin-right: 0;
+    position: relative;
+  }
+
+  .hover-bg,
+  .hover-bg_select {
+    &:hover {
+      &::after {
+        content: '';
+        height: 44px;
+        width: calc(100% + 34px);
+        background: #1f23291a;
+        position: absolute;
+        border-radius: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        left: -8px;
+        z-index: 1;
+      }
+    }
+  }
+
+  .hover-bg_select {
+    &:hover {
+      &::after {
+        width: calc(100% + 16px);
+      }
+    }
   }
 
   .mt-16 {
@@ -185,7 +230,7 @@ defineExpose({
   }
 
   .p-16 {
-    padding: 16px;
+    padding: 16px 0;
   }
 
   .lighter {
@@ -194,11 +239,8 @@ defineExpose({
     line-height: 22px;
   }
 
-  .lighter-bold {
-    font-weight: 500;
-    font-size: 16px;
-    line-height: 24px;
-    margin-bottom: 16px;
+  .checkbox-group-block {
+    margin: 0 16px;
   }
 
   .checkbox-group-block {
@@ -217,24 +259,29 @@ defineExpose({
     }
   }
 
+  .close-btn {
+    position: relative;
+    z-index: 10;
+    height: 24px;
+    line-height: 24px;
+    &:hover,
+    &:active,
+    &:focus {
+      background: #1f23291a !important;
+    }
+  }
+
   .border {
     border: 1px solid #dee0e3;
   }
 
   .w-full {
-    width: 100%;
+    height: 100%;
+    width: 50%;
     overflow-y: auto;
 
     .flex-between {
       height: 44px;
-    }
-  }
-
-  .close-btn {
-    &:hover,
-    &:active,
-    &:focus {
-      background: #1f23291a !important;
     }
   }
 
@@ -263,13 +310,11 @@ defineExpose({
   .flex {
     display: flex;
   }
-  .ed-checkbox {
-    margin-right: 0 !important;
-  }
 
   .border-r {
     border-right: 1px solid #dee0e3;
     width: 50%;
+    overflow: hidden;
   }
 }
 </style>

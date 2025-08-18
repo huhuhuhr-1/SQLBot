@@ -17,7 +17,7 @@
           v-model="search"
           :validate-event="false"
           :placeholder="$t('datasource.search')"
-          style="width: 364px"
+          style="width: 364px; margin-left: 16px"
           clearable
         >
           <template #prefix>
@@ -30,6 +30,7 @@
           <el-checkbox
             v-model="checkAll"
             class="mb-8"
+            style="margin-left: 16px"
             :indeterminate="isIndeterminate"
             @change="handleCheckAllChange"
           >
@@ -45,6 +46,7 @@
               :key="space.id"
               :label="space.name"
               :value="space"
+              class="hover-bg"
             >
               <div class="flex">
                 <el-icon size="28">
@@ -62,7 +64,7 @@
         </div>
       </div>
       <div class="p-16 w-full">
-        <div class="flex-between mb-16">
+        <div class="flex-between mb-16" style="margin: 0 16px">
           <span class="lighter">
             {{ $t('workspace.selected_2_people', { msg: checkTableList.length }) }}
           </span>
@@ -71,7 +73,12 @@
             {{ $t('workspace.clear') }}
           </el-button>
         </div>
-        <div v-for="ele in checkTableList" :key="ele.name" class="flex-between align-center">
+        <div
+          v-for="ele in checkTableList"
+          :key="ele.name"
+          style="margin: 0 16px; position: relative"
+          class="flex-between align-center hover-bg_select"
+        >
           <div
             :title="`${ele.name}(${ele.account})`"
             class="flex align-center ellipsis"
@@ -214,6 +221,33 @@ defineExpose({
 
   .ed-checkbox {
     margin-right: 0;
+    position: relative;
+  }
+
+  .hover-bg,
+  .hover-bg_select {
+    &:hover {
+      &::after {
+        content: '';
+        height: 44px;
+        width: calc(100% + 34px);
+        background: #1f23291a;
+        position: absolute;
+        border-radius: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        left: -8px;
+        z-index: 1;
+      }
+    }
+  }
+
+  .hover-bg_select {
+    &:hover {
+      &::after {
+        width: calc(100% + 16px);
+      }
+    }
   }
 
   .mt-16 {
@@ -221,13 +255,17 @@ defineExpose({
   }
 
   .p-16 {
-    padding: 16px;
+    padding: 16px 0;
   }
 
   .lighter {
     font-weight: 400;
     font-size: 14px;
     line-height: 22px;
+  }
+
+  .checkbox-group-block {
+    margin: 0 16px;
   }
 
   .checkbox-group-block {
@@ -247,6 +285,10 @@ defineExpose({
   }
 
   .close-btn {
+    position: relative;
+    z-index: 10;
+    height: 24px;
+    line-height: 24px;
     &:hover,
     &:active,
     &:focus {

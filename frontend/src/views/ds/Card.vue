@@ -2,7 +2,7 @@
 import delIcon from '@/assets/svg/icon_delete.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
-import icon_chat_outlined from '@/assets/svg/icon_chat_outlined.svg'
+import icon_chat_outlined from '@/assets/svg/icon_new-chat_outlined.svg'
 import { computed, ref, unref } from 'vue'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import { dsTypeWithImg } from './js/ds-type'
@@ -93,7 +93,7 @@ const onClickOutside = () => {
       <div click.stop class="methods">
         <el-button v-if="false" @click="runSQL">test</el-button>
         <el-button type="primary" style="margin-right: 8px" @click.stop="handleQuestion">
-          <el-icon style="margin-right: 2px" size="12">
+          <el-icon style="margin-right: 4px" size="16">
             <icon_chat_outlined></icon_chat_outlined>
           </el-icon>
           {{ $t('datasource.open_query') }}

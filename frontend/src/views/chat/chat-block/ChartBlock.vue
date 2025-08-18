@@ -311,7 +311,7 @@ watch(
       </div>
       <div class="buttons-bar">
         <div class="chart-select-container">
-          <el-tooltip effect="dark" :content="t('chat.type')" placement="top">
+          <el-tooltip effect="dark" :offset="8" :content="t('chat.type')" placement="top">
             <ChartPopover
               v-if="chartTypeList.length > 0"
               :chart-type-list="chartTypeList"
@@ -321,7 +321,12 @@ watch(
             ></ChartPopover>
           </el-tooltip>
 
-          <el-tooltip effect="dark" :content="t('chat.chart_type.table')" placement="top">
+          <el-tooltip
+            effect="dark"
+            :offset="8"
+            :content="t('chat.chart_type.table')"
+            placement="top"
+          >
             <el-button
               class="tool-btn"
               :class="{ 'chart-active': currentChartType === 'table' }"
@@ -336,7 +341,7 @@ watch(
         </div>
 
         <div v-if="message?.record?.sql">
-          <el-tooltip effect="dark" :content="t('chat.show_sql')" placement="top">
+          <el-tooltip effect="dark" :offset="8" :content="t('chat.show_sql')" placement="top">
             <el-button class="tool-btn" text @click="showSql">
               <el-icon size="16">
                 <icon_sql_outlined />
@@ -353,7 +358,12 @@ watch(
           >
             <template #reference>
               <div>
-                <el-tooltip effect="dark" :content="t('chat.export_to')" placement="top">
+                <el-tooltip
+                  effect="dark"
+                  :offset="8"
+                  :content="t('chat.export_to')"
+                  placement="top"
+                >
                   <el-button class="tool-btn" text>
                     <el-icon size="16">
                       <icon_export_outlined />
@@ -398,6 +408,7 @@ watch(
         <div v-if="!enlarge">
           <el-tooltip
             effect="dark"
+            :offset="8"
             :content="isAssistant ? $t('common.zoom_in') : t('chat.full_screen')"
             placement="top"
           >
@@ -411,6 +422,7 @@ watch(
         <div v-else>
           <el-tooltip
             effect="dark"
+            :offset="8"
             :content="isAssistant ? $t('common.zoom_out') : t('chat.exit_full_screen')"
             placement="top"
           >

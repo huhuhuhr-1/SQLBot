@@ -98,10 +98,12 @@ const sendMessage = async () => {
     const controller: AbortController = new AbortController()
     const response = await chatApi.analysis(currentRecord.analysis_record_id, controller)
     const reader = response.body.getReader()
-    const decoder = new TextDecoder()
+    const decoder = new TextDecoder('utf-8')
 
     let analysis_answer = ''
     let analysis_answer_thinking = ''
+
+    let tempResult = ''
 
     while (true) {
       if (stopFlag.value) {
@@ -116,65 +118,61 @@ const sendMessage = async () => {
         break
       }
 
-      const chunk = decoder.decode(value)
-
-      let _list = [chunk]
-
-      const lines = chunk.trim().split('}\n\n{')
-      if (lines.length > 1) {
-        _list = []
-        for (let line of lines) {
-          if (!line.trim().startsWith('{')) {
-            line = '{' + line.trim()
-          }
-          if (!line.trim().endsWith('}')) {
-            line = line.trim() + '}'
-          }
-          _list.push(line)
-        }
+      let chunk = decoder.decode(value, { stream: true })
+      tempResult += chunk
+      const split = tempResult.match(/data:.*}\n\n/g)
+      if (split) {
+        chunk = split.join('')
+        tempResult = tempResult.replace(chunk, '')
+      } else {
+        continue
       }
-      for (const str of _list) {
-        let data
-        try {
-          data = JSON.parse(str)
-        } catch (err) {
-          console.error('JSON string:', str)
-          throw err
-        }
+      if (chunk && chunk.startsWith('data:{')) {
+        if (split) {
+          for (const str of split) {
+            let data
+            try {
+              data = JSON.parse(str.replace('data:{', '{'))
+            } catch (err) {
+              console.error('JSON string:', str)
+              throw err
+            }
 
-        if (data.code && data.code !== 200) {
-          ElMessage({
-            message: data.msg,
-            type: 'error',
-            showClose: true,
-          })
-          _loading.value = false
-          return
-        }
+            if (data.code && data.code !== 200) {
+              ElMessage({
+                message: data.msg,
+                type: 'error',
+                showClose: true,
+              })
+              _loading.value = false
+              return
+            }
 
-        switch (data.type) {
-          case 'id':
-            currentRecord.id = data.id
-            _currentChat.value.records[index.value].id = data.id
-            break
-          case 'info':
-            console.info(data.msg)
-            break
-          case 'error':
-            currentRecord.error = data.content
-            emits('error')
-            break
-          case 'analysis-result':
-            analysis_answer += data.content
-            analysis_answer_thinking += data.reasoning_content
-            _currentChat.value.records[index.value].analysis = analysis_answer
-            _currentChat.value.records[index.value].analysis_thinking = analysis_answer_thinking
-            break
-          case 'analysis_finish':
-            emits('finish', currentRecord.id)
-            break
+            switch (data.type) {
+              case 'id':
+                currentRecord.id = data.id
+                _currentChat.value.records[index.value].id = data.id
+                break
+              case 'info':
+                console.info(data.msg)
+                break
+              case 'error':
+                currentRecord.error = data.content
+                emits('error')
+                break
+              case 'analysis-result':
+                analysis_answer += data.content
+                analysis_answer_thinking += data.reasoning_content
+                _currentChat.value.records[index.value].analysis = analysis_answer
+                _currentChat.value.records[index.value].analysis_thinking = analysis_answer_thinking
+                break
+              case 'analysis_finish':
+                emits('finish', currentRecord.id)
+                break
+            }
+            await nextTick()
+          }
         }
-        await nextTick()
       }
     }
   } catch (error) {

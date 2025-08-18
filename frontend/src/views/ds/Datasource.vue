@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, shallowRef, nextTick, h } from 'vue'
+import { ref, computed, shallowRef, h } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import arrow_down from '@/assets/svg/arrow-down.svg'
@@ -8,11 +8,8 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { useRouter } from 'vue-router'
 import DataTable from './DataTable.vue'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
-import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
-import DatasourceList from './DatasourceList.vue'
-import DatasourceListSide from './DatasourceListSide.vue'
-import DatasourceForm from './DatasourceForm.vue'
 import { datasourceApi } from '@/api/datasource'
+import AddDrawer from '@/views/ds/AddDrawer.vue'
 import Card from './Card.vue'
 import { useEmitt } from '@/utils/useEmitt'
 import DelMessageBox from './DelMessageBox.vue'
@@ -35,12 +32,7 @@ const router = useRouter()
 const { t } = useI18n()
 const keywords = ref('')
 const defaultDatasourceKeywords = ref('')
-const datasourceConfigVisible = ref(false)
-const editDatasource = ref(false)
-const activeStep = ref(0)
-const activeName = ref('')
-const activeType = ref('')
-const datasourceFormRef = ref()
+const addDrawerRef = ref()
 const searchLoading = ref(false)
 
 const datasourceList = shallowRef([] as Datasource[])
@@ -55,11 +47,6 @@ const datasourceListWithSearch = computed(() => {
       (ele.type === currentDatasourceType.value || !currentDatasourceType.value)
   )
 })
-const beforeClose = () => {
-  datasourceConfigVisible.value = false
-  activeStep.value = 0
-  datasourceApi.cancelRequests()
-}
 const defaultDatasourceListWithSearch = computed(() => {
   if (!defaultDatasourceKeywords.value) return defaultDatasourceList.value
   return defaultDatasourceList.value.filter((ele) =>
@@ -79,10 +66,6 @@ const handleDefaultDatasourceChange = (item: any) => {
   }
 }
 
-const changeActiveStep = (val: number) => {
-  activeStep.value = val > 2 ? 2 : val
-}
-
 const formatKeywords = (item: string) => {
   if (!defaultDatasourceKeywords.value) return item
   return item.replaceAll(
@@ -90,15 +73,8 @@ const formatKeywords = (item: string) => {
     `<span class="isSearch">${defaultDatasourceKeywords.value}</span>`
   )
 }
-const currentType = ref('')
 const handleEditDatasource = (res: any) => {
-  activeStep.value = 1
-  datasourceConfigVisible.value = true
-  editDatasource.value = true
-  currentType.value = res.type_name
-  nextTick(() => {
-    datasourceFormRef.value.initForm(res)
-  })
+  addDrawerRef.value.handleEditDatasource(res)
 }
 
 const handleQuestion = async (id: string) => {
@@ -138,16 +114,7 @@ const handleQuestion = async (id: string) => {
 }
 
 const handleAddDatasource = () => {
-  editDatasource.value = false
-  datasourceConfigVisible.value = true
-}
-
-const refresh = () => {
-  activeName.value = ''
-  activeStep.value = 0
-  activeType.value = ''
-  datasourceConfigVisible.value = false
-  search()
+  addDrawerRef.value.handleAddDatasource()
 }
 
 const refreshData = () => {
@@ -201,17 +168,6 @@ const deleteHandler = (item: any) => {
   //     autofocus: false,
   //   })
   // })
-}
-
-const clickDatasource = (ele: any) => {
-  activeStep.value = 1
-  activeName.value = ele.name
-  activeType.value = ele.type
-}
-
-const clickDatasourceSide = (ele: any) => {
-  activeName.value = ele.name
-  activeType.value = ele.type
 }
 
 const search = () => {
@@ -361,56 +317,8 @@ useEmitt({
         </el-button>
       </div>
     </template>
-    <el-drawer
-      v-model="datasourceConfigVisible"
-      :close-on-click-modal="false"
-      size="calc(100% - 100px)"
-      modal-class="datasource-drawer-fullscreen"
-      direction="btt"
-      :before-close="beforeClose"
-      :show-close="false"
-    >
-      <template #header="{ close }">
-        <span style="white-space: nowrap">{{
-          editDatasource
-            ? t('datasource.mysql_data_source', { msg: currentType })
-            : $t('datasource.new_data_source')
-        }}</span>
-        <div v-if="!editDatasource" class="flex-center" style="width: 100%">
-          <el-steps custom style="max-width: 800px; flex: 1" :active="activeStep" align-center>
-            <el-step>
-              <template #title> {{ $t('qa.select_datasource') }} </template>
-            </el-step>
-            <el-step>
-              <template #title> {{ $t('datasource.configuration_information') }} </template>
-            </el-step>
-            <el-step>
-              <template #title> {{ $t('ds.form.choose_tables') }} </template>
-            </el-step>
-          </el-steps>
-        </div>
-        <el-icon style="cursor: pointer" @click="close">
-          <icon_close_outlined></icon_close_outlined>
-        </el-icon>
-      </template>
-      <DatasourceList v-if="activeStep === 0" @click-datasource="clickDatasource"></DatasourceList>
-      <DatasourceListSide
-        v-if="activeStep === 1 && !editDatasource"
-        :active-name="activeName"
-        @click-datasource="clickDatasourceSide"
-      ></DatasourceListSide>
-      <DatasourceForm
-        v-if="[1, 2].includes(activeStep)"
-        ref="datasourceFormRef"
-        :is-data-table="false"
-        :active-step="activeStep"
-        :active-name="activeName"
-        :active-type="activeType"
-        @refresh="refresh"
-        @close="beforeClose"
-        @change-active-step="changeActiveStep"
-      ></DatasourceForm>
-    </el-drawer>
+
+    <AddDrawer ref="addDrawerRef" @search="search"></AddDrawer>
   </div>
   <DataTable
     v-if="currentDataTable"
@@ -526,14 +434,6 @@ useEmitt({
   }
 }
 
-.datasource-drawer-fullscreen {
-  .ed-drawer__body {
-    padding: 0;
-  }
-  .is-process .ed-step__line {
-    background-color: var(--ed-color-primary);
-  }
-}
 .confirm-no_icon {
   border-radius: 12px;
   padding: 24px;

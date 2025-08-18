@@ -322,19 +322,21 @@ defineExpose({
     <div class="tree-header">
       <div class="icon-methods">
         <span class="title">{{ t('dashboard.dashboard') }} </span>
-        <div class="flex-align-center">
-          <el-tooltip :content="t('dashboard.new_dashboard')" placement="top" effect="dark">
-            <el-icon
-              class="custom-icon btn"
-              style="margin-right: 10px"
-              @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
-            >
-              <Icon name="dv-new-folder">
-                <ope_add class="svg-icon" />
-              </Icon>
-            </el-icon>
-          </el-tooltip>
-        </div>
+        <el-tooltip
+          :offset="12"
+          :content="t('dashboard.new_dashboard')"
+          placement="top"
+          effect="dark"
+        >
+          <el-icon
+            class="custom-icon btn hover-icon_with_bg"
+            @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
+          >
+            <Icon name="dv-new-folder">
+              <ope_add class="svg-icon" />
+            </Icon>
+          </el-icon>
+        </el-tooltip>
       </div>
       <el-input
         v-model="filterText"
@@ -503,7 +505,7 @@ defineExpose({
   .icon-methods {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     font-size: 20px;
     font-weight: 500;
     color: var(--TextPrimary, #1f2329);

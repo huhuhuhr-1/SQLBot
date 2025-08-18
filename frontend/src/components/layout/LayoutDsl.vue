@@ -62,7 +62,7 @@ const showSysmenu = computed(() => {
         </div>
       </div>
     </div>
-    <div class="right-main">
+    <div class="right-main" :class="collapse && 'right-side-collapse'">
       <div class="content">
         <router-view />
       </div>
@@ -91,6 +91,7 @@ const showSysmenu = computed(() => {
     height: 100%;
     padding: 16px;
     position: relative;
+    min-width: 240px;
 
     .bottom {
       position: absolute;
@@ -137,8 +138,9 @@ const showSysmenu = computed(() => {
 
     &.left-side-collapse {
       width: 64px;
+      min-width: 64px;
       padding: 16px 12px;
-      animation: rotate 1s ease-in-out;
+      // animation: rotate 0.1s ease-in-out;
 
       .ed-menu--collapse {
         --ed-menu-icon-width: 32px;
@@ -168,18 +170,22 @@ const showSysmenu = computed(() => {
   }
 
   .right-main {
-    flex: 1;
+    width: calc(100% - 240px);
     padding: 8px 8px 8px 0;
     max-height: 100vh;
-    overflow-x: auto;
+
+    &.right-side-collapse {
+      width: calc(100% - 64px);
+    }
 
     .content {
       width: 100%;
       height: 100%;
       padding: 16px 24px;
-      box-shadow: 0px 2px 4px 0px #1f23291f;
       background-color: #fff;
       border-radius: 12px;
+      box-shadow: 0px 2px 4px 0px #1f23291f;
+      overflow-x: auto;
 
       &:has(.no-padding) {
         padding: 0;

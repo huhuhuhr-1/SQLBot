@@ -297,7 +297,6 @@ onMounted(() => {
   }
   .title {
     color: #fff;
-    font-family: var(--de-custom_font, 'PingFang');
     font-size: 16px;
     font-weight: 400;
     display: flex;

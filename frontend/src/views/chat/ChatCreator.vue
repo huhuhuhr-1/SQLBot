@@ -2,12 +2,12 @@
 import { onMounted, ref, computed, shallowRef } from 'vue'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
-import { useRouter } from 'vue-router'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import { chatApi, ChatInfo } from '@/api/chat.ts'
 import { datasourceApi } from '@/api/datasource.ts'
 import Card from '@/views/ds/ChatCard.vue'
+import AddDrawer from '@/views/ds/AddDrawer.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -18,7 +18,7 @@ const props = withDefaults(
   }
 )
 
-const router = useRouter()
+const addDrawerRef = ref()
 const searchLoading = ref(false)
 const datasourceConfigVisible = ref(false)
 const keywords = ref('')
@@ -113,7 +113,7 @@ onMounted(() => {
 })
 
 const handleAddDatasource = () => {
-  router.push('/ds/index')
+  addDrawerRef.value.handleAddDatasource()
 }
 
 defineExpose({
@@ -217,6 +217,7 @@ defineExpose({
         </div>
       </template>
     </el-drawer>
+    <AddDrawer ref="addDrawerRef" @search="listDs"></AddDrawer>
   </div>
 </template>
 

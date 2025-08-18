@@ -595,6 +595,7 @@
     "welcome_message": "Welcome Message",
     "the_product_logo": "Welcome Message below the product logo",
     "screen_customization_supported": "Defaults to the SQLBot login screen; customization supported",
+    "screen_customization_settings": "The default is the SQLBot platform interface, which supports custom settings",
     "platform_settings": "Platform Settings",
     "help_documentation": "Help Documentation",
     "show_about": "Show About",

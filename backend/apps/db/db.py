@@ -46,6 +46,11 @@ def get_uri_from_config(type: str, conf: DatasourceConf) -> str:
                 db_url = f"oracle+oracledb://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{conf.database}?{conf.extraJdbc}"
             else:
                 db_url = f"oracle+oracledb://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{conf.database}"
+    elif type == "ck":
+        if conf.extraJdbc is not None and conf.extraJdbc != '':
+            db_url = f"clickhouse+http://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{conf.database}?{conf.extraJdbc}"
+        else:
+            db_url = f"clickhouse+http://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{conf.database}"
     else:
         raise 'The datasource type not support.'
     return db_url
@@ -67,7 +72,7 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
     elif ds.type == 'oracle':
         engine = create_engine(get_uri(ds),
                                pool_timeout=conf.timeout)
-    else:
+    else:  # mysql, ck
         engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, pool_timeout=conf.timeout)
     return engine
 
@@ -143,6 +148,14 @@ def get_tables(ds: CoreDatasource):
                         AND c.TABLE_TYPE = t.OBJECT_TYPE
                         AND c.OWNER = '{conf.dbSchema}'   
                     ORDER BY t.TABLE_NAME
+                    """
+        elif ds.type == "ck":
+            sql = f"""
+                    SELECT name, engine
+                    FROM system.tables
+                    WHERE database = '{conf.database}'
+                      AND engine NOT IN ('Dictionary')
+                    ORDER BY name
                     """
         with session.execute(text(sql)) as result:
             res = result.fetchall()
@@ -225,6 +238,17 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
                         col.OWNER = '{conf.dbSchema}'
                     """
             sql2 = f" AND col.TABLE_NAME = '{table_name}'" if table_name is not None and table_name != "" else ""
+            sql = sql1 + sql2
+        elif ds.type == "ck":
+            sql1 = f"""
+                    SELECT 
+                        name AS COLUMN_NAME,
+                        type AS DATA_TYPE,
+                        comment AS COLUMN_COMMENT
+                    FROM system.columns
+                    WHERE database = '{conf.database}'
+                    """
+            sql2 = f" AND table = '{table_name}'" if table_name is not None and table_name != "" else ""
             sql = sql1 + sql2
 
         with session.execute(text(sql)) as result:

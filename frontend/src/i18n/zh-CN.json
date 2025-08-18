@@ -595,6 +595,7 @@
     "welcome_message": "欢迎语",
     "the_product_logo": "产品 Logo 下的 欢迎语",
     "screen_customization_supported": "默认为 SQLBot 登录界面，支持自定义设置",
+    "screen_customization_settings": "默认为 SQLBot 平台界面，支持自定义设置",
     "platform_settings": "平台设置",
     "help_documentation": "帮助文档",
     "show_about": "显示关于",

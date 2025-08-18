@@ -250,6 +250,7 @@ const handleConfirmPassword = () => {
     :title="$t('qa.rename_conversation_title')"
     width="420"
     :before-close="handleClosePassword"
+    append-to-body
   >
     <el-form
       ref="passwordRef"

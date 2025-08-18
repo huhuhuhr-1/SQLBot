@@ -805,7 +805,7 @@ class LLMService:
         try:
             # return id
             if in_chat:
-                yield orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
 
             # return title
             if self.change_title:
@@ -814,7 +814,7 @@ class LLMService:
                                         rename_object=RenameChat(id=self.get_record().chat_id,
                                                                  brief=self.chat_question.question.strip()[:20]))
                     if in_chat:
-                        yield orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
+                        yield 'data:' + orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
 
             # select datasource if datasource is none
             if not self.ds:
@@ -823,11 +823,11 @@ class LLMService:
                 for chunk in ds_res:
                     SQLBotLogUtil.info(chunk)
                     if in_chat:
-                        yield orjson.dumps(
+                        yield 'data:' + orjson.dumps(
                             {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                              'type': 'datasource-result'}).decode() + '\n\n'
                 if in_chat:
-                    yield orjson.dumps({'id': self.ds.id, 'datasource_name': self.ds.name,
+                    yield 'data:' + orjson.dumps({'id': self.ds.id, 'datasource_name': self.ds.name,
                                         'engine_type': self.ds.type_name or self.ds.type,
                                         'type': 'datasource'}).decode() + '\n\n'
 
@@ -843,11 +843,11 @@ class LLMService:
             for chunk in sql_res:
                 full_sql_text += chunk.get('content')
                 if in_chat:
-                    yield orjson.dumps(
+                    yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                          'type': 'sql-result'}).decode() + '\n\n'
             if in_chat:
-                yield orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
 
             # filter sql
             SQLBotLogUtil.info(full_sql_text)
@@ -881,7 +881,7 @@ class LLMService:
             SQLBotLogUtil.info(sql)
             format_sql = sqlparse.format(sql, reindent=True)
             if in_chat:
-                yield orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
             else:
                 yield f'```sql\n{format_sql}\n```\n\n'
 
@@ -889,7 +889,7 @@ class LLMService:
             result = self.execute_sql(sql=sql)
             self.save_sql_data(data_obj=result)
             if in_chat:
-                yield orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
 
             # generate chart
             chart_res = self.generate_chart()
@@ -897,18 +897,18 @@ class LLMService:
             for chunk in chart_res:
                 full_chart_text += chunk.get('content')
                 if in_chat:
-                    yield orjson.dumps(
+                    yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                          'type': 'chart-result'}).decode() + '\n\n'
             if in_chat:
-                yield orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
             # filter chart
             SQLBotLogUtil.info(full_chart_text)
             chart = self.check_save_chart(res=full_chart_text)
             SQLBotLogUtil.info(chart)
             if in_chat:
-                yield orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
             else:
                 data = []
                 _fields = {}
@@ -940,7 +940,7 @@ class LLMService:
 
             record = self.finish()
             if in_chat:
-                yield orjson.dumps({'type': 'finish'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
             else:
                 # todo generate picture
                 if chart['type'] != 'table':
@@ -956,7 +956,7 @@ class LLMService:
                 error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
             self.save_error(message=error_msg)
             if in_chat:
-                yield orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
             else:
                 yield f'> &#x274c; **ERROR**\n\n> \n\n> {error_msg}。'
 
@@ -990,37 +990,37 @@ class LLMService:
     def run_analysis_or_predict_task(self, action_type: str):
         try:
 
-            yield orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
+            yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
 
             if action_type == 'analysis':
                 # generate analysis
                 analysis_res = self.generate_analysis()
                 for chunk in analysis_res:
-                    yield orjson.dumps(
+                    yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                          'type': 'analysis-result'}).decode() + '\n\n'
-                yield orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
 
-                yield orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
 
             elif action_type == 'predict':
                 # generate predict
                 analysis_res = self.generate_predict()
                 full_text = ''
                 for chunk in analysis_res:
-                    yield orjson.dumps(
+                    yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                          'type': 'predict-result'}).decode() + '\n\n'
                     full_text += chunk.get('content')
-                yield orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
 
                 _data = self.check_save_predict_data(res=full_text)
                 if _data:
-                    yield orjson.dumps({'type': 'predict-success'}).decode() + '\n\n'
+                    yield 'data:' + orjson.dumps({'type': 'predict-success'}).decode() + '\n\n'
                 else:
-                    yield orjson.dumps({'type': 'predict-failed'}).decode() + '\n\n'
+                    yield 'data:' + orjson.dumps({'type': 'predict-failed'}).decode() + '\n\n'
 
-                yield orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
 
             self.finish()
         except Exception as e:
@@ -1030,7 +1030,7 @@ class LLMService:
             else:
                 error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
             self.save_error(message=error_msg)
-            yield orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
+            yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
         finally:
             # end
             pass

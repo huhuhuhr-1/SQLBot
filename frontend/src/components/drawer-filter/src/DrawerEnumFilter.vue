@@ -84,7 +84,7 @@ useEmitt({
       padding: 1px 6px;
       background: var(--deTextPrimary5, #f5f6f7);
       color: var(--deTextPrimary, #1f2329);
-      border-radius: 2px;
+      border-radius: 4px;
       cursor: pointer;
       display: inline-block;
       margin-bottom: 12px;
@@ -92,8 +92,8 @@ useEmitt({
 
     .active,
     .more:hover {
-      background: var(--primary10, var(--ed-color-primary-1a, #1cba9033));
-      color: var(--primaryselect, #0c296e);
+      background: var(--ed-color-primary-1a, #1cba9033);
+      color: #0b4a3a;
     }
 
     .more {

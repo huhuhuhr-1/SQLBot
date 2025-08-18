@@ -80,6 +80,7 @@ const routerList = computed(() => {
     &.is-active {
       background-color: #fff !important;
       border-radius: 6px;
+      font-weight: 500;
     }
   }
 

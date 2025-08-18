@@ -459,6 +459,7 @@ defineExpose({
     padding-top: 24px;
     overflow-y: auto;
     height: calc(100% - 120px);
+    padding-bottom: 24px;
 
     .ed-form-item--default {
       margin-bottom: 16px;

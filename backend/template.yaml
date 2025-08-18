@@ -27,7 +27,7 @@ template:
       - SQL查询的字段若是函数字段，如 COUNT(),CAST() 等，必须加上别名
       - 计算占比，百分比类型字段，保留两位小数，以%结尾。
       - 生成SQL时，必须避免关键字冲突。
-      - 如数据库引擎是 PostgreSQL、Oracle，则在schema、表名、字段名、别名外层加双引号；
+      - 如数据库引擎是 PostgreSQL、Oracle、ClickHouse，则在schema、表名、字段名、别名外层加双引号；
       - 如数据库引擎是 MySQL，则在表名、字段名、别名外层加反引号；
       - 如数据库引擎是 Microsoft SQL Server，则在schema、表名、字段名、别名外层加方括号。
       - 以PostgreSQL为例，查询Schema为TEST表TABLE下所有数据，则生成的SQL为：

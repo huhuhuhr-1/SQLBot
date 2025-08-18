@@ -10,6 +10,7 @@ class DB(Enum):
     pg = ('pg', '"', '"')
     excel = ('excel', '"', '"')
     oracle = ('oracle', '"', '"')
+    ck = ('ClickHouse', '"', '"')
 
     def __init__(self, type, prefix, suffix):
         self.type = type

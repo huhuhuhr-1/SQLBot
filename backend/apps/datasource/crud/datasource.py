@@ -293,6 +293,10 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
             {where} 
             ORDER BY "{fields[0]}"
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
+    elif ds.type == "ck":
+        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{data.table.table_name}" 
+            {where} 
+            LIMIT 100"""
     return exec_sql(ds, sql)
 
 

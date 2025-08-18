@@ -37,9 +37,6 @@ export class Pie extends BaseG2Chart {
         {
           position: 'outside',
           text: (data: any) => {
-            console.log(
-              `${data[series[0].value]}: ${data[y[0].value]}${_data.isPercent ? '%' : ''}`
-            )
             return `${data[series[0].value]}: ${data[y[0].value]}${_data.isPercent ? '%' : ''}`
           },
           transform: [{ type: 'exceedAdjust' }, { type: 'overlapHide' }],

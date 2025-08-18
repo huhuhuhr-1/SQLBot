@@ -179,7 +179,7 @@
                 </div>
                 <div class="tips-page">
                   {{
-                    t('system.screen_customization_supported', { msg: loginForm.name || 'SQLBot' })
+                    t('system.screen_customization_settings', { msg: loginForm.name || 'SQLBot' })
                   }}
                 </div>
               </div>
@@ -766,7 +766,7 @@ onUnmounted(() => {
           align-items: center;
           justify-content: center;
           background: #ffffff;
-          border: 1px solid #bbbfc4;
+          border: 1px solid var(--ed-border-color);
           border-radius: 6px;
 
           .is-active {
@@ -821,6 +821,10 @@ onUnmounted(() => {
           justify-content: space-between;
           .page-content {
             width: calc(100% - 378px);
+
+            .tips-page {
+              margin-top: 8px;
+            }
             .navigate-preview {
               height: calc(100% - 28px);
               background-color: #fff;

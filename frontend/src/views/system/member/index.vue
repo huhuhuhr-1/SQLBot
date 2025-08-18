@@ -231,7 +231,7 @@ const handleCurrentChange = (val: number) => {
         </el-button>
       </div>
     </div>
-    <div class="table-content">
+    <div class="table-content" :class="multipleSelectionAll.length && 'show-pagenation_height'">
       <div class="preview-or-schema">
         <el-table
           ref="multipleTableRef"
@@ -395,6 +395,10 @@ const handleCurrentChange = (val: number) => {
   .table-content {
     max-height: calc(100% - 104px);
     overflow-y: auto;
+
+    &.show-pagenation_height {
+      max-height: calc(100% - 165px);
+    }
 
     .preview-or-schema {
       .user-status-container {

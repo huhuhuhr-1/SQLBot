@@ -99,10 +99,12 @@ const sendMessage = async () => {
     const controller: AbortController = new AbortController()
     const response = await chatApi.predict(currentRecord.predict_record_id, controller)
     const reader = response.body.getReader()
-    const decoder = new TextDecoder()
+    const decoder = new TextDecoder('utf-8')
 
     let predict_answer = ''
     let predict_content = ''
+
+    let tempResult = ''
 
     while (true) {
       if (stopFlag.value) {
@@ -117,72 +119,68 @@ const sendMessage = async () => {
         break
       }
 
-      const chunk = decoder.decode(value)
-
-      let _list = [chunk]
-
-      const lines = chunk.trim().split('}\n\n{')
-      if (lines.length > 1) {
-        _list = []
-        for (let line of lines) {
-          if (!line.trim().startsWith('{')) {
-            line = '{' + line.trim()
-          }
-          if (!line.trim().endsWith('}')) {
-            line = line.trim() + '}'
-          }
-          _list.push(line)
-        }
+      let chunk = decoder.decode(value, { stream: true })
+      tempResult += chunk
+      const split = tempResult.match(/data:.*}\n\n/g)
+      if (split) {
+        chunk = split.join('')
+        tempResult = tempResult.replace(chunk, '')
+      } else {
+        continue
       }
-      for (const str of _list) {
-        let data
-        try {
-          data = JSON.parse(str)
-        } catch (err) {
-          console.error('JSON string:', str)
-          throw err
-        }
+      if (chunk && chunk.startsWith('data:{')) {
+        if (split) {
+          for (const str of split) {
+            let data
+            try {
+              data = JSON.parse(str.replace('data:{', '{'))
+            } catch (err) {
+              console.error('JSON string:', str)
+              throw err
+            }
 
-        if (data.code && data.code !== 200) {
-          ElMessage({
-            message: data.msg,
-            type: 'error',
-            showClose: true,
-          })
-          return
-        }
+            if (data.code && data.code !== 200) {
+              ElMessage({
+                message: data.msg,
+                type: 'error',
+                showClose: true,
+              })
+              return
+            }
 
-        switch (data.type) {
-          case 'id':
-            currentRecord.id = data.id
-            _currentChat.value.records[index.value].id = data.id
-            break
-          case 'info':
-            console.info(data.msg)
-            break
-          case 'error':
-            currentRecord.error = data.content
-            emits('error')
-            break
-          case 'predict-result':
-            predict_answer += data.reasoning_content
-            predict_content += data.content
-            _currentChat.value.records[index.value].predict = predict_answer
-            _currentChat.value.records[index.value].predict_content = predict_content
-            break
-          case 'predict-failed':
-            emits('error')
-            break
-          case 'predict-success':
-            //currentChat.value.records[_index].predict_data = data.content
-            getChatPredictData(_currentChat.value.records[index.value].id)
-            emits('finish', currentRecord.id)
-            break
-          case 'predict_finish':
-            _loading.value = false
-            break
+            switch (data.type) {
+              case 'id':
+                currentRecord.id = data.id
+                _currentChat.value.records[index.value].id = data.id
+                break
+              case 'info':
+                console.info(data.msg)
+                break
+              case 'error':
+                currentRecord.error = data.content
+                emits('error')
+                break
+              case 'predict-result':
+                predict_answer += data.reasoning_content
+                predict_content += data.content
+                _currentChat.value.records[index.value].predict = predict_answer
+                _currentChat.value.records[index.value].predict_content = predict_content
+                break
+              case 'predict-failed':
+                emits('error')
+                break
+              case 'predict-success':
+                //currentChat.value.records[_index].predict_data = data.content
+                getChatPredictData(_currentChat.value.records[index.value].id)
+                emits('finish', currentRecord.id)
+                break
+              case 'predict_finish':
+                _loading.value = false
+                break
+            }
+            await nextTick()
+          }
         }
-        await nextTick()
       }
     }
   } catch (error) {

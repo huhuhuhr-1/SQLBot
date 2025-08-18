@@ -948,7 +948,9 @@ const columnRules = {
   .drawer-content {
     width: 800px;
     margin: 0 auto;
-    height: calc(100% - 20px);
+    height: 100%;
+    padding-bottom: 24px;
+    overflow-y: auto;
   }
 
   .drawer-content {
@@ -958,13 +960,14 @@ const columnRules = {
       }
     }
     .add-permission_form {
+      margin-bottom: 0;
       .ed-form-item__label {
         width: 100%;
         padding-right: 0;
       }
 
       .ed-form-item__content {
-        padding-bottom: 100px;
+        padding-bottom: 0px;
       }
 
       .table-content {
@@ -975,7 +978,6 @@ const columnRules = {
         border-bottom: none;
         border-radius: 6px;
         overflow-y: auto;
-        max-height: calc(100vh - 400px);
 
         &.border-bottom {
           border-bottom: 1px solid #1f232926;

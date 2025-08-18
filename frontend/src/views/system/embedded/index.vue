@@ -776,9 +776,10 @@ const saveHandler = () => {
             </template>
             <div class="card-ds_content">
               <DsCard
-                v-for="ele in dsListOptions"
+                v-for="(ele, index) in dsListOptions"
                 :id="ele.id"
                 :key="ele.id"
+                :class="[0, 1].includes(index) && 'no-margin_top'"
                 :name="ele.name"
                 :type="ele.type"
                 :type-name="ele.type_name"
@@ -822,9 +823,11 @@ const saveHandler = () => {
       <div class="code">
         <div class="copy">
           {{ $t('embedded.code_to_embed') }}
-          <el-icon size="16" @click="copyCode">
-            <icon_copy_outlined></icon_copy_outlined>
-          </el-icon>
+          <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
+            <el-icon size="16" @click="copyCode">
+              <icon_copy_outlined></icon_copy_outlined>
+            </el-icon>
+          </el-tooltip>
         </div>
 
         <div class="script">
@@ -835,9 +838,11 @@ const saveHandler = () => {
       <div class="code">
         <div class="copy">
           {{ $t('common.or') }}
-          <el-icon size="16" @click="copyJsCode">
-            <icon_copy_outlined></icon_copy_outlined>
-          </el-icon>
+          <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
+            <el-icon size="16" @click="copyJsCode">
+              <icon_copy_outlined></icon_copy_outlined>
+            </el-icon>
+          </el-tooltip>
         </div>
 
         <div class="script">
@@ -1032,7 +1037,6 @@ const saveHandler = () => {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    padding-bottom: 50px;
 
     .card {
       width: 392px;
@@ -1040,12 +1044,24 @@ const saveHandler = () => {
         margin-right: 0;
       }
     }
+
+    .no-margin_top {
+      margin-top: 0;
+    }
   }
 
   .drawer-content {
     width: 800px;
     margin: 0 auto;
-    height: calc(100% - 20px);
+    height: 100%;
+    padding-bottom: 24px;
+    overflow-y: auto;
+
+    .ed-form-item {
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
   }
 
   .certificate-table_form {

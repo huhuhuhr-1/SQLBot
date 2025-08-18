@@ -38,7 +38,13 @@
         </el-button>
       </div>
     </div>
-    <div class="sqlbot-table" :class="state.filterTexts.length && 'is-filter'">
+    <div
+      class="sqlbot-table"
+      :class="[
+        state.filterTexts.length && 'is-filter',
+        multipleSelectionAll.length && 'show-pagenation_height',
+      ]"
+    >
       <filter-text
         :total="state.pageInfo.total"
         :filter-texts="state.filterTexts"
@@ -853,6 +859,10 @@ onMounted(() => {
     width: 100%;
     max-height: calc(100vh - 150px);
     overflow-y: auto;
+
+    &.show-pagenation_height {
+      max-height: calc(100vh - 215px);
+    }
 
     :deep(.ed-popper.is-dark) {
       max-width: 400px;

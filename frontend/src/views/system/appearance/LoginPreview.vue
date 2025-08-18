@@ -288,7 +288,7 @@ onMounted(() => {
           padding-top: 12px;
           box-shadow: 0px 4px 15px rgba(31, 35, 41, 0.08);
           border: 1px solid #dee0e3;
-          border-radius: 2px;
+          border-radius: 12px;
 
           .login-form-item {
             margin-top: 15px;

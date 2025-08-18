@@ -873,6 +873,7 @@ defineExpose({
     }
   }
   .select-data_table {
+    padding-bottom: 24px;
     .title {
       font-weight: 500;
       font-size: 16px;
@@ -880,9 +881,9 @@ defineExpose({
       margin: 0 0 16px 0;
     }
     .container {
-      height: 524px;
       border: 1px solid #dee0e3;
       border-radius: 4px;
+      overflow-y: auto;
 
       .select-all {
         background: #f5f6f7;

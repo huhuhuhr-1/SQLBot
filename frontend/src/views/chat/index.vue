@@ -23,6 +23,7 @@
       <el-popover
         :width="280"
         placement="bottom-start"
+        popper-class="popover-chat_history"
         :popper-style="{ ...defaultFloatPopoverStyle }"
       >
         <template #reference>
@@ -73,7 +74,7 @@
         />
       </el-drawer>
 
-      <el-tooltip effect="dark" :content="t('qa.new_chat')" placement="bottom">
+      <el-tooltip effect="dark" :offset="8" :content="t('qa.new_chat')" placement="bottom">
         <el-button link type="primary" class="icon-btn" @click="createNewChatSimple">
           <el-icon>
             <icon_new_chat_outlined />
@@ -164,7 +165,12 @@
                     <template #tool>
                       <ChatToolBar v-if="!message.isTyping" :message="message">
                         <div class="tool-btns">
-                          <el-tooltip effect="dark" :content="t('qa.ask_again')" placement="top">
+                          <el-tooltip
+                            effect="dark"
+                            :offset="8"
+                            :content="t('qa.ask_again')"
+                            placement="top"
+                          >
                             <el-button
                               class="tool-btn"
                               text
@@ -963,7 +969,7 @@ onMounted(() => {
         padding-top: 12px;
         padding-left: 12px;
         z-index: 10;
-        background: #f8f9fa;
+        background: transparent;
         line-height: 22px;
         font-size: 14px;
         font-weight: 400;
@@ -1103,7 +1109,7 @@ onMounted(() => {
     .greeting-btn {
       width: 100%;
       height: 88px;
-
+      border-radius: 16px;
       border-style: dashed;
 
       .inner-icon {
@@ -1141,5 +1147,11 @@ onMounted(() => {
   .ed-drawer__body {
     padding: 0;
   }
+}
+
+.popover-chat_history {
+  box-shadow: 0px 4px 8px 0px #1f23291a !important;
+  border-radius: 12px !important;
+  overflow: hidden;
 }
 </style>

@@ -154,7 +154,7 @@ defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
 
 <template>
   <div v-if="computedQuestions.length > 0 || loading" class="recommend-questions">
-    <div v-if="firstChat">{{ t('qa.guess_u_ask') }}</div>
+    <div v-if="firstChat" style="margin-bottom: 8px">{{ t('qa.guess_u_ask') }}</div>
     <div v-else class="continue-ask">{{ t('qa.continue_to_ask') }}</div>
     <div v-if="loading">
       <el-button style="min-width: unset" type="primary" link loading />

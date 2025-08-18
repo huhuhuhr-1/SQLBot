@@ -17,7 +17,6 @@ import orjson
 from jwt.exceptions import InvalidTokenError
 
 from common.core import security
-from common.core.config import settings
 
 
 def generate_password_reset_token(email: str) -> str:

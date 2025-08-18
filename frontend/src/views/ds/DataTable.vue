@@ -431,18 +431,19 @@ const btnSelectClick = (val: any) => {
     width="600"
     :destroy-on-close="true"
     :close-on-click-modal="false"
+    modal-class="notes-dialog"
     @closed="closeTable"
   >
     <el-input
       v-model="tableComment"
       :placeholder="$t('datasource.please_enter')"
-      :rows="3"
+      :autosize="{ minRows: 3.64, maxRows: 11.095 }"
       type="textarea"
       clearable
     />
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
       <el-button @click="closeTable">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" @click="saveTable">{{ t('common.confirm') }}</el-button>
+      <el-button type="primary" @click="saveTable">{{ t('common.save') }}</el-button>
     </div>
   </el-dialog>
 
@@ -452,18 +453,19 @@ const btnSelectClick = (val: any) => {
     width="600"
     :destroy-on-close="true"
     :close-on-click-modal="false"
+    modal-class="notes-dialog"
     @closed="closeField"
   >
     <el-input
       v-model="fieldComment"
       :placeholder="$t('datasource.please_enter')"
-      :rows="3"
+      :autosize="{ minRows: 3.64, maxRows: 11.095 }"
       clearable
       type="textarea"
     />
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
       <el-button @click="closeField">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" @click="saveField">{{ t('common.confirm') }}</el-button>
+      <el-button type="primary" @click="saveField">{{ t('common.save') }}</el-button>
     </div>
   </el-dialog>
   <ParamsForm ref="paramsFormRef" @refresh="refresh"></ParamsForm>
@@ -519,6 +521,7 @@ const btnSelectClick = (val: any) => {
         align-items: center;
         justify-content: space-between;
         padding: 8px;
+        font-weight: 500;
 
         .ed-icon {
           cursor: pointer;
@@ -707,7 +710,7 @@ const btnSelectClick = (val: any) => {
             align-items: center;
             min-height: 24px;
             .notes-in_table {
-              max-width: 192px;
+              max-width: 100%;
               display: -webkit-box;
               max-height: 66px;
               -webkit-box-orient: vertical;
@@ -754,6 +757,14 @@ const btnSelectClick = (val: any) => {
         }
       }
     }
+  }
+}
+</style>
+
+<style lang="less">
+.notes-dialog {
+  .ed-textarea__inner {
+    line-height: 22px;
   }
 }
 </style>

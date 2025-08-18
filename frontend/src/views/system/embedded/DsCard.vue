@@ -89,7 +89,7 @@ const handlePublic = () => {
   padding: 16px;
   border-radius: 12px;
   cursor: pointer;
-  margin: 0 16px 16px 0;
+  margin: 16px 16px 0 0;
   &:hover {
     box-shadow: 0px 6px 24px 0px #1f232914;
   }

@@ -129,6 +129,7 @@ const account = computed(() => userStore.getAccount)
   position: absolute;
   bottom: 44px;
   pointer-events: none;
+  border-radius: 6px;
 
   &::after {
     content: '';
