@@ -1,3 +1,7 @@
+"""聊天相关接口。
+
+提供创建会话、提问、重命名等与聊天流程相关的 API。"""
+
 import asyncio
 import io
 import traceback
@@ -19,11 +23,13 @@ router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
 @router.get("/list")
 async def chats(session: SessionDep, current_user: CurrentUser):
+    """列出当前用户的所有聊天会话。"""
     return list_chats(session, current_user)
 
 
 @router.get("/get/{chart_id}")
 async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int, current_assistant: CurrentAssistant):
+    """获取指定聊天及其历史记录。"""
     def inner():
         return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user,
                                      current_assistant=current_assistant)
@@ -33,6 +39,7 @@ async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int
 
 @router.get("/get/with_data/{chart_id}")
 async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, chart_id: int,
+    """获取指定聊天及其数据结果。"""
                              current_assistant: CurrentAssistant):
     def inner():
         return get_chat_with_records_with_data(chart_id=chart_id, session=session, current_user=current_user,
@@ -43,6 +50,7 @@ async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, cha
 
 @router.get("/record/get/{chart_record_id}/data")
 async def chat_record_data(session: SessionDep, chart_record_id: int):
+    """获取指定聊天记录的图表数据。"""
     def inner():
         return get_chat_chart_data(chart_record_id=chart_record_id, session=session)
 
@@ -51,6 +59,7 @@ async def chat_record_data(session: SessionDep, chart_record_id: int):
 
 @router.get("/record/get/{chart_record_id}/predict_data")
 async def chat_predict_data(session: SessionDep, chart_record_id: int):
+    """获取指定聊天记录的预测结果。"""
     def inner():
         return get_chat_predict_data(chart_record_id=chart_record_id, session=session)
 
@@ -59,6 +68,7 @@ async def chat_predict_data(session: SessionDep, chart_record_id: int):
 
 @router.post("/rename")
 async def rename(session: SessionDep, chat: RenameChat):
+    """重命名聊天会话。"""
     try:
         return rename_chat(session=session, rename_object=chat)
     except Exception as e:
@@ -70,6 +80,7 @@ async def rename(session: SessionDep, chat: RenameChat):
 
 @router.get("/delete/{chart_id}")
 async def delete(session: SessionDep, chart_id: int):
+    """删除指定的聊天会话。"""
     try:
         return delete_chat(session=session, chart_id=chart_id)
     except Exception as e:
@@ -81,6 +92,7 @@ async def delete(session: SessionDep, chart_id: int):
 
 @router.post("/start")
 async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat):
+    """创建新的聊天会话。"""
     try:
         return create_chat(session, current_user, create_chat_obj)
     except Exception as e:
@@ -92,6 +104,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
 
 @router.post("/assistant/start")
 async def start_chat(session: SessionDep, current_user: CurrentUser):
+    """以助手身份创建新的聊天会话。"""
     try:
         return create_chat(session, current_user, CreateChat(origin=2), False)
     except Exception as e:
@@ -103,6 +116,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser):
 
 @router.post("/recommend_questions/{chat_record_id}")
 async def recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int,
+    """基于已有聊天记录推荐后续问题。"""
                               current_assistant: CurrentAssistant):
     try:
         record = get_chat_record_by_id(session, chat_record_id)
@@ -157,6 +171,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
 
 @router.post("/record/{chat_record_id}/{action_type}")
 async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str,
+    """对聊天记录进行分析或预测。"""
                               current_assistant: CurrentAssistant):
     if action_type != 'analysis' and action_type != 'predict':
         raise HTTPException(
@@ -203,6 +218,7 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
 
 @router.post("/excel/export")
 async def export_excel(excel_data: ExcelData):
+    """根据提供的数据生成并导出 Excel 文件。"""
     def inner():
         _fields_list = []
         data = []

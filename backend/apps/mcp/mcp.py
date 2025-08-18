@@ -1,5 +1,7 @@
-# Author: Junjun
-# Date: 2025/7/1
+"""模型控制协议（MCP）相关接口。
+
+提供登录和提问能力，供外部系统集成。
+"""
 
 from datetime import timedelta
 
@@ -30,6 +32,7 @@ reusable_oauth2 = XOAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
 )
 
+# MCP 模块路由
 router = APIRouter(tags=["mcp"], prefix="/mcp")
 
 
@@ -60,24 +63,34 @@ router = APIRouter(tags=["mcp"], prefix="/mcp")
 
 @router.post("/mcp_start", operation_id="mcp_start")
 async def mcp_start(session: SessionDep, chat: ChatStart):
+    """用户登录并创建 MCP 会话。
+
+    通过用户名密码认证用户，生成访问令牌并创建聊天记录。
+    """
     user: BaseUserDTO = authenticate(session=session, account=chat.username, password=chat.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect account or password")
 
     if not user.oid or user.oid == 0:
         raise HTTPException(status_code=400, detail="No associated workspace, Please contact the administrator")
+
+    # 生成访问令牌
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     user_dict = user.to_dict()
     t = Token(access_token=create_access_token(
         user_dict, expires_delta=access_token_expires
     ))
+
+    # 初始化聊天会话
     c = create_chat(session, user, CreateChat(origin=1), False)
     return {"access_token": t.access_token, "chat_id": c.id}
 
 
 @router.post("/mcp_question", operation_id="mcp_question")
 async def mcp_question(session: SessionDep, chat: McpQuestion):
+    """处理 MCP 问答请求并返回流式响应。"""
     try:
+        # 校验令牌
         payload = jwt.decode(
             chat.token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
         )
@@ -87,13 +100,11 @@ async def mcp_question(session: SessionDep, chat: McpQuestion):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials",
         )
-    # session_user = await get_user_info(session=session, user_id=token_data.id)
 
+    # 查询并验证用户信息
     db_user: UserModel = get_db_user(session=session, user_id=token_data.id)
     session_user = UserInfoDTO.model_validate(db_user.model_dump())
     session_user.isAdmin = session_user.id == 1 and session_user.account == 'admin'
-    if session_user.isAdmin:
-        session_user = session_user
     ws_model: UserWsModel = session.exec(
         select(UserWsModel).where(UserWsModel.uid == session_user.id, UserWsModel.oid == session_user.oid)).first()
     session_user.weight = ws_model.weight if ws_model else -1
@@ -105,8 +116,8 @@ async def mcp_question(session: SessionDep, chat: McpQuestion):
     if session_user.status != 1:
         raise HTTPException(status_code=400, detail="Inactive user")
 
+    # 构建聊天对象并启动 LLM 服务
     mcp_chat = ChatMcp(token=chat.token, chat_id=chat.chat_id, question=chat.question)
-    # ask
     llm_service = LLMService(session_user, mcp_chat)
     llm_service.init_record()
 

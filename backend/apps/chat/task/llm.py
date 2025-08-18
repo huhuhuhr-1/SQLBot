@@ -1,3 +1,5 @@
+"""聊天任务执行服务，封装与 LLM 的交互逻辑。"""
+
 import concurrent
 import json
 import traceback
@@ -44,6 +46,7 @@ executor = ThreadPoolExecutor(max_workers=200)
 
 
 class LLMService:
+    """封装与大语言模型交互的服务，负责生成 SQL、图表及分析结果。"""
     ds: CoreDatasource
     chat_question: ChatQuestion
     record: ChatRecord
@@ -133,6 +136,7 @@ class LLMService:
             return True
 
     def init_messages(self):
+        """初始化历史消息，用于后续生成 SQL 与图表。"""
         # self.agent_executor = create_react_agent(self.llm)
         last_sql_messages = list(
             filter(lambda r: True if r.full_sql_message is not None and r.full_sql_message.strip() != '' else False,
@@ -781,6 +785,7 @@ class LLMService:
             return None
 
     def await_result(self):
+        """等待异步任务完成并逐步返回结果。"""
         while self.is_running():
             while True:
                 chunk = self.pop_chunk()
@@ -795,6 +800,7 @@ class LLMService:
             yield chunk
 
     def run_task_async(self, in_chat: bool = True):
+        """异步启动生成 SQL 与图表的任务。"""
         self.future = executor.submit(self.run_task_cache, in_chat)
 
     def run_task_cache(self, in_chat: bool = True):
@@ -961,6 +967,7 @@ class LLMService:
                 yield f'> &#x274c; **ERROR**\n\n> \n\n> {error_msg}。'
 
     def run_recommend_questions_task_async(self):
+        """异步执行推荐问题任务。"""
         self.future = executor.submit(self.run_recommend_questions_task_cache)
 
     def run_recommend_questions_task_cache(self):
@@ -980,6 +987,7 @@ class LLMService:
                      'type': 'recommended_question_result'}).decode() + '\n\n'
 
     def run_analysis_or_predict_task_async(self, action_type: str, base_record: ChatRecord):
+        """异步执行分析或预测任务。"""
         self.set_record(save_analysis_predict_record(self.session, base_record, action_type))
         self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type)
 

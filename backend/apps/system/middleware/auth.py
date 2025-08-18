@@ -1,3 +1,4 @@
+"""认证中间件，校验用户和助手的访问令牌。"""
 
 from typing import Optional
 from fastapi import Request
@@ -18,21 +19,24 @@ from common.utils.utils import SQLBotLogUtil
 from common.utils.whitelist import whiteUtils
 from fastapi.security.utils import get_authorization_scheme_param
 from common.core.deps import get_i18n
+
+
 class TokenMiddleware(BaseHTTPMiddleware):
-    
-    
-    
+    """从请求头验证 Token 的中间件。"""
+
     def __init__(self, app):
         super().__init__(app)
 
     async def dispatch(self, request, call_next):
-        
+        """处理每个请求的认证逻辑。"""
+
+        # 跳过预检或白名单路径
         if self.is_options(request) or whiteUtils.is_whitelisted(request.url.path):
             return await call_next(request)
         assistantTokenKey = settings.ASSISTANT_TOKEN_KEY
         assistantToken = request.headers.get(assistantTokenKey)
         trans = await get_i18n(request)
-        #if assistantToken and assistantToken.lower().startswith("assistant "):
+        # 如果携带了助手 Token，先进行助手校验
         if assistantToken:
             validator: tuple[any] = await self.validateAssistant(assistantToken)
             if validator[0]:
@@ -41,27 +45,29 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
             message = trans('i18n_permission.authenticate_invalid', msg = validator[1])
             return JSONResponse(message, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
-        #validate pass
+        # 校验用户 Token
         tokenkey = settings.TOKEN_KEY
         token = request.headers.get(tokenkey)
         validate_pass, data = await self.validateToken(token, trans)
         if validate_pass:
             request.state.current_user = data
             return await call_next(request)
-        
+
         message = trans('i18n_permission.authenticate_invalid', msg = data)
         return JSONResponse(message, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
-    
+
     def is_options(self, request: Request):
+        """判断是否为预检请求。"""
         return request.method == "OPTIONS"
-    
+
     async def validateToken(self, token: Optional[str], trans: I18n):
+        """校验用户 Token 并返回用户信息。"""
         if not token:
             return False, f"Miss Token[{settings.TOKEN_KEY}]!"
         schema, param = get_authorization_scheme_param(token)
         if schema.lower() != "bearer":
             return False, f"Token schema error!"
-        try: 
+        try:
             payload = jwt.decode(
                 param, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
             )
@@ -83,18 +89,18 @@ class TokenMiddleware(BaseHTTPMiddleware):
             msg = str(e)
             SQLBotLogUtil.exception(f"Token validation error: {msg}")
             if 'expired' in msg:
-                return False, jwt.ExpiredSignatureError(trans('i18n_permission.token_expired')) 
+                return False, jwt.ExpiredSignatureError(trans('i18n_permission.token_expired'))
             return False, e
-            
-    
+
     async def validateAssistant(self, assistantToken: Optional[str]) -> tuple[any]:
+        """校验助手 Token 并返回助手及用户信息。"""
         if not assistantToken:
             return False, f"Miss Token[{settings.TOKEN_KEY}]!"
         schema, param = get_authorization_scheme_param(assistantToken)
         if schema.lower() != "assistant":
             return False, f"Token schema error!"
-        
-        try: 
+
+        try:
             payload = jwt.decode(
                 param, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
             )
