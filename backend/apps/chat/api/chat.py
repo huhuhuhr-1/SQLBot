@@ -39,8 +39,8 @@ async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int
 
 @router.get("/get/with_data/{chart_id}")
 async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, chart_id: int,
-    """获取指定聊天及其数据结果。"""
                              current_assistant: CurrentAssistant):
+    """获取指定聊天及其数据结果。"""
     def inner():
         return get_chat_with_records_with_data(chart_id=chart_id, session=session, current_user=current_user,
                                                current_assistant=current_assistant)
@@ -116,8 +116,8 @@ async def start_chat(session: SessionDep, current_user: CurrentUser):
 
 @router.post("/recommend_questions/{chat_record_id}")
 async def recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int,
-    """基于已有聊天记录推荐后续问题。"""
                               current_assistant: CurrentAssistant):
+    """基于已有聊天记录推荐后续问题。"""
     try:
         record = get_chat_record_by_id(session, chat_record_id)
 
@@ -171,13 +171,13 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
 
 @router.post("/record/{chat_record_id}/{action_type}")
 async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str,
-    """对聊天记录进行分析或预测。"""
                               current_assistant: CurrentAssistant):
     if action_type != 'analysis' and action_type != 'predict':
         raise HTTPException(
             status_code=404,
             detail="Not Found"
         )
+    """对聊天记录进行分析或预测。"""
     record: ChatRecord | None = None
 
     stmt = select(ChatRecord.id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource, ChatRecord.engine_type,
@@ -214,31 +214,3 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
         )
 
     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
-
-
-@router.post("/excel/export")
-async def export_excel(excel_data: ExcelData):
-    """根据提供的数据生成并导出 Excel 文件。"""
-    def inner():
-        _fields_list = []
-        data = []
-        for _data in excel_data.data:
-            _row = []
-            for field in excel_data.axis:
-                _row.append(_data.get(field.value))
-            data.append(_row)
-        for field in excel_data.axis:
-            _fields_list.append(field.name)
-        df = pd.DataFrame(np.array(data), columns=_fields_list)
-
-        buffer = io.BytesIO()
-
-        with pd.ExcelWriter(buffer, engine='xlsxwriter',
-                            engine_kwargs={'options': {'strings_to_numbers': True}}) as writer:
-            df.to_excel(writer, sheet_name='Sheet1', index=False)
-
-        buffer.seek(0)
-        return io.BytesIO(buffer.getvalue())
-
-    result = await asyncio.to_thread(inner)
-    return StreamingResponse(result, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
