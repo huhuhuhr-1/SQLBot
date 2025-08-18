@@ -1,3 +1,5 @@
+"""应用主路由模块，聚合各业务子路由。"""
+
 from fastapi import APIRouter
 
 from apps.chat.api import chat
@@ -7,6 +9,7 @@ from apps.settings.api import terminology
 from apps.system.api import login, user, aimodel, workspace, assistant
 from apps.mcp import mcp
 
+# 创建统一的路由实例，逐一引入各模块路由
 api_router = APIRouter()
 api_router.include_router(login.router)
 api_router.include_router(user.router)
