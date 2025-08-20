@@ -125,12 +125,17 @@ const sendMessage = async () => {
       tempResult = events.pop() || ''
       for (const evt of events) {
         if (!evt.startsWith('data:')) continue
+        const jsonStr = evt.slice(5).trim()
+        if (!jsonStr.startsWith('{')) {
+          console.error('Non-JSON SSE event:', jsonStr)
+          continue
+        }
         let data
         try {
-          data = JSON.parse(evt.slice(5))
+          data = JSON.parse(jsonStr)
         } catch (err) {
-          console.error('JSON string:', evt)
-          throw err
+          console.error('JSON string:', jsonStr, err)
+          continue
         }
 
         if (data.code && data.code !== 200) {
