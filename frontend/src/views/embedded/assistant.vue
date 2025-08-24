@@ -1,14 +1,26 @@
 <script lang="ts" setup>
-import { ref } from 'vue'
-import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined.svg'
-import icon_new_chat_outlined from '@/assets/embedded/icon_new-chat_outlined.svg'
+import { ref, computed } from 'vue'
+import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined_nofill.svg'
+import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import LOGO from '@/assets/embedded/LOGO.png'
-import answer from '@/assets/embedded/answer.png'
 import disable_answer from '@/assets/embedded/disable.png'
-import loading_answer from '@/assets/embedded/loading.png'
-import send_answer from '@/assets/embedded/send.png'
+import icon_close_outlined from '@/assets/svg/icon_close_outlined.svg'
+import icon_magnify_outlined from '@/assets/svg/icon_magnify_outlined.svg'
+import { propTypes } from '@/utils/propTypes'
 
+const props = defineProps({
+  welcomeDesc: propTypes.string.def(''),
+  logo: propTypes.string.def(''),
+  welcome: propTypes.string.def(''),
+  name: propTypes.string.def(''),
+})
 const textareaVal = ref('')
+const basePath = import.meta.env.VITE_API_BASE_URL
+const baseUrl = basePath + '/system/assistant/picture/'
+
+const pageLogo = computed(() => {
+  return !props.logo ? LOGO : props.logo.startsWith('blob') ? props.logo : baseUrl + props.logo
+})
 </script>
 
 <template>
@@ -17,20 +29,27 @@ const textareaVal = ref('')
       <el-icon size="20">
         <icon_sidebar_outlined></icon_sidebar_outlined>
       </el-icon>
-      <img :src="LOGO" class="logo" width="30px" height="30px" alt="" />
-      <span class="tite">{{ $t('embedded.intelligent_customer_service') }}</span>
+      <img :src="pageLogo" class="logo" width="30px" height="30px" alt="" />
+      <span class="title">{{ name }}</span>
 
       <el-tooltip effect="dark" :content="$t('embedded.new_conversation')" placement="top">
         <el-icon class="new-chat" size="20">
           <icon_new_chat_outlined></icon_new_chat_outlined>
         </el-icon>
       </el-tooltip>
+
+      <el-icon class="new-chat" style="right: 52px" size="20">
+        <icon_magnify_outlined></icon_magnify_outlined>
+      </el-icon>
+
+      <el-icon class="new-chat" style="right: 16px" size="20">
+        <icon_close_outlined></icon_close_outlined>
+      </el-icon>
     </div>
     <div class="center">
-      <img :src="LOGO" class="logo" width="30px" height="30px" alt="" />
-      <div class="i-am">{{ $t('embedded.i_am_sqlbot') }}</div>
-      <div class="i-can">{{ $t('embedded.predict_data_etc') }}</div>
-      <div class="data-query">{{ $t('embedded.intelligent_data_query') }}</div>
+      <img :src="pageLogo" class="logo" width="30px" height="30px" alt="" />
+      <div class="i-am">{{ welcome }}</div>
+      <div class="i-can">{{ welcomeDesc }}</div>
     </div>
     <div class="content">
       <div class="textarea-send">
@@ -45,7 +64,7 @@ const textareaVal = ref('')
           <img :src="disable_answer" width="32px" height="32px" alt="" />
         </el-tooltip>
 
-        <el-tooltip
+        <!-- <el-tooltip
           :offset="10"
           effect="dark"
           :content="$t('embedded.stop_replying')"
@@ -55,7 +74,7 @@ const textareaVal = ref('')
         </el-tooltip>
 
         <img :src="loading_answer" width="32px" height="32px" alt="" />
-        <img :src="send_answer" width="32px" height="32px" alt="" />
+        <img :src="send_answer" width="32px" height="32px" alt="" /> -->
       </div>
     </div>
 
@@ -66,19 +85,21 @@ const textareaVal = ref('')
 <style lang="less" scoped>
 .assistant-window {
   width: 460px;
-  height: 640px;
+  height: 100%;
   border-radius: 12px;
   border: 1px solid #dee0e3;
   box-shadow: 0px 6px 24px 0px #1f232914;
   background-color: #fff;
   position: relative;
+  overflow: hidden;
   .header {
-    background: var(--ed-color-primary-14, #1cba9014);
+    background: var(--ed-color-primary-1a, #1cba901a);
     height: 56px;
     padding: 0 16px;
     display: flex;
     align-items: center;
     position: relative;
+    color: var(--ed-text-color-primary);
     .logo {
       margin: 0 8px 0 16px;
     }
@@ -87,6 +108,7 @@ const textareaVal = ref('')
       font-weight: 500;
       font-size: 16px;
       line-height: 24px;
+      color: var(--ed-text-color-primary);
     }
 
     .ed-icon {
@@ -138,13 +160,11 @@ const textareaVal = ref('')
 
     .i-can {
       margin-bottom: 4px;
-    }
-
-    .data-query,
-    .i-can {
+      max-width: 350px;
+      text-align: center;
       font-weight: 400;
       font-size: 14px;
-      line-height: 22px;
+      line-height: 24px;
       color: #646a73;
     }
   }

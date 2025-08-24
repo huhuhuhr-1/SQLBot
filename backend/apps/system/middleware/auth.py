@@ -8,7 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from apps.system.models.system_model import AssistantModel
 from common.core.db import engine 
 from apps.system.crud.assistant import get_assistant_info, get_assistant_user
-from apps.system.crud.user import get_user_info
+from apps.system.crud.user import get_user_by_account, get_user_info
 from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
 from common.core import security
 from common.core.config import settings
@@ -34,7 +34,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
         trans = await get_i18n(request)
         #if assistantToken and assistantToken.lower().startswith("assistant "):
         if assistantToken:
-            validator: tuple[any] = await self.validateAssistant(assistantToken)
+            validator: tuple[any] = await self.validateAssistant(assistantToken, trans)
             if validator[0]:
                 request.state.current_user = validator[1]
                 request.state.assistant = validator[2]
@@ -87,14 +87,17 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return False, e
             
     
-    async def validateAssistant(self, assistantToken: Optional[str]) -> tuple[any]:
+    async def validateAssistant(self, assistantToken: Optional[str], trans: I18n) -> tuple[any]:
         if not assistantToken:
             return False, f"Miss Token[{settings.TOKEN_KEY}]!"
         schema, param = get_authorization_scheme_param(assistantToken)
-        if schema.lower() != "assistant":
-            return False, f"Token schema error!"
         
-        try: 
+        
+        try:
+            if schema.lower() == 'embedded':
+                return await self.validateEmbedded(param, trans)
+            if schema.lower() != "assistant":
+                return False, f"Token schema error!" 
             payload = jwt.decode(
                 param, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
             )
@@ -111,5 +114,46 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 return True, session_user, assistant_info
         except Exception as e:
             SQLBotLogUtil.exception(f"Assistant validation error: {str(e)}")
+            # Return False and the exception message
+            return False, e
+    
+    async def validateEmbedded(self, param: str, trans: I18n) -> tuple[any]:
+        try: 
+            """ payload = jwt.decode(
+                param, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            ) """
+            payload: dict = jwt.decode(
+                param,
+                options={"verify_signature": False, "verify_exp": False},
+                algorithms=[security.ALGORITHM]
+            )
+            if not payload['embeddedId']:
+                return False, f"Miss embeddedId payload error!"
+            if not payload['account']:
+                return False, f"Miss account payload error!"
+            embeddedId = payload['embeddedId']
+            account = payload['account']
+            with Session(engine) as session:
+                """ session_user = await get_user_info(session = session, user_id = token_data.id)
+                session_user = UserInfoDTO.model_validate(session_user) """
+                session_user = get_user_by_account(session = session, account=account)
+                if not session_user:
+                    message = trans('i18n_not_exist', msg = trans('i18n_user.account'))
+                    raise Exception(message)
+                session_user = await get_user_info(session = session, user_id = session_user.id)
+                
+                session_user = UserInfoDTO.model_validate(session_user)
+                if session_user.status != 1:
+                    message = trans('i18n_login.user_disable', msg = trans('i18n_concat_admin'))
+                    raise Exception(message)
+                if not session_user.oid or session_user.oid == 0:
+                    message = trans('i18n_login.no_associated_ws', msg = trans('i18n_concat_admin'))
+                    raise Exception(message)
+                assistant_info = await get_assistant_info(session=session, assistant_id=embeddedId)
+                assistant_info = AssistantModel.model_validate(assistant_info)
+                assistant_info = AssistantHeader.model_validate(assistant_info.model_dump(exclude_unset=True))
+                return True, session_user, assistant_info
+        except Exception as e:
+            SQLBotLogUtil.exception(f"Embedded validation error: {str(e)}")
             # Return False and the exception message
             return False, e

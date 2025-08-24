@@ -1,9 +1,12 @@
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional
 
 from fastapi import Body
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, Text, BigInteger, DateTime, Identity, Boolean
+from sqlalchemy import Enum as SQLAlchemyEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import SQLModel, Field
 
 from apps.template.filter.generator import get_permissions_template
@@ -14,6 +17,47 @@ from apps.template.generate_guess_question.generator import get_guess_question_t
 from apps.template.generate_predict.generator import get_predict_template
 from apps.template.generate_sql.generator import get_sql_template
 from apps.template.select_datasource.generator import get_datasource_template
+
+
+def enum_values(enum_class: type[Enum]) -> list:
+    """Get values for enum."""
+    return [status.value for status in enum_class]
+
+
+class TypeEnum(Enum):
+    CHAT = "0"
+
+
+#     TODO other usage
+
+class OperationEnum(Enum):
+    GENERATE_SQL = '0'
+    GENERATE_CHART = '1'
+    ANALYSIS = '2'
+    PREDICT_DATA = '3'
+    GENERATE_RECOMMENDED_QUESTIONS = '4'
+    GENERATE_SQL_WITH_PERMISSIONS = '5'
+    CHOOSE_DATASOURCE = '6'
+    GENERATE_DYNAMIC_SQL = '7'
+
+
+#     TODO choose table / check connection / generate description
+
+class ChatLog(SQLModel, table=True):
+    __tablename__ = "chat_log"
+    id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    type: TypeEnum = Field(
+        sa_column=Column(SQLAlchemyEnum(TypeEnum, native_enum=False, values_callable=enum_values, length=3)))
+    operate: OperationEnum = Field(
+        sa_column=Column(SQLAlchemyEnum(OperationEnum, native_enum=False, values_callable=enum_values, length=3)))
+    pid: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True))
+    ai_modal_id: Optional[int] = Field(sa_column=Column(BigInteger))
+    base_modal: Optional[str] = Field(max_length=255)
+    messages: Optional[list[dict]] = Field(sa_column=Column(JSONB))
+    reasoning_content: Optional[str | None] = Field(sa_column=Column(Text, nullable=True))
+    start_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
+    finish_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
+    token_usage: Optional[dict | None | int] = Field(sa_column=Column(JSONB))
 
 
 class Chat(SQLModel, table=True):
@@ -54,22 +98,38 @@ class ChatRecord(SQLModel, table=True):
     recommended_question_answer: str = Field(sa_column=Column(Text, nullable=True))
     recommended_question: str = Field(sa_column=Column(Text, nullable=True))
     datasource_select_answer: str = Field(sa_column=Column(Text, nullable=True))
-    full_sql_message: str = Field(sa_column=Column(Text, nullable=True))
-    token_sql: str = Field(max_length=256, nullable=True)
-    full_chart_message: str = Field(sa_column=Column(Text, nullable=True))
-    token_chart: str = Field(max_length=256, nullable=True)
-    full_analysis_message: str = Field(sa_column=Column(Text, nullable=True))
-    token_analysis: str = Field(max_length=256, nullable=True)
-    full_predict_message: str = Field(sa_column=Column(Text, nullable=True))
-    token_predict: str = Field(max_length=256, nullable=True)
-    full_recommended_question_message: str = Field(sa_column=Column(Text, nullable=True))
-    token_recommended_question: str = Field(max_length=256, nullable=True)
-    full_select_datasource_message: str = Field(sa_column=Column(Text, nullable=True))
-    token_select_datasource_question: str = Field(max_length=256, nullable=True)
     finish: bool = Field(sa_column=Column(Boolean, nullable=True, default=False))
     error: str = Field(sa_column=Column(Text, nullable=True))
     analysis_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
     predict_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
+
+
+class ChatRecordResult(BaseModel):
+    id: Optional[int] = None
+    chat_id: Optional[int] = None
+    ai_modal_id: Optional[int] = None
+    first_chat: bool = False
+    create_time: Optional[datetime] = None
+    finish_time: Optional[datetime] = None
+    question: Optional[str] = None
+    sql_answer: Optional[str] = None
+    sql: Optional[str] = None
+    data: Optional[str] = None
+    chart_answer: Optional[str] = None
+    chart: Optional[str] = None
+    analysis: Optional[str] = None
+    predict: Optional[str] = None
+    predict_data: Optional[str] = None
+    recommended_question: Optional[str] = None
+    datasource_select_answer: Optional[str] = None
+    finish: Optional[bool] = None
+    error: Optional[str] = None
+    analysis_record_id: Optional[int] = None
+    predict_record_id: Optional[int] = None
+    sql_reasoning_content: Optional[str] = None
+    chart_reasoning_content: Optional[str] = None
+    analysis_reasoning_content: Optional[str] = None
+    predict_reasoning_content: Optional[str] = None
 
 
 class CreateChat(BaseModel):
@@ -100,6 +160,7 @@ class ChatInfo(BaseModel):
 
 class AiModelQuestion(BaseModel):
     ai_modal_id: int = None
+    ai_modal_name: str = None  # Specific model name
     engine: str = ""
     db_schema: str = ""
     sql: str = ""

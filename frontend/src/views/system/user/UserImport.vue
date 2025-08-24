@@ -345,7 +345,7 @@ defineExpose({
     </el-form>
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click="closeDialog">{{ t('common.cancel') }}</el-button>
+        <el-button secondary @click="closeDialog">{{ t('common.cancel') }}</el-button>
         <el-button
           :type="file && fileName ? 'primary' : 'info'"
           :disabled="!file || !fileName"

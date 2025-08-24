@@ -20,6 +20,7 @@ from ..crud.datasource import get_datasource_list, check_status, create_ds, upda
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
 from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField
+from apps.db.db import get_schema
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 path = settings.EXCEL_PATH
@@ -96,6 +97,21 @@ async def get_tables(session: SessionDep, id: int):
 async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
     try:
         return getTablesByDs(session, ds)
+    except Exception as e:
+        # check ds status
+        def inner():
+            return check_status(session, trans, ds, True)
+
+        status = await asyncio.to_thread(inner)
+        if status:
+            SQLBotLogUtil.error(f"get table failed: {e}")
+            raise HTTPException(status_code=500, detail=f'Get table Failed: {e.args}')
+
+
+@router.post("/getSchemaByConf")
+async def get_schema_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
+    try:
+        return get_schema(ds)
     except Exception as e:
         # check ds status
         def inner():

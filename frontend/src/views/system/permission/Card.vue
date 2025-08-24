@@ -2,7 +2,7 @@
 import delIcon from '@/assets/svg/icon_delete.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
 import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
-import Lock from '@/assets/permission/icon_custom-tools_colorful.png'
+import Lock from '@/assets/permission/icon_custom-tools_colorful.svg'
 withDefaults(
   defineProps<{
     name: string
@@ -40,7 +40,9 @@ const setUser = () => {
 <template>
   <div class="card">
     <div class="name-icon">
-      <img :src="Lock" width="32px" height="32px" />
+      <el-icon class="icon-primary" size="32">
+        <Lock></Lock>
+      </el-icon>
       <span class="name ellipsis" :title="name">{{ name }}</span>
     </div>
     <div class="type-value">
@@ -92,6 +94,7 @@ const setUser = () => {
     display: flex;
     align-items: center;
     margin-bottom: 12px;
+
     .name {
       margin-left: 12px;
       font-weight: 500;

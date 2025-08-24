@@ -163,8 +163,8 @@ const handleDefaultChatChange = (val: any) => {
   }
 
   &.active {
-    background: rgba(28, 186, 144, 0.1);
-    color: rgba(28, 186, 144, 1);
+    background: var(--ed-color-primary-1a, rgba(28, 186, 144, 0.1));
+    color: var(--ed-color-primary, rgba(28, 186, 144, 1));
   }
 }
 </style>

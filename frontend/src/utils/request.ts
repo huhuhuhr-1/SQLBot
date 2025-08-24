@@ -80,14 +80,19 @@ class HttpService {
           config.headers['X-SQLBOT-TOKEN'] = `Bearer ${token}`
         }
         if (assistantStore.getToken) {
-          config.headers['X-SQLBOT-ASSISTANT-TOKEN'] = `Assistant ${assistantStore.getToken}`
+          const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '
+          config.headers['X-SQLBOT-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
           if (config.headers['X-SQLBOT-TOKEN']) config.headers.delete('X-SQLBOT-TOKEN')
-          if (assistantStore.getType && assistantStore.getCertificate) {
+          if (
+            assistantStore.getType &&
+            !!(assistantStore.getType % 2) &&
+            assistantStore.getCertificate
+          ) {
             config.headers['X-SQLBOT-ASSISTANT-CERTIFICATE'] = btoa(
               encodeURIComponent(assistantStore.getCertificate)
             )
           }
-          if (!assistantStore.getType) {
+          if (!assistantStore.getType || assistantStore.getType === 2) {
             config.headers['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
           }
         }
@@ -270,15 +275,20 @@ class HttpService {
       heads['X-SQLBOT-TOKEN'] = `Bearer ${token}`
     }
     if (assistantStore.getToken) {
-      heads['X-SQLBOT-ASSISTANT-TOKEN'] = `Assistant ${assistantStore.getToken}`
+      const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '
+      heads['X-SQLBOT-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
       if (heads['X-SQLBOT-TOKEN']) delete heads['X-SQLBOT-TOKEN']
-      if (assistantStore.getType && assistantStore.getCertificate) {
+      if (
+        assistantStore.getType &&
+        !!(assistantStore.getType % 2) &&
+        assistantStore.getCertificate
+      ) {
         await assistantStore.refreshCertificate()
         heads['X-SQLBOT-ASSISTANT-CERTIFICATE'] = btoa(
           encodeURIComponent(assistantStore.getCertificate)
         )
       }
-      if (!assistantStore.getType) {
+      if (!assistantStore.getType || assistantStore.getType === 2) {
         heads['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
       }
     }

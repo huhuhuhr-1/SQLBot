@@ -883,7 +883,7 @@ const columnRules = {
       </div>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="closeForm">{{ $t('common.cancel') }}</el-button>
+          <el-button secondary @click="closeForm">{{ $t('common.cancel') }}</el-button>
           <el-button type="primary" @click="saveHandler">
             {{ $t('common.save') }}
           </el-button>

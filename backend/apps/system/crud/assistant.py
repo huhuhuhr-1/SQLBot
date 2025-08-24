@@ -32,7 +32,7 @@ def get_assistant_user(*, id: int):
 def get_assistant_ds(session: Session, llm_service) -> list[dict]:
     assistant: AssistantHeader = llm_service.current_assistant
     type = assistant.type
-    if type == 0:
+    if type == 0 or type == 2:
         configuration = assistant.configuration
         if configuration:
             config: dict[any] = json.loads(configuration)

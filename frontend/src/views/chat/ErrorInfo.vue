@@ -10,7 +10,7 @@ const props = defineProps<{
 const { t } = useI18n()
 
 const assistantStore = useAssistantStore()
-const isAssistant = computed(() => assistantStore.getAssistant)
+const isCompletePage = computed(() => !assistantStore.getAssistant || assistantStore.getEmbedded)
 
 const showBlock = computed(() => {
   return props.error && props.error?.trim().length > 0
@@ -54,7 +54,7 @@ function showTraceBack() {
 
     <el-drawer
       v-model="show"
-      :size="isAssistant ? '100%' : '600px'"
+      :size="!isCompletePage ? '100%' : '600px'"
       :title="t('chat.error')"
       direction="rtl"
       body-class="chart-sql-error-body"

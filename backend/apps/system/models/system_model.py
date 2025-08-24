@@ -50,6 +50,8 @@ class AssistantBaseModel(SQLModel):
     description: Optional[str] = Field(sa_type = Text(), nullable=True)
     configuration: Optional[str] = Field(sa_type = Text(), nullable=True)
     create_time: int = Field(default=0, sa_type=BigInteger())
+    app_id: Optional[str] = Field(default=None, max_length=255,  nullable=True)
+    app_secret: Optional[str] = Field(default=None, max_length=255, nullable=True)
 
 class AssistantModel(SnowflakeBase, AssistantBaseModel, table=True):
     __tablename__ = "sys_assistant"

@@ -46,6 +46,7 @@ const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/datasource/uploadExce
 const saveLoading = ref<boolean>(false)
 const uploadLoading = ref(false)
 const { t } = useI18n()
+const schemaList = ref<any>([])
 
 const rules = reactive<FormRules>({
   name: [
@@ -340,6 +341,16 @@ const check = () => {
   })
 }
 
+const getSchema = () => {
+  schemaList.value = []
+  const requestObj = buildConf()
+  datasourceApi.getSchema(requestObj).then((res: any) => {
+    for (let item of res) {
+      schemaList.value.push({ label: item, value: item })
+    }
+  })
+}
+
 onBeforeUnmount(() => (saveLoading.value = false))
 
 const next = debounce(async (formEl: FormInstance | undefined) => {
@@ -616,7 +627,7 @@ defineExpose({
               show-password
             />
           </el-form-item>
-          <el-form-item :label="t('ds.form.database')" prop="database">
+          <el-form-item v-if="form.type !== 'dm'" :label="t('ds.form.database')" prop="database">
             <el-input
               v-model="form.database"
               clearable
@@ -644,13 +655,30 @@ defineExpose({
               "
             />
           </el-form-item>
-          <el-form-item v-if="haveSchema.includes(form.type)" label="Schema" prop="dbSchema">
-            <el-input
+          <el-form-item v-if="haveSchema.includes(form.type)" class="schema-label" prop="dbSchema">
+            <template #label>
+              <span class="name">Schema<i class="required" /></span>
+              <el-button text size="small" @click="getSchema">
+                <template #icon>
+                  <Icon name="icon_add_outlined">
+                    <Plus class="svg-icon" />
+                  </Icon>
+                </template>
+                {{ t('datasource.get_schema') }}
+              </el-button>
+            </template>
+            <el-select
               v-model="form.dbSchema"
-              clearable
+              filterable
               :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'Schema'"
-            />
-            <el-button v-if="false" link type="primary" :icon="Plus">Get Schema</el-button>
+            >
+              <el-option
+                v-for="item in schemaList"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
           </el-form-item>
           <el-form-item :label="t('ds.form.timeout')" prop="timeout">
             <el-input-number
@@ -901,6 +929,26 @@ defineExpose({
 
       :deep(.ed-vl__window) {
         scrollbar-width: none;
+      }
+    }
+  }
+}
+
+.schema-label {
+  ::v-deep(.ed-form-item__label) {
+    display: flex !important;
+    justify-content: space-between;
+    padding-right: 0;
+
+    &::after {
+      display: none;
+    }
+
+    .name {
+      .required::after {
+        content: '*';
+        color: #f54a45;
+        margin-left: 2px;
       }
     }
   }

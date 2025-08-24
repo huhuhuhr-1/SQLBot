@@ -42,7 +42,7 @@
         <el-col class="adapt-count">
           <span>{{ t('dashboard.chart_selected', [selectComponentCount]) }} </span>
         </el-col>
-        <el-button class="close-button" @click="dialogShow = false"
+        <el-button secondary class="close-button" @click="dialogShow = false"
           >{{ t('common.cancel') }}
         </el-button>
         <el-button

@@ -38,7 +38,7 @@ export const supplierList: Array<{
         api_domain: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
         common_args: [
           { key: 'temperature', val: 1.0, type: 'number', range: '[0, 2)' },
-          { key: 'extra_body', val: '{"enable_thinking": true}', type: 'json' },
+          { key: 'extra_body', val: '{"enable_thinking": false}', type: 'json' },
         ],
         model_options: [
           { name: 'qwen-plus' },

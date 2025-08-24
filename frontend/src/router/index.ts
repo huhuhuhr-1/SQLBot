@@ -13,6 +13,7 @@ import Model from '@/views/system/model/Model.vue'
 import Embedded from '@/views/system/embedded/index.vue'
 import assistantTest from '@/views/system/embedded/Test.vue'
 import assistant from '@/views/embedded/index.vue'
+import EmbeddedPage from '@/views/embedded/page.vue'
 import Member from '@/views/system/member/index.vue'
 import Appearance from '@/views/system/appearance/index.vue'
 import Permission from '@/views/system/permission/index.vue'
@@ -182,7 +183,11 @@ export const routes = [
     name: 'assistant',
     component: assistant,
   },
-
+  {
+    path: '/embeddedPage',
+    name: 'embeddedPage',
+    component: EmbeddedPage,
+  },
   {
     path: '/assistantTest',
     name: 'assistantTest',

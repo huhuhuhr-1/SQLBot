@@ -253,21 +253,21 @@ defineExpose({
     }
 
     .chart-active {
-      background: rgba(28, 186, 144, 0.1);
-      color: rgba(28, 186, 144, 1);
+      background: var(--ed-color-primary-1a, rgba(28, 186, 144, 0.1));
+      color: var(--ed-color-primary, rgba(28, 186, 144, 1));
       border-radius: 6px;
 
       :deep(.ed-select__wrapper) {
         background: transparent;
       }
       :deep(.ed-select__input) {
-        color: rgba(28, 186, 144, 1);
+        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
       }
       :deep(.ed-select__placeholder) {
-        color: rgba(28, 186, 144, 1);
+        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
       }
       :deep(.ed-select__caret) {
-        color: rgba(28, 186, 144, 1);
+        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
       }
     }
 

@@ -175,6 +175,7 @@ defineExpose({
       require-asterisk-position="right"
       :model="resourceForm"
       :rules="resourceFormRules"
+      class="last"
       @submit.prevent
     >
       <el-form-item :label="state.resourceFormNameLabel" prop="name">

@@ -92,7 +92,7 @@ useEmitt({
 
     .active,
     .more:hover {
-      background: var(--ed-color-primary-1a, #1cba9033);
+      background: var(--ed-color-primary-1a, #1cba901a);
       color: #0b4a3a;
     }
 

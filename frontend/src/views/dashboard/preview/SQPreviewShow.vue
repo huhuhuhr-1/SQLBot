@@ -7,6 +7,7 @@ import ResourceTree from '@/views/dashboard/common/ResourceTree.vue'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
 import SQPreviewHead from '@/views/dashboard/preview/SQPreviewHead.vue'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import EmptyBackgroundSvg from '@/views/dashboard/common/EmptyBackgroundSvg.vue'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
@@ -130,10 +131,7 @@ defineExpose({
         </div>
       </template>
       <template v-else-if="hasTreeData && mounted">
-        <EmptyBackground
-          :description="t('dashboard.select_dashboard_tips')"
-          img-type="selectDashboard"
-        />
+        <EmptyBackgroundSvg :description="t('dashboard.select_dashboard_tips')" />
       </template>
       <template v-else-if="mounted">
         <EmptyBackground :description="t('dashboard.no_dashboard_info')" img-type="none">

@@ -1,8 +1,12 @@
 <script lang="ts" setup>
 import delIcon from '@/assets/svg/icon_delete.svg'
+import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_embedded_outlined from '@/assets/embedded/icon_embedded_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import Lock from '@/assets/embedded/LOGO-sql.png'
+import { ref, unref } from 'vue'
+import { ClickOutside as vClickOutside } from 'element-plus-secondary'
+import icon_style_set_outlined from '@/assets/svg/icon_style-set_outlined.svg'
 
 withDefaults(
   defineProps<{
@@ -19,10 +23,14 @@ withDefaults(
   }
 )
 
-const emits = defineEmits(['edit', 'del', 'embedded'])
+const emits = defineEmits(['edit', 'del', 'embedded', 'ui'])
 
 const handleEdit = () => {
   emits('edit')
+}
+
+const handleUi = () => {
+  emits('ui')
 }
 
 const handleDel = () => {
@@ -31,6 +39,12 @@ const handleDel = () => {
 
 const handleEmbedded = () => {
   emits('embedded')
+}
+
+const buttonRef = ref()
+const popoverRef = ref()
+const onClickOutside = () => {
+  unref(popoverRef).popperRef?.delayHide?.()
 }
 </script>
 
@@ -57,12 +71,34 @@ const handleEmbedded = () => {
         </el-icon>
         {{ $t('dashboard.edit') }}
       </el-button>
-      <el-button secondary @click="handleDel">
-        <el-icon style="margin-right: 4px" size="16">
-          <delIcon></delIcon>
-        </el-icon>
-        {{ $t('dashboard.delete') }}
-      </el-button>
+      <el-icon ref="buttonRef" v-click-outside="onClickOutside" class="more" size="16" @click.stop>
+        <icon_more_outlined></icon_more_outlined>
+      </el-icon>
+
+      <el-popover
+        ref="popoverRef"
+        :virtual-ref="buttonRef"
+        virtual-triggering
+        trigger="click"
+        :teleported="false"
+        popper-class="popover-card"
+        placement="bottom-start"
+      >
+        <div class="content">
+          <div class="item" @click.stop="handleUi">
+            <el-icon size="16">
+              <icon_style_set_outlined></icon_style_set_outlined>
+            </el-icon>
+            {{ $t('embedded.display_settings') }}
+          </div>
+          <div class="item" @click.stop="handleDel">
+            <el-icon size="16">
+              <delIcon></delIcon>
+            </el-icon>
+            {{ $t('dashboard.delete') }}
+          </div>
+        </div>
+      </el-popover>
     </div>
   </div>
 </template>
@@ -77,7 +113,7 @@ const handleEmbedded = () => {
   &:hover {
     box-shadow: 0px 6px 24px 0px #1f232914;
     .methods {
-      display: block;
+      display: flex;
     }
   }
 
@@ -128,6 +164,97 @@ const handleEmbedded = () => {
   .methods {
     margin-top: 16px;
     display: none;
+    align-items: center;
+    .more {
+      position: relative;
+      cursor: pointer;
+      margin-left: 12px;
+      width: 30px;
+      height: 30px;
+
+      svg {
+        position: relative;
+        z-index: 5;
+      }
+
+      &::after {
+        content: '';
+        background: #fff;
+        position: absolute;
+        border-radius: 6px;
+        width: 30px;
+        height: 30px;
+        transform: translate(-50%, -50%);
+        top: 50%;
+        left: 50%;
+        border: 1px solid #d9dcdf;
+        z-index: 1;
+      }
+
+      &:hover {
+        &::after {
+          background: #f5f6f7;
+        }
+      }
+    }
+  }
+}
+</style>
+
+<style lang="less">
+.popover-card.popover-card.popover-card {
+  box-shadow: 0px 4px 8px 0px #1f23291a;
+  border-radius: 4px;
+  border: 1px solid #dee0e3;
+  width: 120px !important;
+  min-width: 120px !important;
+  padding: 0;
+
+  .content {
+    position: relative;
+
+    &::after {
+      position: absolute;
+      content: '';
+      top: 40px;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      background: #dee0e3;
+    }
+
+    .item {
+      position: relative;
+      padding-left: 12px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+
+      .ed-icon {
+        margin-right: 8px;
+        color: #646a73;
+      }
+
+      &:hover {
+        &::after {
+          display: block;
+        }
+      }
+
+      &::after {
+        content: '';
+        width: 112px;
+        height: 32px;
+        border-radius: 4px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #1f23291a;
+        display: none;
+      }
+    }
   }
 }
 </style>

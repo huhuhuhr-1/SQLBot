@@ -1,13 +1,12 @@
 import { defineStore } from 'pinia'
 import { store } from '@/stores/index'
 // import { defaultFont, list } from '@/api/font'
-// import { uiLoadApi } from '@/api/login'
-import colorFunctions from 'less/lib/less/functions/color.js'
-import colorTree from 'less/lib/less/tree/color.js'
-import { setTitle } from '@/utils/utils'
+import { request } from '@/utils/request'
 
-const basePath = import.meta.env.VITE_API_BASEPATH
-const baseUrl = basePath + '/appearance/image/'
+import { setTitle, setCurrentColor } from '@/utils/utils'
+
+const basePath = import.meta.env.VITE_API_BASE_URL
+const baseUrl = basePath + '/system/appearance/picture/'
 import { isBtnShow } from '@/utils/utils'
 import type { LinkHTMLAttributes } from 'vue'
 interface AppearanceState {
@@ -32,7 +31,6 @@ interface AppearanceState {
   loaded: boolean
   showDemoTips?: boolean
   demoTipsContent?: string
-  community: boolean
   fontList?: Array<{ name: string; id: string; isDefault: boolean }>
 }
 
@@ -65,7 +63,6 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       loaded: false,
       showDemoTips: false,
       demoTipsContent: '',
-      community: true,
       fontList: [],
     }
   },
@@ -93,6 +90,9 @@ export const useAppearanceStore = defineStore('appearanceStore', {
     },
     getThemeColor(): string {
       return this.themeColor!
+    },
+    isBlue(): boolean {
+      return this.themeColor! === 'blue'
     },
     getCustomColor(): string {
       return this.customColor!
@@ -138,9 +138,6 @@ export const useAppearanceStore = defineStore('appearanceStore', {
     },
     getDemoTipsContent(): string {
       return this.demoTipsContent!
-    },
-    getCommunity(): boolean {
-      return this.community
     },
     getShowAi(): boolean {
       return isBtnShow(this.showAi!)
@@ -205,7 +202,7 @@ export const useAppearanceStore = defineStore('appearanceStore', {
     setLoaded(data: boolean) {
       this.loaded = data
     },
-    async setAppearance(isDataEaseBi?: boolean) {
+    async setAppearance() {
       // const desktop = wsCache.get('app.desktop')
       // if (desktop) {
       //   this.loaded = true
@@ -248,84 +245,46 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       // if (!isDataEaseBi) {
       //   document.title = ''
       // }
-      // const res = await uiLoadApi()
-      const res = { data: [] }
+      const obj = LicenseGenerator.getLicense()
+      if (obj?.status !== 'valid') {
+        setCurrentColor('#1CBA90')
+        document.title = 'SQLBot'
+        setLinkIcon()
+        return
+      }
+      const resData = await request.get('/system/appearance/ui')
       this.loaded = true
-      const resData = res.data
-      // if (!resData?.length) {
-      //   if (!isDataEaseBi) {
-      //     document.title = 'SQLBot'
-      //     setLinkIcon()
-      //   }
-      //   return
-      // }
-      const data: AppearanceState = { loaded: false, community: true }
-      let isCommunity = false
+      if (!resData?.length) {
+        return
+      }
+      const data: AppearanceState = { loaded: false }
       resData.forEach((item: KeyValue) => {
         ;(
           data as {
             [key: string]: any
           }
         )[item.pkey] = item.pval
-        if (item.pkey === 'community') {
-          isCommunity = true
-        }
       })
-      data.community = isCommunity
-      this.community = data.community
-      if (this.community) {
-        this.showDemoTips = data.showDemoTips
-        this.demoTipsContent = data.demoTipsContent
-        this.loaded = true
-        setLinkIcon()
-        return
-      }
+
       this.navigate = data.navigate
-      this.mobileLogin = data.mobileLogin
-      this.mobileLoginBg = data.mobileLoginBg
       this.help = data.help
-      this.showAi = data.showAi
-      this.showCopilot = data.showCopilot
       this.showDoc = data.showDoc
       this.showAbout = data.showAbout
       this.navigateBg = data.navigateBg
       this.themeColor = data.themeColor
       this.customColor = data.customColor
       const currentColor =
-        this.themeColor === 'custom' && this.customColor ? this.customColor : '#1CBA90'
-      document.documentElement.style.setProperty('--ed-color-primary', currentColor)
-      document.documentElement.style.setProperty('--van-blue', currentColor)
-      document.documentElement.style.setProperty(
-        '--ed-color-primary-light-5',
-        colorFunctions
-          .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 40 })
-          .toRGB()
-      )
-      document.documentElement.style.setProperty(
-        '--ed-color-primary-light-3',
-        colorFunctions
-          .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 15 })
-          .toRGB()
-      )
-      document.documentElement.style.setProperty('--ed-color-primary-1a', `${currentColor}1a`)
-      document.documentElement.style.setProperty('--ed-color-primary-14', `${currentColor}14`)
-      document.documentElement.style.setProperty('--ed-color-primary-33', `${currentColor}33`)
-      document.documentElement.style.setProperty('--ed-color-primary-99', `${currentColor}99`)
-      document.documentElement.style.setProperty(
-        '--ed-color-primary-dark-2',
-        colorFunctions
-          .mix(new colorTree('000000'), new colorTree(currentColor.substr(1)), { value: 15 })
-          .toRGB()
-      )
-
+        this.themeColor === 'custom' && this.customColor
+          ? this.customColor
+          : this.isBlue
+            ? '#3370ff'
+            : '#1CBA90'
+      setCurrentColor(currentColor)
       this.bg = data.bg
       this.login = data.login
       this.slogan = data.slogan
       this.web = data.web
       this.name = data.name
-      this.foot = data.foot
-      this.footContent = data.footContent
-      if (isDataEaseBi) return
       if (this.name) {
         document.title = this.name
         setTitle(this.name)

@@ -9,11 +9,11 @@ from sqlmodel import select
 from apps.datasource.crud.permission import get_column_permission_fields, get_row_permission_filters, is_normal_user
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
-from apps.db.db import get_engine, get_tables, get_fields, exec_sql
+from apps.db.db import get_tables, get_fields, exec_sql, check_connection
 from apps.db.engine import get_engine_config, get_engine_conn
 from apps.db.type import db_type_relation
 from common.core.deps import SessionDep, CurrentUser, Trans
-from common.utils.utils import SQLBotLogUtil, deepcopy_ignore_extra
+from common.utils.utils import deepcopy_ignore_extra
 from .table import get_tables_by_ds_id
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
@@ -45,16 +45,7 @@ def check_status_by_id(session: SessionDep, trans: Trans, ds_id: int, is_raise: 
 
 
 def check_status(session: SessionDep, trans: Trans, ds: CoreDatasource, is_raise: bool = False):
-    conn = get_engine(ds, 10)
-    try:
-        with conn.connect() as connection:
-            SQLBotLogUtil.info("success")
-            return True
-    except Exception as e:
-        SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
-        if is_raise:
-            raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
-        return False
+    return check_connection(trans, ds, is_raise)
 
 
 def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
@@ -159,7 +150,7 @@ def getFieldsByDs(session: SessionDep, ds: CoreDatasource, table_name: str):
 
 def execSql(session: SessionDep, id: int, sql: str):
     ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
-    return exec_sql(ds, sql)
+    return exec_sql(ds, sql, True)
 
 
 def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable]):
@@ -276,7 +267,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
 
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     sql: str = ""
-    if ds.type == "mysql":
+    if ds.type == "mysql" or ds.type == "doris":
         sql = f"""SELECT `{"`, `".join(fields)}` FROM `{data.table.table_name}` 
             {where} 
             LIMIT 100"""
@@ -297,7 +288,11 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{data.table.table_name}" 
             {where} 
             LIMIT 100"""
-    return exec_sql(ds, sql)
+    elif ds.type == "dm":
+        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}" 
+            {where} 
+            LIMIT 100"""
+    return exec_sql(ds, sql, True)
 
 
 def fieldEnum(session: SessionDep, id: int):
@@ -313,7 +308,7 @@ def fieldEnum(session: SessionDep, id: int):
 
     db = DB.get_db(ds.type)
     sql = f"""SELECT DISTINCT {db.prefix}{field.field_name}{db.suffix} FROM {db.prefix}{table.table_name}{db.suffix}"""
-    res = exec_sql(ds, sql)
+    res = exec_sql(ds, sql, True)
     return [item.get(res.get('fields')[0]) for item in res.get('data')]
 
 

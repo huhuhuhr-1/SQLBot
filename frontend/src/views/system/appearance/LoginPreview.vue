@@ -33,7 +33,7 @@
     </div>
     <div class="login-container">
       <div v-if="showLoginImage" class="left-img">
-        <el-image class="login-image" fit="cover" :src="pageBg || login_image" />
+        <el-image class="login-image" :src="pageBg || login_image" />
       </div>
       <div class="right-container">
         <div class="login-form-center">
@@ -100,8 +100,9 @@ import { propTypes } from '@/utils/propTypes'
 import { useI18n } from 'vue-i18n'
 import { computed, ref, onMounted, nextTick } from 'vue'
 import elementResizeDetectorMaker from 'element-resize-detector'
-const basePath = import.meta.env.VITE_API_BASEPATH
-const baseUrl = basePath + '/appearance/image/'
+const basePath = import.meta.env.VITE_API_BASE_URL
+const baseUrl = basePath + '/system/appearance/picture/'
+
 const { t } = useI18n()
 const props = defineProps({
   web: propTypes.string.def(''),

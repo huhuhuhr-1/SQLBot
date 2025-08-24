@@ -62,9 +62,9 @@ function clickShow() {
 }
 
 onMounted(() => {
-  // if (props.loading) {
-  //   show.value = true
-  // }
+  if (props.message.isTyping) {
+    show.value = true
+  }
 })
 </script>
 

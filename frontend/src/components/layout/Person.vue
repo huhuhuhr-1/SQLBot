@@ -1,9 +1,9 @@
 <script lang="ts" setup>
 import { ref, computed } from 'vue'
-import Default_avatar from '@/assets/workspace/default_avatar.png'
+import Default_avatar_custom from '@/assets/img/Default-avatar.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_info_outlined_1 from '@/assets/svg/icon_info_outlined_1.svg'
-
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import icon_maybe_outlined from '@/assets/svg/icon-maybe_outlined.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
 import icon_translate_outlined from '@/assets/svg/icon_translate_outlined.svg'
@@ -18,6 +18,7 @@ import { useUserStore } from '@/stores/user'
 import { userApi } from '@/api/auth'
 
 const router = useRouter()
+const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
 const pwdFormRef = ref()
 const { t, locale } = useI18n()
@@ -46,7 +47,9 @@ const languageList = [
     value: 'zh-CN',
   }, */,
 ]
+const popoverRef = ref()
 const toSystem = () => {
+  popoverRef.value.hide()
   router.push('/system')
 }
 
@@ -62,7 +65,7 @@ const changeLanguage = (lang: string) => {
 }
 
 const openHelp = () => {
-  window.open('https://dataease.cn/sqlbot/', '_blank')
+  window.open(appearanceStore.getHelp || 'https://dataease.cn/sqlbot/', '_blank')
 }
 
 const openPwd = () => {
@@ -85,22 +88,31 @@ const logout = () => {
 </script>
 
 <template>
-  <el-popover trigger="click" popper-class="system-person" :placement="collapse ? 'right' : 'top'">
+  <el-popover
+    ref="popoverRef"
+    trigger="click"
+    popper-class="system-person"
+    :placement="collapse ? 'right' : 'top-start'"
+  >
     <template #reference>
       <button class="person" :title="name" :class="collapse && 'collapse'">
-        <img class="default-avatar" :src="Default_avatar" width="32px" height="32px" />
+        <el-icon size="32">
+          <Default_avatar_custom></Default_avatar_custom>
+        </el-icon>
         <span v-if="!collapse" class="name ellipsis">{{ name }}</span>
       </button></template
     >
     <div class="popover">
       <div class="popover-content">
         <div class="info">
-          <img :src="Default_avatar" width="40px" height="40px" />
+          <el-icon class="avatar-custom" size="40">
+            <Default_avatar_custom></Default_avatar_custom>
+          </el-icon>
           <div :title="name" class="top ellipsis">{{ name }}</div>
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
         <div v-if="isAdmin && !inSysmenu" class="popover-item" @click="toSystem">
-          <el-icon size="16">
+          <el-icon style="color: #646a73" size="16">
             <icon_admin_outlined></icon_admin_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('common.system_manage') }}</div>
@@ -138,18 +150,19 @@ const logout = () => {
             </div>
           </div>
         </el-popover>
-        <div class="popover-item" @click="toAbout">
+        <div v-if="appearanceStore.getShowAbout" class="popover-item" @click="toAbout">
           <el-icon size="16">
             <icon_info_outlined_1></icon_info_outlined_1>
           </el-icon>
           <div class="datasource-name">{{ $t('about.title') }}</div>
         </div>
-        <div class="popover-item" @click="openHelp">
+        <div v-if="appearanceStore.getShowDoc" class="popover-item" @click="openHelp">
           <el-icon size="16">
             <icon_maybe_outlined></icon_maybe_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('common.help') }}</div>
         </div>
+        <div style="height: 4px; width: 100%"></div>
         <div class="popover-item mr4" @click="logout">
           <el-icon size="16">
             <icon_logout_outlined></icon_logout_outlined>
@@ -164,7 +177,7 @@ const logout = () => {
     <pwd-form v-if="dialogVisible" ref="pwdFormRef" @pwd-saved="closePwd" />
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="closePwd">{{ t('common.cancel') }}</el-button>
+        <el-button secondary @click="closePwd">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" @click="savePwdHandler">{{ t('common.save') }}</el-button>
       </div>
     </template>
@@ -240,6 +253,7 @@ const logout = () => {
   box-shadow: 0px 4px 8px 0px #1f23291a;
   border: 1px solid #dee0e3;
   position: relative;
+  border-radius: 6px;
 
   &::after {
     content: '';
@@ -265,8 +279,9 @@ const logout = () => {
     .info {
       height: 62px;
       padding: 8px;
+      margin-bottom: 4px;
 
-      img {
+      .avatar-custom {
         float: left;
         margin: 3px 8px 0 7px;
       }
@@ -291,10 +306,12 @@ const logout = () => {
       height: 32px;
       display: flex;
       align-items: center;
-      padding-left: 12px;
-      padding-right: 8px;
+      padding-left: 8px;
+      padding-right: 4px;
       position: relative;
       cursor: pointer;
+      margin: 0 4px;
+      border-radius: 4px;
       &:hover {
         background-color: #1f23291a;
       }
@@ -306,7 +323,7 @@ const logout = () => {
       }
 
       &.mr4 {
-        margin: 4px 0;
+        margin: 4px;
       }
 
       .right {

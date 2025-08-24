@@ -4,7 +4,7 @@ import { treeDraggableChart } from '@/views/dashboard/utils/treeDraggableChart'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_folder from '@/assets/svg/icon_folder.svg'
 import ope_add from '@/assets/svg/operate/ope-add.svg'
-import icon_dashboard from '@/assets/svg/icon_dashboard.svg'
+import icon_dashboard from '@/assets/permission/icon_dashboard.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_rename from '@/assets/svg/icon_rename.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
@@ -422,7 +422,7 @@ defineExpose({
             <el-icon v-if="data.node_type !== 'leaf'" style="font-size: 18px">
               <Icon name="icon_folder"><icon_folder class="svg-icon" /></Icon>
             </el-icon>
-            <el-icon v-else style="font-size: 18px">
+            <el-icon v-else class="icon-primary" style="font-size: 18px">
               <Icon name="icon_dashboard"><icon_dashboard class="svg-icon" /></Icon>
             </el-icon>
             <span :title="node.label" class="label-tooltip">

@@ -146,7 +146,7 @@
       <span>{{ t('ds.form.selected', [checkList.length, tableList.length]) }}</span>
     </div>
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
-      <el-button @click="close">{{ t('common.cancel') }}</el-button>
+      <el-button secondary @click="close">{{ t('common.cancel') }}</el-button>
       <el-button v-show="!isCreate && !isEditTable && form.type !== 'excel'" @click="check">
         {{ t('ds.check') }}
       </el-button>

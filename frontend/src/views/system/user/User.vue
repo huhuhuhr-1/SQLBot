@@ -42,7 +42,7 @@
       class="sqlbot-table"
       :class="[
         state.filterTexts.length && 'is-filter',
-        multipleSelectionAll.length && 'show-pagenation_height',
+        multipleSelectionAll.length && 'show-pagination_height',
       ]"
     >
       <filter-text
@@ -302,7 +302,7 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="closeForm">{{ $t('common.cancel') }}</el-button>
+        <el-button secondary @click="closeForm">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" @click="saveHandler">
           {{ state.form.id ? $t('common.save') : $t('model.add') }}
         </el-button>
@@ -814,7 +814,7 @@ onMounted(() => {
     width: calc(100% + 48px);
     left: -24px;
     background-color: #fff;
-    bottom: 0;
+    bottom: -16px;
     border-top: 1px solid #1f232926;
     display: flex;
     align-items: center;
@@ -860,7 +860,7 @@ onMounted(() => {
     max-height: calc(100vh - 150px);
     overflow-y: auto;
 
-    &.show-pagenation_height {
+    &.show-pagination_height {
       max-height: calc(100vh - 215px);
     }
 

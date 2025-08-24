@@ -44,7 +44,7 @@ function clickPredict() {
   white-space: pre-wrap;
 
   .prefix-title {
-    color: rgba(28, 186, 144, 1);
+    color: var(--ed-color-primary, rgba(28, 186, 144, 1));
     white-space: nowrap;
   }
 }

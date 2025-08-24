@@ -28,6 +28,9 @@
   --ed-color-primary-light-7: #d2f1e9 !important;
   --ed-border-color: #d9dcdf !important;
   --ed-border-radius-base: 6px !important;
+  --ed-disabled-border-color: #d9dcdf !important;
+  --ed-border-color-light: #dee0e3 !important;
+  --ed-border-color-lighter: #dee0e3 !important;
 }
 
 a {
@@ -61,7 +64,7 @@ body {
 
 @media (prefers-color-scheme: light) {
   :root {
-    color: #213547;
+    color: #1f2329;
     background-color: #ffffff;
   }
 
@@ -103,7 +106,7 @@ body {
   }
 
   &.active {
-    background: var(--ed-color-primary-1a, rgba(51, 112, 255, 0.1));
+    background: var(--ed-color-primary-1a, #1cba901a);
     color: var(--ed-color-primary);
   }
 }
@@ -329,4 +332,28 @@ strong {
 
 .ed-popper[data-popper-placement^='right'] > .ed-popper__arrow {
   left: -5px !important;
+}
+
+.ed-form.last {
+  .ed-form-item {
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+}
+
+.icon-primary.icon-primary {
+  color: var(--ed-color-primary);
+}
+
+.icon-primary_15_d.icon-primary_15_d {
+  color: var(--ed-color-primary-15-d);
+}
+
+.icon-primary_60.icon-primary_60 {
+  color: var(--ed-color-primary-60);
+}
+
+.ed-checkbox {
+  --ed-checkbox-font-weight: 400 !important;
 }

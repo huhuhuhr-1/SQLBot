@@ -14,6 +14,8 @@ class Paginator:
         result_dict = {}
         if isinstance(row, int):
             return {'id': row}
+        if isinstance(row, SQLModel) and not hasattr(row, '_fields'):
+            return row.model_dump()
         for item, key in zip(row, row._fields):
             if isinstance(item, SQLModel):
                 result_dict.update(item.model_dump())

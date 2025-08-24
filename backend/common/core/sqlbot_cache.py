@@ -16,7 +16,7 @@ def custom_key_builder(
     kwargs: Dict[str, Any],
     cacheName: str,
     keyExpression: Optional[str] = None,
-) -> str:
+) -> str | list[str]:
     try:
         base_key = f"{namespace}:{cacheName}:"
         
@@ -31,6 +31,8 @@ def custom_key_builder(
                 if match := re.match(r"args\[(\d+)\]", keyExpression):
                     index = int(match.group(1))
                     value = bound_args.args[index]
+                    if isinstance(value, list):
+                        return [f"{base_key}{v}" for v in value]
                     return f"{base_key}{value}"
             
             # 支持属性路径格式
@@ -38,6 +40,8 @@ def custom_key_builder(
             value = bound_args.arguments[parts[0]]
             for part in parts[1:]:
                 value = getattr(value, part)
+            if isinstance(value, list):
+                return [f"{base_key}{v}" for v in value]
             return f"{base_key}{value}"
         
         # 默认使用第一个参数作为key
@@ -102,14 +106,16 @@ def clear_cache(
                 cacheName=cacheName,
                 keyExpression=keyExpression,
             )
+            ket_list = cache_key if isinstance(cache_key, list) else [cache_key]
             backend = FastAPICache.get_backend()
-            if await backend.get(cache_key):
-                if settings.CACHE_TYPE.lower() == "redis":
-                    redis = backend.redis
-                    await redis.delete(cache_key)
-                else:
-                    await backend.clear(key=cache_key)
-                SQLBotLogUtil.debug(f"Cache cleared: {cache_key}")
+            for temp_cache_key in ket_list:
+                if await backend.get(temp_cache_key):
+                    if settings.CACHE_TYPE.lower() == "redis":
+                        redis = backend.redis
+                        await redis.delete(temp_cache_key)
+                    else:
+                        await backend.clear(key=temp_cache_key)
+                    SQLBotLogUtil.debug(f"Cache cleared: {temp_cache_key}")
             return await func(*args, **kwargs)
         
         return wrapper

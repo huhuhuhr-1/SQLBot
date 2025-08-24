@@ -4,8 +4,10 @@ from typing import List
 import orjson
 import sqlparse
 from sqlalchemy import and_, select, update
+from sqlalchemy.orm import aliased
 
-from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion
+from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
+    TypeEnum, OperationEnum, ChatRecordResult
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.assistant import AssistantOutDsFactory
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
@@ -96,6 +98,9 @@ def get_chat_with_records_with_data(session: SessionDep, chart_id: int, current_
     return get_chat_with_records(session, chart_id, current_user, current_assistant, True)
 
 
+dynamic_ds_types = [1, 3]
+
+
 def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser,
                           current_assistant: CurrentAssistant, with_data: bool = False) -> ChatInfo:
     chat = session.get(Chat, chart_id)
@@ -104,7 +109,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
     chat_info = ChatInfo(**chat.model_dump())
 
-    if current_assistant and current_assistant.type == 1:
+    if current_assistant and current_assistant.type in dynamic_ds_types:
         out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
         ds = out_ds_instance.get_ds(chat.datasource)
     else:
@@ -118,13 +123,36 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         chat_info.datasource_name = ds.name
         chat_info.ds_type = ds.type
 
-    stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
-                  ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,
-                  ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
-                  ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
-                  ChatRecord.recommended_question, ChatRecord.first_chat,
-                  ChatRecord.finish, ChatRecord.error).where(
-        and_(ChatRecord.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time)
+    sql_alias_log = aliased(ChatLog)
+    chart_alias_log = aliased(ChatLog)
+    analysis_alias_log = aliased(ChatLog)
+    predict_alias_log = aliased(ChatLog)
+
+    stmt = (select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
+                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,
+                   ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
+                   ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
+                   ChatRecord.recommended_question, ChatRecord.first_chat,
+                   ChatRecord.finish, ChatRecord.error,
+                   sql_alias_log.reasoning_content.label('sql_reasoning_content'),
+                   chart_alias_log.reasoning_content.label('chart_reasoning_content'),
+                   analysis_alias_log.reasoning_content.label('analysis_reasoning_content'),
+                   predict_alias_log.reasoning_content.label('predict_reasoning_content')
+                   )
+    .outerjoin(sql_alias_log, and_(sql_alias_log.pid == ChatRecord.id,
+                                   sql_alias_log.type == TypeEnum.CHAT,
+                                   sql_alias_log.operate == OperationEnum.GENERATE_SQL))
+    .outerjoin(chart_alias_log, and_(chart_alias_log.pid == ChatRecord.id,
+                                     chart_alias_log.type == TypeEnum.CHAT,
+                                     chart_alias_log.operate == OperationEnum.GENERATE_CHART))
+    .outerjoin(analysis_alias_log, and_(analysis_alias_log.pid == ChatRecord.id,
+                                        analysis_alias_log.type == TypeEnum.CHAT,
+                                        analysis_alias_log.operate == OperationEnum.ANALYSIS))
+    .outerjoin(predict_alias_log, and_(predict_alias_log.pid == ChatRecord.id,
+                                       predict_alias_log.type == TypeEnum.CHAT,
+                                       predict_alias_log.operate == OperationEnum.PREDICT_DATA))
+    .where(and_(ChatRecord.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(
+        ChatRecord.create_time))
     if with_data:
         stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
                       ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,
@@ -136,28 +164,35 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
             ChatRecord.create_time)
 
     result = session.execute(stmt).all()
-    record_list: list[ChatRecord] = []
+    record_list: list[ChatRecordResult] = []
     for row in result:
         if not with_data:
             record_list.append(
-                ChatRecord(id=row.id, chat_id=row.chat_id, create_time=row.create_time, finish_time=row.finish_time,
-                           question=row.question, sql_answer=row.sql_answer, sql=row.sql,
-                           chart_answer=row.chart_answer, chart=row.chart,
-                           analysis=row.analysis, predict=row.predict,
-                           datasource_select_answer=row.datasource_select_answer,
-                           analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
-                           recommended_question=row.recommended_question, first_chat=row.first_chat,
-                           finish=row.finish, error=row.error))
+                ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
+                                 finish_time=row.finish_time,
+                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                                 chart_answer=row.chart_answer, chart=row.chart,
+                                 analysis=row.analysis, predict=row.predict,
+                                 datasource_select_answer=row.datasource_select_answer,
+                                 analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
+                                 recommended_question=row.recommended_question, first_chat=row.first_chat,
+                                 finish=row.finish, error=row.error,
+                                 sql_reasoning_content=row.sql_reasoning_content,
+                                 chart_reasoning_content=row.chart_reasoning_content,
+                                 analysis_reasoning_content=row.analysis_reasoning_content,
+                                 predict_reasoning_content=row.predict_reasoning_content,
+                                 ))
         else:
             record_list.append(
-                ChatRecord(id=row.id, chat_id=row.chat_id, create_time=row.create_time, finish_time=row.finish_time,
-                           question=row.question, sql_answer=row.sql_answer, sql=row.sql,
-                           chart_answer=row.chart_answer, chart=row.chart,
-                           analysis=row.analysis, predict=row.predict,
-                           datasource_select_answer=row.datasource_select_answer,
-                           analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
-                           recommended_question=row.recommended_question, first_chat=row.first_chat,
-                           finish=row.finish, error=row.error, data=row.data, predict_data=row.predict_data))
+                ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
+                                 finish_time=row.finish_time,
+                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                                 chart_answer=row.chart_answer, chart=row.chart,
+                                 analysis=row.analysis, predict=row.predict,
+                                 datasource_select_answer=row.datasource_select_answer,
+                                 analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
+                                 recommended_question=row.recommended_question, first_chat=row.first_chat,
+                                 finish=row.finish, error=row.error, data=row.data, predict_data=row.predict_data))
 
     result = list(map(format_record, record_list))
 
@@ -166,27 +201,35 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     return chat_info
 
 
-def format_record(record: ChatRecord):
+def format_record(record: ChatRecordResult):
     _dict = record.model_dump()
 
     if record.sql_answer and record.sql_answer.strip() != '' and record.sql_answer.strip()[0] == '{' and \
             record.sql_answer.strip()[-1] == '}':
         _obj = orjson.loads(record.sql_answer)
         _dict['sql_answer'] = _obj.get('reasoning_content')
+    if record.sql_reasoning_content and record.sql_reasoning_content.strip() != '':
+        _dict['sql_answer'] = record.sql_reasoning_content
     if record.chart_answer and record.chart_answer.strip() != '' and record.chart_answer.strip()[0] == '{' and \
             record.chart_answer.strip()[-1] == '}':
         _obj = orjson.loads(record.chart_answer)
         _dict['chart_answer'] = _obj.get('reasoning_content')
+    if record.chart_reasoning_content and record.chart_reasoning_content.strip() != '':
+        _dict['chart_answer'] = record.chart_reasoning_content
     if record.analysis and record.analysis.strip() != '' and record.analysis.strip()[0] == '{' and \
             record.analysis.strip()[-1] == '}':
         _obj = orjson.loads(record.analysis)
         _dict['analysis_thinking'] = _obj.get('reasoning_content')
         _dict['analysis'] = _obj.get('content')
+    if record.analysis_reasoning_content and record.analysis_reasoning_content.strip() != '':
+        _dict['analysis_thinking'] = record.analysis_reasoning_content
     if record.predict and record.predict.strip() != '' and record.predict.strip()[0] == '{' and record.predict.strip()[
         -1] == '}':
         _obj = orjson.loads(record.predict)
         _dict['predict'] = _obj.get('reasoning_content')
         _dict['predict_content'] = _obj.get('content')
+    if record.predict_reasoning_content and record.predict_reasoning_content.strip() != '':
+        _dict['predict'] = record.predict_reasoning_content
     if record.data and record.data.strip() != '':
         try:
             _obj = orjson.loads(record.data)
@@ -208,19 +251,30 @@ def format_record(record: ChatRecord):
     return _dict
 
 
-def list_base_records(session: SessionDep, chart_id: int, current_user: CurrentUser) -> List[ChatRecord]:
-    stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.full_sql_message, ChatRecord.full_chart_message,
-                  ChatRecord.first_chat, ChatRecord.create_time).where(
-        and_(ChatRecord.create_by == current_user.id, ChatRecord.chat_id == chart_id,
-             ChatRecord.analysis_record_id.is_(None), ChatRecord.predict_record_id.is_(None))).order_by(
-        ChatRecord.create_time)
+def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
+    stmt = select(ChatLog).where(
+        and_(ChatLog.pid.in_(select(ChatRecord.id).where(and_(ChatRecord.chat_id == chart_id))),
+             ChatLog.type == TypeEnum.CHAT, ChatLog.operate == OperationEnum.GENERATE_SQL)).order_by(
+        ChatLog.start_time)
     result = session.execute(stmt).all()
-    record_list: List[ChatRecord] = []
-    for r in result:
-        record_list.append(
-            ChatRecord(id=r.id, chat_id=r.chat_id, create_time=r.create_time, full_sql_message=r.full_sql_message,
-                       full_chart_message=r.full_chart_message, first_chat=r.first_chat))
-    return record_list
+    _list = []
+    for row in result:
+        for r in row:
+            _list.append(ChatLog(**r.model_dump()))
+    return _list
+
+
+def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
+    stmt = select(ChatLog).where(
+        and_(ChatLog.pid.in_(select(ChatRecord.id).where(and_(ChatRecord.chat_id == chart_id))),
+             ChatLog.type == TypeEnum.CHAT, ChatLog.operate == OperationEnum.GENERATE_CHART)).order_by(
+        ChatLog.start_time)
+    result = session.execute(stmt).all()
+    _list = []
+    for row in result:
+        for r in row:
+            _list.append(ChatLog(**r.model_dump()))
+    return _list
 
 
 def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat,
@@ -344,125 +398,117 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
     return result
 
 
-def save_full_sql_message(session: SessionDep, record_id: int, full_message: str) -> ChatRecord:
-    return save_full_sql_message_and_answer(session=session, record_id=record_id, full_message=full_message, answer='')
+def start_log(session: SessionDep, ai_modal_id: int, ai_modal_name: str, operate: OperationEnum, record_id: int,
+              full_message: list[dict]) -> ChatLog:
+    log = ChatLog(type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
+                  messages=full_message, start_time=datetime.datetime.now())
+
+    result = ChatLog(**log.model_dump())
+
+    session.add(log)
+    session.flush()
+    session.refresh(log)
+    result.id = log.id
+    session.commit()
+
+    return result
 
 
-def save_full_sql_message_and_answer(session: SessionDep, record_id: int, answer: str, full_message: str,
-                                     token_usage: dict = None) -> ChatRecord:
+def end_log(session: SessionDep, log: ChatLog, full_message: list[dict], reasoning_content: str = None,
+            token_usage=None) -> ChatLog:
+    if token_usage is None:
+        token_usage = {}
+    log.messages = full_message
+    log.token_usage = token_usage
+    log.finish_time = datetime.datetime.now()
+    log.reasoning_content = reasoning_content if reasoning_content and len(reasoning_content.strip()) > 0 else None
+
+    stmt = update(ChatLog).where(and_(ChatLog.id == log.id)).values(
+        messages=log.messages,
+        token_usage=log.token_usage,
+        finish_time=log.finish_time,
+        reasoning_content=log.reasoning_content
+    )
+    session.execute(stmt)
+    session.commit()
+
+    return log
+
+
+def save_sql_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
-    record = get_chat_record_by_id(session, record_id)
 
-    record.full_sql_message = full_message
-    record.sql_answer = answer
-
-    if token_usage:
-        record.token_sql = orjson.dumps(token_usage).decode()
-
-    result = ChatRecord(**record.model_dump())
-
-    stmt = update(ChatRecord).where(and_(ChatRecord.id == record.id)).values(
-        full_sql_message=record.full_sql_message,
-        sql_answer=record.sql_answer,
-        token_sql=record.token_sql,
+    stmt = update(ChatRecord).where(and_(ChatRecord.id == record_id)).values(
+        sql_answer=answer,
     )
 
     session.execute(stmt)
 
     session.commit()
 
-    return result
-
-
-def save_full_analysis_message_and_answer(session: SessionDep, record_id: int, answer: str,
-                                          full_message: str, token_usage: dict = None) -> ChatRecord:
-    if not record_id:
-        raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)
 
-    record.full_analysis_message = full_message
-    record.analysis = answer
+    return record
 
-    if token_usage:
-        record.token_analysis = orjson.dumps(token_usage).decode()
 
-    result = ChatRecord(**record.model_dump())
+def save_analysis_answer(session: SessionDep, record_id: int, answer: str = '') -> ChatRecord:
+    if not record_id:
+        raise Exception("Record id cannot be None")
 
-    stmt = update(ChatRecord).where(and_(ChatRecord.id == record.id)).values(
-        full_analysis_message=record.full_analysis_message,
-        analysis=record.analysis,
-        token_analysis=record.token_analysis,
+    stmt = update(ChatRecord).where(and_(ChatRecord.id == record_id)).values(
+        analysis=answer,
     )
 
     session.execute(stmt)
 
     session.commit()
 
-    return result
-
-
-def save_full_predict_message_and_answer(session: SessionDep, record_id: int, answer: str,
-                                         full_message: str, data: str, token_usage: dict = None) -> ChatRecord:
-    if not record_id:
-        raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)
 
-    record.full_predict_message = full_message
-    record.predict = answer
-    record.predict_data = data
+    return record
 
-    if token_usage:
-        record.token_predict = orjson.dumps(token_usage).decode()
 
-    result = ChatRecord(**record.model_dump())
+def save_predict_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
+    if not record_id:
+        raise Exception("Record id cannot be None")
 
-    stmt = update(ChatRecord).where(and_(ChatRecord.id == record.id)).values(
-        full_predict_message=record.full_predict_message,
-        predict=record.predict,
-        predict_data=record.predict_data,
-        token_predict=record.token_predict
+    stmt = update(ChatRecord).where(and_(ChatRecord.id == record_id)).values(
+        predict=answer,
     )
 
     session.execute(stmt)
 
     session.commit()
 
-    return result
+    record = get_chat_record_by_id(session, record_id)
+
+    return record
 
 
-def save_full_select_datasource_message_and_answer(session: SessionDep, record_id: int, answer: str,
-                                                   full_message: str, datasource: int = None,
-                                                   engine_type: str = None, token_usage: dict = None) -> ChatRecord:
+def save_select_datasource_answer(session: SessionDep, record_id: int, answer: str,
+                                  datasource: int = None, engine_type: str = None) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)
 
-    record.full_select_datasource_message = full_message
     record.datasource_select_answer = answer
 
     if datasource:
         record.datasource = datasource
         record.engine_type = engine_type
 
-    if token_usage:
-        record.token_select_datasource_question = orjson.dumps(token_usage).decode()
-
     result = ChatRecord(**record.model_dump())
 
     if datasource:
         stmt = update(ChatRecord).where(and_(ChatRecord.id == record.id)).values(
-            full_select_datasource_message=record.full_select_datasource_message,
             datasource_select_answer=record.datasource_select_answer,
-            token_select_datasource_question=record.token_select_datasource_question,
             datasource=record.datasource,
             engine_type=record.engine_type,
         )
     else:
         stmt = update(ChatRecord).where(and_(ChatRecord.id == record.id)).values(
-            full_select_datasource_message=record.full_select_datasource_message,
             datasource_select_answer=record.datasource_select_answer,
-            token_select_datasource_question=record.token_select_datasource_question,
         )
 
     session.execute(stmt)
@@ -472,16 +518,12 @@ def save_full_select_datasource_message_and_answer(session: SessionDep, record_i
     return result
 
 
-def save_full_recommend_question_message_and_answer(session: SessionDep, record_id: int, answer: dict = None,
-                                                    full_message: str = '[]', token_usage: dict = None) -> ChatRecord:
+def save_recommend_question_answer(session: SessionDep, record_id: int,
+                                   answer: dict = None) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
-    record = get_chat_record_by_id(session, record_id)
 
-    record.full_recommended_question_message = full_message
-
-    if answer:
-        record.recommended_question_answer = orjson.dumps(answer).decode()
+    recommended_question_answer = orjson.dumps(answer).decode()
 
     json_str = '[]'
     if answer and answer.get('content') and answer.get('content') != '':
@@ -492,25 +534,22 @@ def save_full_recommend_question_message_and_answer(session: SessionDep, record_
                 json_str = '[]'
         except Exception as e:
             pass
-    record.recommended_question = json_str
+    recommended_question = json_str
 
-    if token_usage:
-        record.token_recommended_question = orjson.dumps(token_usage).decode()
-
-    result = ChatRecord(**record.model_dump())
-
-    stmt = update(ChatRecord).where(and_(ChatRecord.id == record.id)).values(
-        full_recommended_question_message=record.full_recommended_question_message,
-        recommended_question_answer=record.recommended_question_answer,
-        recommended_question=record.recommended_question,
-        token_recommended_question=record.token_recommended_question
+    stmt = update(ChatRecord).where(and_(ChatRecord.id == record_id)).values(
+        recommended_question_answer=recommended_question_answer,
+        recommended_question=recommended_question,
     )
 
     session.execute(stmt)
 
     session.commit()
 
-    return result
+    record = get_chat_record_by_id(session, record_id)
+    record.recommended_question_answer = recommended_question_answer
+    record.recommended_question = recommended_question
+
+    return record
 
 
 def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:
@@ -534,36 +573,21 @@ def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:
     return result
 
 
-def save_full_chart_message(session: SessionDep, record_id: int, full_message: str) -> ChatRecord:
-    return save_full_chart_message_and_answer(session=session, record_id=record_id, full_message=full_message,
-                                              answer='')
-
-
-def save_full_chart_message_and_answer(session: SessionDep, record_id: int, answer: str,
-                                       full_message: str, token_usage: dict = None) -> ChatRecord:
+def save_chart_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
-    record = get_chat_record_by_id(session, record_id)
 
-    record.full_chart_message = full_message
-    record.chart_answer = answer
-
-    if token_usage:
-        record.token_chart = orjson.dumps(token_usage).decode()
-
-    result = ChatRecord(**record.model_dump())
-
-    stmt = update(ChatRecord).where(and_(ChatRecord.id == record.id)).values(
-        full_chart_message=record.full_chart_message,
-        chart_answer=record.chart_answer,
-        token_chart=record.token_chart
+    stmt = update(ChatRecord).where(and_(ChatRecord.id == record_id)).values(
+        chart_answer=answer,
     )
 
     session.execute(stmt)
 
     session.commit()
 
-    return result
+    record = get_chat_record_by_id(session, record_id)
+
+    return record
 
 
 def save_chart(session: SessionDep, record_id: int, chart: str) -> ChatRecord:

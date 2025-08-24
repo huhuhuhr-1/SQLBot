@@ -43,7 +43,7 @@ const emits = defineEmits([
 ])
 
 const assistantStore = useAssistantStore()
-const isAssistant = computed(() => assistantStore.getAssistant)
+const isCompletePage = computed(() => !assistantStore.getAssistant || assistantStore.getEmbedded)
 
 const search = ref<string>()
 
@@ -145,7 +145,7 @@ const createNewChat = async () => {
 }
 
 async function doCreateNewChat() {
-  if (isAssistant.value) {
+  if (!isCompletePage.value) {
     return
   }
   chatCreatorRef.value?.showDs()
@@ -252,7 +252,7 @@ function onChatRenamed(chat: Chat) {
       />
     </el-main>
 
-    <ChatCreator v-if="!isAssistant" ref="chatCreatorRef" @on-chat-created="onChatCreated" />
+    <ChatCreator v-if="isCompletePage" ref="chatCreatorRef" @on-chat-created="onChatCreated" />
   </el-container>
 </template>
 
@@ -304,14 +304,14 @@ function onChatRenamed(chat: Chat) {
       font-size: 16px;
       font-weight: 500;
 
-      --ed-button-text-color: rgba(28, 186, 144, 1);
-      --ed-button-bg-color: rgba(28, 186, 144, 0.1);
-      --ed-button-border-color: rgba(164, 227, 211, 1);
-      --ed-button-hover-bg-color: rgba(210, 241, 233, 1);
-      --ed-button-hover-text-color: rgba(28, 186, 144, 1);
-      --ed-button-hover-border-color: rgba(28, 186, 144, 1);
-      --ed-button-active-bg-color: rgba(164, 227, 211, 1);
-      --ed-button-active-border-color: rgba(28, 186, 144, 1);
+      --ed-button-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+      --ed-button-bg-color: var(--ed-color-primary-1a, #1cba901a);
+      --ed-button-border-color: var(--ed-color-primary-60, #a4e3d3);
+      --ed-button-hover-bg-color: var(--ed-color-primary-80, #d2f1e9);
+      --ed-button-hover-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+      --ed-button-hover-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+      --ed-button-active-bg-color: var(--ed-color-primary-60, #a4e3d3);
+      --ed-button-active-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
     }
 
     .search {

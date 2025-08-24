@@ -41,7 +41,7 @@ const account = computed(() => userStore.getAccount)
             <div :title="account" class="bottom ellipsis">{{ account }}</div>
           </div>
           <div class="popover-item">
-            <el-icon size="16">
+            <el-icon style="color: #646a73" size="16">
               <icon_admin_outlined></icon_admin_outlined>
             </el-icon>
             <div class="datasource-name">{{ $t('common.system_manage') }}</div>
@@ -196,7 +196,7 @@ const account = computed(() => userStore.getAccount)
       }
 
       &.mr4 {
-        margin: 4px 0;
+        margin: 4px;
       }
 
       .right {

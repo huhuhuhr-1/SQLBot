@@ -57,6 +57,9 @@ export const AssistantStore = defineStore('assistant', {
     getOnline(): boolean {
       return this.online
     },
+    getEmbedded(): boolean {
+      return this.assistant && this.type === 4
+    },
   },
   actions: {
     refreshCertificate<T>() {

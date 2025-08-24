@@ -15,9 +15,9 @@
                 {{ $t('system.default_turquoise') }}
               </el-button>
               <el-button
-                :class="[themeColor === 'technologyBlue' && 'is-active']"
+                :class="[themeColor === 'blue' && 'is-active']"
                 text
-                @click="themeColorChange('technologyBlue')"
+                @click="themeColorChange('blue')"
               >
                 {{ $t('system.tech_blue') }}
               </el-button>
@@ -168,8 +168,8 @@
                     <div class="bottom-sql">
                       <Person
                         :is-blue="isBlue"
-                        :show-about="showAbout"
-                        :show-doc="showDoc"
+                        :show-about="topForm.showAbout === '0'"
+                        :show-doc="topForm.showDoc === '0'"
                       ></Person>
                       <el-icon size="20" class="fold">
                         <icon_side_fold_outlined></icon_side_fold_outlined>
@@ -184,10 +184,15 @@
                 </div>
               </div>
               <div class="config-list">
-                <el-checkbox v-model="showDoc" :label="$t('system.help_documentation')" />
+                <el-checkbox
+                  v-model="topForm.showDoc"
+                  true-value="0"
+                  false-value="1"
+                  :label="$t('system.help_documentation')"
+                />
                 <div class="doc-input">
                   <el-input
-                    v-model="input"
+                    v-model="topForm.help"
                     style="width: 100%"
                     :placeholder="
                       $t('datasource.please_enter') +
@@ -196,7 +201,12 @@
                     "
                   />
                 </div>
-                <el-checkbox v-model="showAbout" :label="$t('system.show_about')" />
+                <el-checkbox
+                  v-model="topForm.showAbout"
+                  true-value="0"
+                  false-value="1"
+                  :label="$t('system.show_about')"
+                />
               </div>
             </div>
           </div>
@@ -214,7 +224,7 @@
 
 <script lang="ts" setup>
 import logo from '@/assets/LOGO.svg'
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { ref, unref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import {
   type FormInstance,
   type FormRules,
@@ -243,12 +253,9 @@ interface LoginForm {
 interface ConfigItem {
   pkey: string
   pval: string
-  type: string
+  ptype: string
   sort: number
 }
-const showAbout = ref(true)
-const showDoc = ref(true)
-const input = ref('')
 const COLOR_PANEL = [
   '#FF4500',
   '#FF8C00',
@@ -262,7 +269,7 @@ const COLOR_PANEL = [
   '#FFFFFF',
 ]
 const basePath = import.meta.env.VITE_API_BASEPATH
-const baseUrl = basePath + '/appearance/image/'
+const baseUrl = basePath + '/system/appearance/image/'
 const fileList = ref<(UploadUserFile & { flag: string })[]>([])
 const navigateBg = ref('dark')
 const themeColor = ref('default')
@@ -304,35 +311,20 @@ const rules = reactive<FormRules>({
   ],
 })
 
+const defaultTopForm = {
+  help: 'https://dataease.cn/sqlbot/v1/',
+  showDoc: '0',
+  showAbout: '0',
+}
+
 const topForm = reactive<{
   help: string
-  showAi: string
-  showCopilot: string
   showDoc: string
   showAbout: string
-}>({
-  help: 'https://dataease.io/docs/',
-  showAi: '0',
-  showCopilot: '0',
-  showDoc: '0',
-  showAbout: '0',
-})
+}>(cloneDeep(defaultTopForm))
 
-const defaultTopForm = reactive<{
-  help: string
-  showAi: string
-  showCopilot: string
-  showDoc: string
-  showAbout: string
-}>({
-  help: 'https://dataease.io/docs/',
-  showAi: '0',
-  showCopilot: '0',
-  showDoc: '0',
-  showAbout: '0',
-})
 const isBlue = computed(() => {
-  return themeColor.value === 'technologyBlue'
+  return themeColor.value === 'blue'
 })
 const configList = [
   {
@@ -358,34 +350,29 @@ const giveUp = () => {
   resetMobileForm(false)
   init()
 }
-const topFormRef = ref()
 const showSaveButton = ref(true)
 const saveHandler = () => {
-  topFormRef.value.validate((val: any) => {
-    if (val) {
-      loginFormRef.value?.validate((valLogin) => {
-        if (valLogin) {
-          const param = buildParam()
-          const url = '/appearance/save'
-          request
-            .post(url, param, {
-              headers: {
-                'Content-Type': 'multipart/form-data',
-              },
+  loginFormRef.value?.validate((valLogin) => {
+    if (valLogin) {
+      const param = buildParam()
+      const url = '/system/appearance'
+      request
+        .post(url, param, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        })
+        .then((res) => {
+          if (!res) {
+            ElMessage.success(t('system.setting_successfully'))
+            appearanceStore.setLoaded(false)
+            appearanceStore.setAppearance()
+            showSaveButton.value = false
+            nextTick(() => {
+              showSaveButton.value = true
             })
-            .then((res) => {
-              if (!res.msg) {
-                ElMessage.success(t('system.setting_successfully'))
-                appearanceStore.setLoaded(false)
-                appearanceStore.setAppearance()
-                showSaveButton.value = false
-                nextTick(() => {
-                  showSaveButton.value = true
-                })
-              }
-            })
-        }
-      })
+          }
+        })
     }
   })
 }
@@ -393,7 +380,7 @@ const buildParam = () => {
   for (const key in loginForm) {
     const item = loginForm[key as keyof typeof loginForm]
     if (key === 'footContent') {
-      addChangeArray(key, item!, 'blob')
+      addChangeArray(key, item!, 'file')
     } else {
       addChangeArray(key, item!)
     }
@@ -411,22 +398,17 @@ const buildParam = () => {
       formData.append('files', newfile)
     })
   }
-  formData.append(
-    'request',
-    new Blob([JSON.stringify(changedItemArray.value)], {
-      type: 'application/json',
-    })
-  )
+  formData.append('data', JSON.stringify(unref(changedItemArray)))
   return formData
 }
 const init = () => {
-  const url = '/appearance/query'
+  const url = '/system/appearance/ui'
   changedItemArray.value = []
   fileList.value = []
   request
     .get(url)
     .then((res) => {
-      const list = res.data
+      const list = res || []
       if (!list.length) {
         return
       }
@@ -463,7 +445,7 @@ const init = () => {
         if (themeColor.value === 'custom') {
           setPageCustomColor(customColor.value)
         } else {
-          setPageCustomColor('#3370FF')
+          setPageCustomColor(isBlue.value ? '#3370FF' : '#1CBA90')
         }
       })
     })
@@ -477,7 +459,7 @@ const addChangeArray = (key: string, val: string, type?: string) => {
       changedItemArray.value[len] = {
         pkey: key,
         pval: val,
-        type: type || 'text',
+        ptype: type || 'str',
         sort: 1,
       }
       match = true
@@ -487,7 +469,7 @@ const addChangeArray = (key: string, val: string, type?: string) => {
     changedItemArray.value.push({
       pkey: key,
       pval: val,
-      type: type || 'text',
+      ptype: type || 'str',
       sort: 1,
     })
   }
@@ -498,10 +480,8 @@ const themeColorChange = (val: any) => {
   addChangeArray('themeColor', val)
   if (themeColor.value === 'custom') {
     setPageCustomColor(customColor.value)
-  } else if (isBlue.value) {
-    setPageCustomColor('#3370FF')
   } else {
-    setPageCustomColor('#1CBA90')
+    setPageCustomColor(isBlue.value ? '#3370FF' : '#1CBA90')
   }
 }
 const customColorChange = (val: any) => {
@@ -621,7 +601,7 @@ const getHeight = () => {
 }
 
 onMounted(() => {
-  // init()
+  init()
   nextTick(() => {
     getHeight()
   })
@@ -770,7 +750,8 @@ onUnmounted(() => {
           border-radius: 6px;
 
           .is-active {
-            background: var(--ed-color-primary-1a, rgba(51, 112, 255, 0.1));
+            background: var(--ed-color-primary-1a, #1cba901a);
+            font-weight: 500;
           }
 
           .ed-button:not(.is-active) {

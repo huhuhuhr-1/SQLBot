@@ -8,8 +8,9 @@
     header_font_color: 'rgb(100, 106, 115)',
     x_type: 'right',
     y_type: 'bottom',
-    x_value: '-5',
-    y_value: '33',
+    x_val: '30',
+    y_val: '30',
+    float_icon_drag: false,
   }
   const script_id_prefix = 'sqlbot-assistant-float-script-'
   const guideHtml = `
@@ -35,8 +36,8 @@
 
   const chatButtonHtml = (data) => `
 <div class="sqlbot-assistant-chat-button">
-  <img style="height:100%;width:100%;display:none;" src="${data.float_icon}">
-  <svg style="display:none;margin-right: 20px;" data-v-39a51454="" xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="none">
+  <img style="height:30px;width:30px;display:none;" src="${data.float_icon}">
+  <svg style="display:none;" data-v-39a51454="" xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="none">
     <path fill="#149CC5" d="M28.333 13.669h-.231c.138.758.207 1.527.206 2.298.005.946-.107 1.89-.335 2.808h.65a1.05 1.05 0 0 0 1.05-1.05V15.01a1.343 1.343 0 0 0-1.34-1.341"></path>
     <path fill="#69CAA4" d="M1.692 15.967c0-.77.068-1.54.206-2.298h-.23a1.34 1.34 0 0 0-1.342 1.34v2.716a1.05 1.05 0 0 0 1.05 1.05h.651a11.4 11.4 0 0 1-.335-2.808"></path>
     <path fill="url(#a)" d="M15 3.795c-6.89 0-12.474 5.282-12.474 12.171 0 6.89 5.585 10.239 12.474 10.239s12.474-3.35 12.474-10.238c0-6.89-5.585-12.172-12.474-12.172m3.026 17.33h-6.052a6 6 0 0 1-2.484-.535c-.564-.256-2.208.282-2.663-.127-.551-.495.117-1.969-.221-2.636a6.014 6.014 0 0 1 5.368-8.73h6.052a6.014 6.014 0 0 1 0 12.029"></path>
@@ -158,16 +159,16 @@
     }
     const drag = (e) => {
       if (['touchmove', 'touchstart'].includes(e.type)) {
-        chat_button.style.top = e.touches[0].clientY - chat_button_img.naturalHeight / 2 + 'px'
-        chat_button.style.left = e.touches[0].clientX - chat_button_img.naturalWidth / 2 + 'px'
+        chat_button.style.top = e.touches[0].clientY - chat_button_img.clientHeight / 2 + 'px'
+        chat_button.style.left = e.touches[0].clientX - chat_button_img.clientHeight / 2 + 'px'
       } else {
-        chat_button.style.top = e.y - chat_button_img.naturalHeight / 2 + 'px'
-        chat_button.style.left = e.x - chat_button_img.naturalWidth / 2 + 'px'
+        chat_button.style.top = e.y - chat_button_img.clientHeight / 2 + 'px'
+        chat_button.style.left = e.x - chat_button_img.clientHeight / 2 + 'px'
       }
-      chat_button.style.width = chat_button_img.naturalWidth + 'px'
-      chat_button.style.height = chat_button_img.naturalHeight + 'px'
+      chat_button.style.width = chat_button_img.clientHeight + 'px'
+      chat_button.style.height = chat_button_img.clientHeight + 'px'
     }
-    if (data.is_draggable) {
+    if (data.float_icon_drag) {
       chat_button.addEventListener('drag', drag)
       chat_button.addEventListener('dragover', (e) => {
         e.preventDefault()
@@ -234,14 +235,14 @@
       height: 64px;
       box-shadow: 1px 1px 1px 9999px rgba(0,0,0,.6);
       position: absolute;
-      ${data.x_type}: ${data.x_value}px;
-      ${data.y_type}: ${data.y_value}px;
+      ${data.x_type}: ${data.x_val}px;
+      ${data.y_type}: ${data.y_val}px;
       z-index: 10001;
   }
   #sqlbot-assistant .sqlbot-assistant-tips {
       position: fixed;
-      ${data.x_type}:calc(${data.x_value}px + 75px);
-      ${data.y_type}: calc(${data.y_value}px + 0px);
+      ${data.x_type}:calc(${data.x_val}px + 75px);
+      ${data.y_type}: calc(${data.y_val}px + 0px);
       padding: 22px 24px 24px;
       border-radius: 6px;
       color: #ffffff;
@@ -297,76 +298,76 @@
         display:none;
       }
   @media only screen and (max-width: 768px) {
-        #sqlbot-assistant-chat-container {
-          width: 100%;
-          height: 70%;
-          right: 0 !important;
-        }
-      }
-
-      #sqlbot-assistant .sqlbot-assistant-chat-button{
-        position: fixed;
-        ${data.x_type}: ${data.x_value}px;
-        ${data.y_type}: ${data.y_value}px;
-        cursor: pointer;
-        z-index:10000;
+    #sqlbot-assistant-chat-container {
+      width: 100%;
+      height: 70%;
+      right: 0 !important;
     }
-    #sqlbot-assistant #sqlbot-assistant-chat-container{
-        z-index:10000;position: relative;
-              border-radius: 8px;
-              //border: 1px solid #ffffff;
-              background: linear-gradient(188deg, rgba(235, 241, 255, 0.20) 39.6%, rgba(231, 249, 255, 0.20) 94.3%), #EFF0F1;
-              box-shadow: 0px 4px 8px 0px rgba(31, 35, 41, 0.10);
-              position: fixed;bottom: 16px;right: 16px;overflow: hidden;
+  }
+
+  #sqlbot-assistant .sqlbot-assistant-chat-button{
+    position: fixed;
+    ${data.x_type}: ${data.x_val}px;
+    ${data.y_type}: ${data.y_val}px;
+    cursor: pointer;
+    z-index:10000;
+  }
+  #sqlbot-assistant #sqlbot-assistant-chat-container{
+    z-index:10000;position: relative;
+    border-radius: 8px;
+    //border: 1px solid #ffffff;
+    background: linear-gradient(188deg, rgba(235, 241, 255, 0.20) 39.6%, rgba(231, 249, 255, 0.20) 94.3%), #EFF0F1;
+    box-shadow: 0px 4px 8px 0px rgba(31, 35, 41, 0.10);
+    position: fixed;bottom: 16px;right: 16px;overflow: hidden;
+  }
+
+  .ed-overlay-dialog {
+    margin-top: 50px;
+  }
+  .ed-drawer {
+    margin-top: 50px;
+  }
+
+  #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-operate{
+    top: 18px;
+    right: 15px;
+    position: absolute;
+    display: flex;
+    align-items: center;
+    line-height: 18px;
+  }
+  #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-operate .sqlbot-assistant-chat-close{
+    margin-left:15px;
+    cursor: pointer;
+  }
+  #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-operate .sqlbot-assistant-openviewport{
+
+    cursor: pointer;
+  }
+  #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-operate .sqlbot-assistant-closeviewport{
+
+    cursor: pointer;
+  }
+  #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-viewportnone{
+    display:none;
+  }
+  #sqlbot-assistant #sqlbot-assistant-chat-container #sqlbot-assistant-chat-iframe-${data.id} {
+    height:100%;
+    width:100%;
+    border: none;
+  }
+  #sqlbot-assistant #sqlbot-assistant-chat-container {
+    animation: appear .4s ease-in-out;
+  }
+  @keyframes appear {
+    from {
+      height: 0;;
     }
 
-      .ed-overlay-dialog {
-        margin-top: 50px;
-      }
-      .ed-drawer {
-        margin-top: 50px;
-      }
-
-     #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-operate{
-     top: 18px;
-     right: 15px;
-     position: absolute;
-     display: flex;
-     align-items: center;
-         line-height: 18px;
-     }
-    #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-operate .sqlbot-assistant-chat-close{
-            margin-left:15px;
-            cursor: pointer;
+    to {
+      height: 600px;
     }
-    #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-operate .sqlbot-assistant-openviewport{
-
-            cursor: pointer;
-    }
-    #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-operate .sqlbot-assistant-closeviewport{
-
-      cursor: pointer;
-    }
-    #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-viewportnone{
-      display:none;
-    }
-    #sqlbot-assistant #sqlbot-assistant-chat-container #sqlbot-assistant-chat-iframe-${data.id}{
-     height:100%;
-     width:100%;
-     border: none;
-}
-    #sqlbot-assistant #sqlbot-assistant-chat-container {
-                animation: appear .4s ease-in-out;
-              }
-              @keyframes appear {
-                from {
-                  height: 0;;
-                }
-
-                to {
-                  height: 600px;
-                }
-              }`.replaceAll('#sqlbot-assistant ', `#${sqlbot_assistantId} `)
+  }`.replaceAll('#sqlbot-assistant ', `#${sqlbot_assistantId} `)
     root.appendChild(style)
   }
   function getParam(src, key) {
@@ -460,7 +461,10 @@
         }
         const data = res.data
         const config_json = data.configuration
-        let tempData = Object.assign(defaultData, { id, domain_url, name: data.name })
+        let tempData = Object.assign(defaultData, data)
+        if (tempData.configuration) {
+          delete tempData.configuration
+        }
         if (config_json) {
           const config = JSON.parse(config_json)
           if (config) {
@@ -468,6 +472,18 @@
             tempData = Object.assign(tempData, config)
           }
         }
+        tempData['id'] = id
+        tempData['domain_url'] = domain_url
+
+        if (tempData['float_icon'] && !tempData['float_icon'].startsWith('http://')) {
+          tempData['float_icon'] =
+            `${domain_url}/api/v1/system/assistant/picture/${tempData['float_icon']}`
+
+          if (domain_url.includes('5173')) {
+            tempData['float_icon'] = tempData['float_icon'].replace('5173', '8000')
+          }
+        }
+
         tempData['online'] = online && online.toString().toLowerCase() == 'true'
         initsqlbot_assistant(tempData)
         if (data.type == 1) {

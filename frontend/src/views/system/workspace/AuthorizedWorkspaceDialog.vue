@@ -102,7 +102,9 @@
     </div>
 
     <template #footer>
-      <el-button @click="centerDialogVisible = false"> {{ $t('common.cancel') }}</el-button>
+      <el-button secondary @click="centerDialogVisible = false">
+        {{ $t('common.cancel') }}</el-button
+      >
       <el-button v-if="!checkedWorkspace.length" disabled type="info">{{
         $t('model.add')
       }}</el-button>

@@ -9,10 +9,14 @@ import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categori
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
 import { useRoute, useRouter } from 'vue-router'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
+import logo_blue from '@/assets/blue/LOGO-blue.png'
+import logo_fold_blue from '@/assets/blue/LOGO-head_blue.png'
+import { useEmitt } from '@/utils/useEmitt'
 
 const router = useRouter()
 const collapse = ref(false)
-import { useEmitt } from '@/utils/useEmitt'
+const appearanceStore = useAppearanceStoreWithOut()
 
 const handleCollapseChange = (val: any = true) => {
   collapse.value = val
@@ -37,8 +41,20 @@ const showSysmenu = computed(() => {
 <template>
   <div class="system-layout">
     <div class="left-side" :class="collapse && 'left-side-collapse'">
-      <LOGO_fold v-if="collapse" style="margin: 0 0 6px 5px"></LOGO_fold>
-      <LOGO v-else style="margin-bottom: 6px"></LOGO>
+      <template v-if="appearanceStore.isBlue">
+        <img
+          v-if="collapse"
+          width="30"
+          height="30"
+          :src="logo_fold_blue"
+          style="margin: 0 0 6px 5px"
+        />
+        <img v-else width="130" height="31" :src="logo_blue" style="margin-bottom: 6px" />
+      </template>
+      <template v-else>
+        <LOGO_fold v-if="collapse" style="margin: 0 0 6px 5px"></LOGO_fold>
+        <LOGO v-else style="margin-bottom: 6px"></LOGO>
+      </template>
       <Workspace v-if="!showSysmenu" :collapse="collapse"></Workspace>
       <Menu :collapse="collapse"></Menu>
       <div class="bottom">

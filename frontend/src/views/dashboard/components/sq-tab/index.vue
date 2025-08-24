@@ -271,7 +271,9 @@ defineExpose({
       />
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="state.dialogVisible = false">{{ t('common.cancel') }}</el-button>
+          <el-button secondary @click="state.dialogVisible = false">{{
+            t('common.cancel')
+          }}</el-button>
           <el-button :disabled="!titleValid" type="primary" @click="sureCurTitle">{{
             t('common.confirm')
           }}</el-button>

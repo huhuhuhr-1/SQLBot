@@ -166,3 +166,20 @@ class AssistantOutDsSchema(AssistantOutDsBase):
     extraParams: Optional[str] = None
     tables: Optional[list[AssistantTableSchema]] = None
     
+class AssistantUiSchema(BaseCreatorDTO):
+    theme: Optional[str] = None
+    header_font_color: Optional[str] = None
+    logo: Optional[str] = None
+    float_icon: Optional[str] = None
+    float_icon_drag: Optional[bool] = False
+    x_type: Optional[str] = 'right'
+    x_val: Optional[int] = 0
+    y_type: Optional[str] = 'bottom'
+    y_val: Optional[int] = 33
+    name: Optional[str] = None
+    welcome: Optional[str] = None
+    welcome_desc: Optional[str] = None
+    
+    
+    
+    

@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     SQL_DEBUG: bool = False
     
     UPLOAD_DIR: str = "/opt/sqlbot/data/file"
+    SQLBOT_KEY_EXPIRED: int = 100  # License key expiration timestamp, 0 means no expiration
 
     @computed_field  # type: ignore[prop-decorator]
     @property

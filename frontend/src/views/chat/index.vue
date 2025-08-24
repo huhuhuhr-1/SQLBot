@@ -1,6 +1,6 @@
 <template>
   <el-container class="chat-container no-padding">
-    <el-aside v-if="!isAssistant && chatListSideBarShow" class="chat-container-left">
+    <el-aside v-if="isCompletePage && chatListSideBarShow" class="chat-container-left">
       <ChatListContainer
         v-model:chat-list="chatList"
         v-model:current-chat-id="currentChatId"
@@ -16,9 +16,9 @@
       />
     </el-aside>
     <div
-      v-if="isAssistant || !chatListSideBarShow"
+      v-if="!isCompletePage || !chatListSideBarShow"
       class="hidden-sidebar-btn"
-      :class="{ 'assistant-popover-sidebar': isAssistant }"
+      :class="{ 'assistant-popover-sidebar': !isCompletePage }"
     >
       <el-popover
         :width="280"
@@ -86,26 +86,42 @@
       <el-main
         class="chat-record-list"
         :class="{
-          'hide-sidebar': !isAssistant && !chatListSideBarShow,
-          'assistant-chat-main': isAssistant,
+          'hide-sidebar': isCompletePage && !chatListSideBarShow,
+          'assistant-chat-main': !isCompletePage,
         }"
       >
         <div v-if="computedMessages.length == 0 && !loading" class="welcome-content-block">
           <div class="welcome-content">
-            <div class="greeting">
-              <el-icon size="32">
+            <template v-if="isCompletePage">
+              <div class="greeting">
+                <el-icon size="32">
+                  <logo_fold />
+                </el-icon>
+                {{ t('qa.greeting') }}
+              </div>
+              <div class="sub">
+                {{ t('qa.hint_description') }}
+              </div>
+            </template>
+
+            <div v-else class="assistant-desc">
+              <img
+                v-if="logoAssistant"
+                :src="logoAssistant"
+                class="logo"
+                width="30px"
+                height="30px"
+                alt=""
+              />
+              <el-icon v-else size="32">
                 <logo_fold />
               </el-icon>
-              {{ isAssistant ? t('embedded.i_am_sqlbot') : t('qa.greeting') }}
+              <div class="i-am">{{ welcome }}</div>
+              <div class="i-can">{{ welcomeDesc }}</div>
             </div>
-            <div class="sub">
-              {{ isAssistant ? t('embedded.predict_data_etc') : t('qa.hint_description') }}
-            </div>
-            <div v-if="isAssistant" class="sub assistant-sub">
-              {{ t('embedded.intelligent_data_query') }}
-            </div>
+
             <el-button
-              v-if="!isAssistant && currentChatId === undefined"
+              v-if="isCompletePage && currentChatId === undefined"
               size="large"
               type="primary"
               class="greeting-btn"
@@ -123,10 +139,19 @@
         <div v-else-if="computedMessages.length == 0 && loading" class="welcome-content-block">
           <logo />
         </div>
-        <el-scrollbar v-if="computedMessages.length > 0" ref="chatListRef" class="no-horizontal">
+        <el-scrollbar
+          v-if="computedMessages.length > 0"
+          ref="chatListRef"
+          class="no-horizontal"
+          @scroll="handleScroll"
+        >
           <div
+            ref="innerRef"
             class="chat-scroll"
-            :class="{ 'no-sidebar': !isAssistant && !chatListSideBarShow, pad16: isAssistant }"
+            :class="{
+              'no-sidebar': isCompletePage && !chatListSideBarShow,
+              pad16: !isCompletePage,
+            }"
           >
             <template v-for="(message, _index) in computedMessages" :key="_index">
               <ChatRow :current-chat="currentChat" :msg="message" :hide-avatar="message.first_chat">
@@ -281,9 +306,9 @@
           </div>
         </el-scrollbar>
       </el-main>
-      <el-footer v-if="computedMessages.length > 0 || isAssistant" class="chat-footer">
+      <el-footer v-if="computedMessages.length > 0 || !isCompletePage" class="chat-footer">
         <div class="input-wrapper" @click="clickInput">
-          <div v-if="!isAssistant" class="datasource">
+          <div v-if="isCompletePage" class="datasource">
             <template v-if="currentChat.datasource && currentChat.datasource_name">
               {{ t('qa.selected_datasource') }}:
               <img
@@ -305,7 +330,7 @@
             :disabled="isTyping"
             clearable
             class="input-area"
-            :class="isAssistant && 'is-assistant'"
+            :class="!isCompletePage && 'is-assistant'"
             type="textarea"
             :autosize="{ minRows: 1, maxRows: 8.583 }"
             :placeholder="t('qa.question_placeholder')"
@@ -328,7 +353,7 @@
       </el-footer>
     </el-container>
 
-    <ChatCreator v-if="!isAssistant" ref="chatCreatorRef" @on-chat-created="onChatCreatedQuick" />
+    <ChatCreator v-if="isCompletePage" ref="chatCreatorRef" @on-chat-created="onChatCreatedQuick" />
     <ChatCreator ref="hiddenChatCreatorRef" hidden @on-chat-created="onChatCreatedQuick" />
   </el-container>
 </template>
@@ -364,6 +389,9 @@ import router from '@/router'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
+  welcomeDesc?: string
+  logoAssistant?: string
+  welcome?: string
 }>()
 const floatPopoverRef = ref()
 const floatPopoverVisible = ref(false)
@@ -375,13 +403,14 @@ const defaultFloatPopoverStyle = ref({
   borderRadius: '6px',
 })
 
-const isAssistant = computed(() => assistantStore.getAssistant)
+const isCompletePage = computed(() => !assistantStore.getAssistant || assistantStore.getEmbedded)
 
 const { t } = useI18n()
 
 const inputMessage = ref('')
 
 const chatListRef = ref()
+const innerRef = ref()
 const chatCreatorRef = ref()
 
 function scrollToBottom() {
@@ -435,6 +464,48 @@ const goEmpty = (func?: (...p: any[]) => void, ...param: any[]) => {
   stop(func, ...param)
 }
 
+let scrollTime: any
+let scrollingTime: any
+let scrollTopVal = 0
+let scrolling = false
+const scrollBottom = () => {
+  if (scrolling) return
+  if (!isTyping.value) {
+    clearInterval(scrollTime)
+  }
+  chatListRef.value!.setScrollTop(innerRef.value!.clientHeight)
+}
+
+const handleScroll = (val: any) => {
+  if (!isCompletePage.value) return
+  scrollTopVal = val.scrollTop
+  scrolling = true
+  clearTimeout(scrollingTime)
+  scrollingTime = setTimeout(() => {
+    scrolling = false
+  }, 400)
+  if (
+    scrollTopVal + 200 <
+    innerRef.value!.clientHeight - (document.querySelector('.chat-record-list')!.clientHeight - 20)
+  ) {
+    clearInterval(scrollTime)
+    scrollTime = null
+    return
+  }
+
+  if (
+    !scrollTime &&
+    isTyping.value &&
+    scrollTopVal + 30 <
+      innerRef.value!.clientHeight -
+        (document.querySelector('.chat-record-list')!.clientHeight - 20)
+  ) {
+    scrollTime = setInterval(() => {
+      scrollBottom()
+    }, 300)
+  }
+}
+
 const createNewChatSimple = async () => {
   currentChat.value = new ChatInfo()
   currentChatId.value = undefined
@@ -470,7 +541,7 @@ const createNewChat = async () => {
     return
   }
   goEmpty()
-  if (isAssistant.value) {
+  if (!isCompletePage.value) {
     currentChat.value = new ChatInfo()
     currentChatId.value = undefined
     return
@@ -517,7 +588,7 @@ function onChatRenamed(chat: Chat) {
 
 const chatListSideBarShow = ref<boolean>(true)
 function hideSideBar() {
-  if (isAssistant.value) {
+  if (!isCompletePage.value) {
     floatPopoverVisible.value = false
     return
   }
@@ -589,7 +660,7 @@ function onChatStop() {
 }
 const assistantPrepareSend = async () => {
   if (
-    isAssistant.value &&
+    !isCompletePage.value &&
     (currentChatId.value == null || typeof currentChatId.value == 'undefined')
   ) {
     const assistantChat = await assistantStore.setChat()
@@ -606,6 +677,12 @@ const sendMessage = async ($event: any = {}) => {
 
   loading.value = true
   isTyping.value = true
+  if (isCompletePage.value) {
+    scrollTopVal = innerRef.value!.clientHeight
+    scrollTime = setInterval(() => {
+      scrollBottom()
+    }, 300)
+  }
   await assistantPrepareSend()
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()
@@ -812,12 +889,12 @@ function stop(func?: (...p: any[]) => void, ...param: any[]) {
   }
 }
 const showFloatPopover = () => {
-  if (isAssistant.value && !floatPopoverVisible.value) {
+  if (!isCompletePage.value && !floatPopoverVisible.value) {
     floatPopoverVisible.value = true
   }
 }
 const assistantPrepareInit = () => {
-  if (!isAssistant.value) {
+  if (isCompletePage.value) {
     return
   }
   Object.assign(defaultFloatPopoverStyle.value, {
@@ -1090,6 +1167,30 @@ onMounted(() => {
     align-items: center;
     flex-direction: column;
 
+    .assistant-desc {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+
+      .i-am {
+        font-weight: 600;
+        font-size: 24px;
+        line-height: 32px;
+        margin: 16px 0;
+      }
+
+      .i-can {
+        margin-bottom: 4px;
+        max-width: 350px;
+        text-align: center;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 24px;
+        color: #646a73;
+      }
+    }
+
     .greeting {
       display: flex;
       align-items: center;
@@ -1124,15 +1225,15 @@ onMounted(() => {
       line-height: 24px;
       font-weight: 500;
 
-      --ed-button-text-color: rgba(28, 186, 144, 1);
-      --ed-button-hover-text-color: rgba(28, 186, 144, 1);
-      --ed-button-active-text-color: rgba(28, 186, 144, 1);
+      --ed-button-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+      --ed-button-hover-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+      --ed-button-active-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
       --ed-button-bg-color: rgba(248, 249, 250, 1);
-      --ed-button-hover-bg-color: rgba(28, 186, 144, 0.1);
+      --ed-button-hover-bg-color: var(--ed-color-primary-1a, #1cba901a);
       --ed-button-border-color: rgba(217, 220, 223, 1);
-      --ed-button-hover-border-color: rgba(28, 186, 144, 1);
-      --ed-button-active-bg-color: rgba(28, 186, 144, 0.2);
-      --ed-button-active-border-color: rgba(28, 186, 144, 1);
+      --ed-button-hover-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+      --ed-button-active-bg-color: var(--ed-color-primary-33, #1cba9033);
+      --ed-button-active-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
     }
   }
 }

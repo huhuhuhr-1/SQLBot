@@ -316,46 +316,54 @@ const handleCurrentChange = (val: number) => {
       </el-input>
 
       <div class="list-content">
-        <div
-          v-for="ele in tableListWithSearch"
-          :key="ele.name"
-          class="model"
-          :class="currentTable.name === ele.name && 'isActive'"
-          :title="ele.name"
-          @click="clickTable(ele)"
-        >
-          <el-icon size="16">
-            <icon_form_outlined></icon_form_outlined>
-          </el-icon>
-          <span class="name">{{ ele.name }}</span>
-
-          <el-popover
-            trigger="click"
-            :teleported="false"
-            popper-class="popover-card"
-            placement="bottom"
+        <el-scrollbar>
+          <div
+            v-for="ele in tableListWithSearch"
+            :key="ele.name"
+            class="model"
+            :class="currentTable.name === ele.name && 'isActive'"
+            :title="ele.name"
+            @click="clickTable(ele)"
           >
-            <template #reference>
-              <el-icon class="more" size="16" style="margin-left: auto" @click.stop>
-                <icon_more_outlined></icon_more_outlined>
-              </el-icon>
-            </template>
-            <div class="content">
-              <div class="item" @click.stop="addWorkspace(ele)">
-                <el-icon size="16">
-                  <rename></rename>
+            <el-icon size="16">
+              <icon_form_outlined></icon_form_outlined>
+            </el-icon>
+            <span class="name">{{ ele.name }}</span>
+
+            <el-popover
+              trigger="click"
+              :teleported="false"
+              popper-class="popover-card"
+              placement="bottom"
+            >
+              <template #reference>
+                <el-icon
+                  class="more"
+                  size="16"
+                  style="margin-left: auto; color: #646a73"
+                  @click.stop
+                >
+                  <icon_more_outlined></icon_more_outlined>
                 </el-icon>
-                {{ $t('dashboard.rename') }}
+              </template>
+              <div class="content">
+                <div class="item" @click.stop="addWorkspace(ele)">
+                  <el-icon size="16">
+                    <rename></rename>
+                  </el-icon>
+                  {{ $t('dashboard.rename') }}
+                </div>
+                <div class="item" @click.stop="delWorkspace(ele)">
+                  <el-icon size="16">
+                    <delIcon></delIcon>
+                  </el-icon>
+                  {{ $t('dashboard.delete') }}
+                </div>
               </div>
-              <div class="item" @click.stop="delWorkspace(ele)">
-                <el-icon size="16">
-                  <delIcon></delIcon>
-                </el-icon>
-                {{ $t('dashboard.delete') }}
-              </div>
-            </div>
-          </el-popover>
-        </div>
+            </el-popover>
+          </div>
+        </el-scrollbar>
+
         <div v-if="!!keyword && !tableListWithSearch.length" class="no-result">
           {{ $t('workspace.relevant_content_found') }}
         </div>
@@ -395,7 +403,7 @@ const handleCurrentChange = (val: number) => {
           </el-input>
         </div>
       </div>
-      <div class="table-content" :class="multipleSelectionAll.length && 'show-pagenation_height'">
+      <div class="table-content" :class="multipleSelectionAll.length && 'show-pagination_height'">
         <div class="preview-or-schema">
           <el-table
             ref="multipleTableRef"
@@ -576,6 +584,7 @@ const handleCurrentChange = (val: number) => {
     padding: 8px 16px;
     height: 100%;
     border-right: 1px solid #1f232926;
+    position: relative;
     .select-table_top {
       height: 40px;
       display: flex;
@@ -616,7 +625,11 @@ const handleCurrentChange = (val: number) => {
 
     .list-content {
       height: calc(100% - 100px);
-      overflow-y: auto;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      padding-left: 16px;
 
       .more {
         display: none;
@@ -655,7 +668,7 @@ const handleCurrentChange = (val: number) => {
         color: #646a73;
       }
       .model {
-        width: 100%;
+        width: calc(100% - 16px);
         height: 40px;
         display: flex;
         align-items: center;
@@ -732,7 +745,7 @@ const handleCurrentChange = (val: number) => {
       height: calc(100% - 168px);
       overflow-y: auto;
 
-      &.show-pagenation_height {
+      &.show-pagination_height {
         height: calc(100% - 220px);
       }
 

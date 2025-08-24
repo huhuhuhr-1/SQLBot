@@ -36,7 +36,7 @@ dependencies = [
     "pyyaml (>=6.0.2,<7.0.0)",
     "fastapi-mcp (>=0.3.4,<0.4.0)",
     "tabulate>=0.9.0",
-    "sqlbot-xpack==0.0.3.16",
+    "sqlbot-xpack>=0.0.3.20,<1.0.0",
     "fastapi-cache2>=0.2.2",
     "sqlparse>=0.5.3",
     "redis>=6.2.0",
@@ -44,6 +44,7 @@ dependencies = [
     "python-calamine>=0.4.0",
     "xlrd>=2.0.2",
     "clickhouse-sqlalchemy>=0.3.2",
+    "dmpython>=2.5.22; platform_system != 'Darwin'",
 ]
 [[tool.uv.index]]
 name = "default"
@@ -90,20 +91,20 @@ exclude = ["alembic"]
 
 [tool.ruff.lint]
 select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "B",  # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade
+    "E", # pycodestyle errors
+    "W", # pycodestyle warnings
+    "F", # pyflakes
+    "I", # isort
+    "B", # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
     "ARG001", # unused arguments in functions
 ]
 ignore = [
-    "E501",  # line too long, handled by black
-    "B008",  # do not perform function calls in argument defaults
-    "W191",  # indentation contains tabs
-    "B904",  # Allow raising exceptions without from e, for HTTPException
+    "E501", # line too long, handled by black
+    "B008", # do not perform function calls in argument defaults
+    "W191", # indentation contains tabs
+    "B904", # Allow raising exceptions without from e, for HTTPException
 ]
 
 [tool.ruff.lint.pyupgrade]

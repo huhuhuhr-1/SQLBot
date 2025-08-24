@@ -270,7 +270,8 @@
     "field_original_notes": "字段原始备注",
     "field_notes_1": "字段备注",
     "no_table": "暂无数据表",
-    "go_add": "去添加"
+    "go_add": "去添加",
+    "get_schema": "获取Schema"
   },
   "model": {
     "default_model": "默认模型",
@@ -461,6 +462,13 @@
     "intelligent_data_query": "赶快开启智能问数吧～"
   },
   "embedded": {
+    "delete_10_apps": "是否删除 {msg} 个应用？",
+    "click_to_show": "点击显示",
+    "click_to_hide": "点击隐藏",
+    "your_app_secret": "确定更新 APP Secret 吗？",
+    "proceed_with_caution": "重置后现有的 App Secret 将会失效，请谨慎操作。",
+    "password_length": "密码长度",
+    "edit_app": "编辑应用",
     "embedded_management": "嵌入式管理",
     "embedded_assistant": "小助手嵌入",
     "embedded_page": "页面嵌入",
@@ -517,7 +525,21 @@
     "i_am_sqlbot": "你好，我是 SQLBot",
     "predict_data_etc": "我可以查询数据、生成图表、检测数据异常、预测数据等",
     "intelligent_data_query": "赶快开启智能问数吧～",
-    "origin_format_error": "格式错误，http或https开头，不能以 / 结尾"
+    "origin_format_error": "格式错误，http或https开头，不能以 / 结尾",
+    "display_settings": "显示设置",
+    "header_text_color": "头部文本颜色",
+    "app_logo": "应用 Logo",
+    "maximum_size_10mb": "建议尺寸 32 x 32，支持 JPG、PNG、SVG，大小不超过 10MB",
+    "replace": "替换",
+    "default_icon_position": "图标默认位置",
+    "draggable_position": "可拖拽位置",
+    "up": "上",
+    "down": "下",
+    "left": "左",
+    "right": "右",
+    "welcome_description": "欢迎语描述",
+    "data_analysis_now": "我可以查询数据、生成图表、检测数据异常、预测数据等赶快开启智能问数吧～",
+    "window_entrance_icon": "浮窗入口图标"
   },
   "chat": {
     "type": "图表类型",
