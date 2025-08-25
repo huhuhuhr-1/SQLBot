@@ -63,7 +63,7 @@ WORKDIR ${SQLBOT_HOME}/app
 
 RUN mkdir -p /opt/sqlbot/images /opt/sqlbot/g2-ssr
 
-EXPOSE 3000 8000
+EXPOSE 8000 8001
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
