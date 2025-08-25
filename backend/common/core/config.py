@@ -1,5 +1,7 @@
+import pathlib
 import secrets
 from typing import Annotated, Any, Literal
+import os
 
 from pydantic import (
     AnyUrl,
@@ -22,7 +24,7 @@ def parse_cors(v: Any) -> list[str] | str:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Use top level .env file (one level above ./backend/)
-        env_file="../.env",
+        env_file=pathlib.Path(__file__).resolve().parent.parent.parent / ".env",
         env_ignore_empty=True,
         extra="ignore",
     )
@@ -50,20 +52,20 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "123456"
     POSTGRES_DB: str = "sqlbot"
     SQLBOT_DB_URL: str = ''
-    #SQLBOT_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/sqlbot'
-    
-    TOKEN_KEY: str =  "X-SQLBOT-TOKEN"
+    # SQLBOT_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/sqlbot'
+
+    TOKEN_KEY: str = "X-SQLBOT-TOKEN"
     DEFAULT_PWD: str = "SQLBot@123456"
     ASSISTANT_TOKEN_KEY: str = "X-SQLBOT-ASSISTANT-TOKEN"
-    
+
     CACHE_TYPE: Literal["redis", "memory", "None"] = "memory"
-    CACHE_REDIS_URL: str | None = None # Redis URL, e.g., "redis://[[username]:[password]]@localhost:6379/0"
-    
+    CACHE_REDIS_URL: str | None = None  # Redis URL, e.g., "redis://[[username]:[password]]@localhost:6379/0"
+
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
     LOG_DIR: str = "logs"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
     SQL_DEBUG: bool = False
-    
+
     UPLOAD_DIR: str = "/opt/sqlbot/data/file"
     SQLBOT_KEY_EXPIRED: int = 100  # License key expiration timestamp, 0 means no expiration
 
@@ -85,5 +87,6 @@ class Settings(BaseSettings):
     EXCEL_PATH: str = '/opt/sqlbot/data/excel'
     MCP_IMAGE_HOST: str = 'http://localhost:3000'
     SERVER_IMAGE_HOST: str = ''
+
 
 settings = Settings()  # type: ignore
