@@ -232,7 +232,7 @@ onMounted(() => {
   }
 
   .login-container {
-    height: calc(100% - 24px);
+    height: calc(100% - 22px);
     width: 100%;
     display: flex;
     .left-img {
