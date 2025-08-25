@@ -5,6 +5,24 @@
     "Dashboard": "Dashboard",
     "AI Model Configuration": "AI Model Configuration"
   },
+  "professional": {
+    "editing_terminology": "Editing Terminology",
+    "professional_terminology": "Professional Terminology",
+    "term_name": "Term Name",
+    "term_description": "Term Description",
+    "search_term": "Search Term",
+    "no_term": "No Term",
+    "create_new_term": "Create New Term",
+    "export_all": "Export All",
+    "professional_term_details": "Professional Term Details",
+    "business_term": "Business Term",
+    "synonyms": "Synonyms",
+    "all_236_terms": "Export all {msg} terms?",
+    "export": "Export",
+    "selected_2_terms": "Delete the selected {msg} terms?",
+    "selected_2_terms_de": "Export the selected {msg} terms?",
+    "the_term_gmv": "Delete the term: {msg}?"
+  },
   "common": {
     "zoom_in": "Zoom in",
     "zoom_out": "Zoom out",
