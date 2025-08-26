@@ -8,7 +8,7 @@ import { findComponent } from '@/views/dashboard/components/component-list.ts'
 import { storeToRefs } from 'pinia'
 import { useEmitt, useEmittLazy } from '@/utils/useEmitt.ts'
 import html2canvas from 'html2canvas'
-import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import EmptyBackground from '@/views/dashboard/common/EmptyBackgroundSvgMain.vue'
 import { useI18n } from 'vue-i18n'
 import { isMainCanvas } from '@/views/dashboard/utils/canvasUtils.ts'
 
@@ -1209,7 +1209,6 @@ defineExpose({
     <EmptyBackground
       v-if="!canvasComponentData.length && isMainCanvas(canvasId)"
       :description="t('dashboard.add_component_tips')"
-      img-type="addComponent"
     />
     <template v-if="renderOk">
       <CanvasShape

@@ -168,6 +168,9 @@ const cancelRefresh = (row: any) => {
 }
 
 const refresh = (row: any) => {
+  embeddedApi.secret(row.id).then(() => {
+    ElMessage.success(t('common.update_success'))
+  })
   cancelRefresh(row)
 }
 

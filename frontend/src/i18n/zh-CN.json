@@ -6,6 +6,8 @@
     "AI Model Configuration": "模型配置"
   },
   "professional": {
+    "code_for_debugging": "复制以下代码进行调试",
+    "full_screen_mode": "全屏模式",
     "editing_terminology": "编辑术语",
     "professional_terminology": "专业术语",
     "term_name": "术语名称",

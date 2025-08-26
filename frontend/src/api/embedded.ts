@@ -12,6 +12,7 @@ export const embeddedApi = {
     request.get(`/system/embedded/${pageNum}/${pageSize}`, {
       params,
     }),
+  secret: (id: any) => request.patch(`/system/embedded/secret/${id}`),
   updateEmbedded: (data: any) => request.put('/system/embedded', data),
   addEmbedded: (data: any) => request.post('/system/embedded', data),
   deleteEmbedded: (params: any) => request.delete('/system/embedded', { data: params }),

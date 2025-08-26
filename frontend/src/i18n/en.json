@@ -6,6 +6,8 @@
     "AI Model Configuration": "AI Model Configuration"
   },
   "professional": {
+    "code_for_debugging": "Copy the following code for debugging",
+    "full_screen_mode": "Full screen mode",
     "editing_terminology": "Editing Terminology",
     "professional_terminology": "Professional Terminology",
     "term_name": "Term Name",

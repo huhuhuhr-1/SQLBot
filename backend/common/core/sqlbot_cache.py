@@ -106,9 +106,9 @@ def clear_cache(
                 cacheName=cacheName,
                 keyExpression=keyExpression,
             )
-            ket_list = cache_key if isinstance(cache_key, list) else [cache_key]
+            key_list = cache_key if isinstance(cache_key, list) else [cache_key]
             backend = FastAPICache.get_backend()
-            for temp_cache_key in ket_list:
+            for temp_cache_key in key_list:
                 if await backend.get(temp_cache_key):
                     if settings.CACHE_TYPE.lower() == "redis":
                         redis = backend.redis

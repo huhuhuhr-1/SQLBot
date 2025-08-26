@@ -7,6 +7,7 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_database_colorful from '@/assets/embedded/icon_database_colorful.png'
 import icon_web_site_colorful from '@/assets/embedded/icon_web-site_colorful.png'
 import floating_window from '@/assets/embedded/window.png'
+import full_window from '@/assets/embedded/Card.png'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
@@ -43,6 +44,7 @@ const urlFormRef = ref()
 const certificateFormRef = ref()
 const dialogTitle = ref('')
 const drawerTitle = ref('')
+const activeMode = ref('full')
 
 const embeddedList = ref<any[]>([])
 const systemCredentials = ['localStorage', 'custom', 'cookie', 'sessionStorage']
@@ -374,6 +376,7 @@ const saveEmbedded = () => {
 const dialogVisible = ref(false)
 const scriptElement = ref('')
 const jsCodeElement = ref('')
+const jsCodeElementFull = ref('')
 const handleEmbedded = (row: any) => {
   dialogVisible.value = true
   const { origin, pathname } = window.location
@@ -393,9 +396,32 @@ const handleEmbedded = (row: any) => {
     script.id = "sqlbot-assistant-float-script-${row.id}";
     document.head.appendChild(script);
   })()`
+
+  jsCodeElementFull.value = `(function(){
+    const script = document.createElement('script');
+    script.defer = true;
+    script.async = true;
+    script.src = "${origin + pathname}xpack_static/sqlbot-embedded-dynamic.umd.js";
+    document.head.appendChild(script);
+  })()
+  
+  sqlbot_embedded_handler.mounted('.copilot', {
+    "embeddedId": "${row.id}",
+    "online": true
+})`
 }
 const copyJsCode = () => {
   copy(jsCodeElement.value)
+    .then(function () {
+      ElMessage.success(t('embedded.copy_successful'))
+    })
+    .catch(function () {
+      ElMessage.error(t('embedded.copy_successful'))
+    })
+}
+
+const copyJsCodeFull = () => {
+  copy(jsCodeElementFull.value)
     .then(function () {
       ElMessage.success(t('embedded.copy_successful'))
     })
@@ -836,37 +862,70 @@ const saveHandler = () => {
     modal-class="embed-third_party"
   >
     <div class="floating-window">
-      <div class="floating">
-        <div class="title">{{ $t('embedded.floating_window_mode') }}</div>
-        <img :src="floating_window" width="180px" height="120px" alt="" />
+      <div class="mode">
+        <div
+          class="floating"
+          :class="activeMode === 'full' && 'active'"
+          @click="activeMode = 'full'"
+        >
+          <div class="title">{{ $t('professional.full_screen_mode') }}</div>
+          <img :src="full_window" width="180px" height="120px" alt="" />
+        </div>
+        <div
+          class="floating"
+          :class="activeMode === 'floating' && 'active'"
+          @click="activeMode = 'floating'"
+        >
+          <div class="title">{{ $t('embedded.floating_window_mode') }}</div>
+          <img :src="floating_window" width="180px" height="120px" alt="" />
+        </div>
       </div>
-      <div class="code">
-        <div class="copy">
-          {{ $t('embedded.code_to_embed') }}
-          <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
-            <el-icon size="16" @click="copyCode">
-              <icon_copy_outlined></icon_copy_outlined>
-            </el-icon>
-          </el-tooltip>
-        </div>
+      <div v-if="activeMode === 'floating'" class="code-bg">
+        <div class="code">
+          <div class="copy">
+            {{ $t('embedded.code_to_embed') }}
+            <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
+              <el-icon size="16" @click="copyCode">
+                <icon_copy_outlined></icon_copy_outlined>
+              </el-icon>
+            </el-tooltip>
+          </div>
 
-        <div class="script">
-          {{ scriptElement }}
+          <div class="script">
+            {{ scriptElement }}
+          </div>
+        </div>
+        <div class="line"></div>
+
+        <div class="code">
+          <div class="copy">
+            {{ $t('professional.code_for_debugging') }}
+            <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
+              <el-icon size="16" @click="copyJsCode">
+                <icon_copy_outlined></icon_copy_outlined>
+              </el-icon>
+            </el-tooltip>
+          </div>
+
+          <div class="script">
+            {{ jsCodeElement }}
+          </div>
         </div>
       </div>
+      <div v-else class="code-bg">
+        <div class="code">
+          <div class="copy">
+            {{ $t('embedded.code_to_embed') }}
+            <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
+              <el-icon size="16" @click="copyJsCodeFull">
+                <icon_copy_outlined></icon_copy_outlined>
+              </el-icon>
+            </el-tooltip>
+          </div>
 
-      <div class="code">
-        <div class="copy">
-          {{ $t('common.or') }}
-          <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
-            <el-icon size="16" @click="copyJsCode">
-              <icon_copy_outlined></icon_copy_outlined>
-            </el-icon>
-          </el-tooltip>
-        </div>
-
-        <div class="script">
-          {{ jsCodeElement }}
+          <div class="script">
+            {{ jsCodeElementFull }}
+          </div>
         </div>
       </div>
     </div>
@@ -1197,25 +1256,52 @@ const saveHandler = () => {
 
 .embed-third_party {
   .floating-window {
-    border: 1px solid #dee0e3;
     width: 552px;
-    height: 431px;
-    opacity: 1;
-    border-radius: 4px;
+    .mode {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .code-bg {
+      background: #f5f6f7;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 16px;
+    }
 
     .floating {
       padding: 16px;
       padding-bottom: 0;
+      border-radius: 6px;
+      border: 1px solid #dee0e3;
+      cursor: pointer;
+      width: 268px;
+      height: 182px;
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+
       .title {
         font-weight: 500;
         font-size: 14px;
         line-height: 22px;
-        margin-bottom: 16px;
+        margin-bottom: 8px;
       }
+
+      &.active {
+        background: var(--ed-color-primary-1a, #1cba901a);
+        border-color: var(--ed-color-primary, #1cba90);
+      }
+    }
+    .line {
+      background-color: #1f232926;
+      width: calc(100% - 32px);
+      height: 1px;
+      margin-left: 16px;
     }
 
     .code {
-      border-top: 1px solid #1f232926;
       padding: 16px;
       .copy {
         display: flex;
