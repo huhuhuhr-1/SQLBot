@@ -247,9 +247,9 @@ make stop
 
 ## 📚 相关文档
 
-- [构建指南](./docs/BUILD_GUIDE.md) - 详细的构建说明
-- [调试指南](./docs/DEBUG_GUIDE.md) - 开发调试指南
-- [README.md](./README.md) - 项目概述
+- [构建指南](BUILD_GUIDE.md) - 详细的构建说明
+- [调试指南](DEBUG_GUIDE.md) - 开发调试指南
+- [README.md](../README.md) - 项目概述
 
 ---
 

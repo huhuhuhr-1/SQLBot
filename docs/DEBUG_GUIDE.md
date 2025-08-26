@@ -22,7 +22,18 @@
 
 ```bash
 # 1. 启动数据库
-docker-compose up -d sqlbot-db
+docker network create sqlbot-network
+
+docker run -d \
+  --name tmp-sqlbot-db \
+  --restart always \
+  --network sqlbot-network \
+  -p 12432:5432 \
+  -v /opt/sqlboot/data/postgresql:/var/lib/postgresql/data \
+  -e POSTGRES_DB=sqlbot \
+  -e POSTGRES_USER=sqlbot \
+  -e POSTGRES_PASSWORD=sqlbot \
+  pgvector/pgvector:pg17
 
 # 2. 启动后端服务
 cd backend

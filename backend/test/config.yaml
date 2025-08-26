@@ -1,0 +1,31 @@
+db:
+  host: 10.20.14.100
+  port: 12432
+  dbname: retail_demo
+  user: sqlbot
+  password: sqlbot
+  owner: sqlbot      # 可选，默认等于 user
+  encoding: UTF8       # 可选
+  admin_db: sqlbot   # 可选，用于建库的“管理库”
+
+data:
+  users: 10000
+  products: 2000
+  orders: 50000
+  events: 200000
+
+mode:
+  truncate: true     # true=清空重建，false=追加
+  schema: retail
+
+batch:
+  categories: 10000
+  users: 50000
+  products: 50000
+  orders: 20000
+  events: 100000
+
+perf:
+  synchronous_commit: off
+  work_mem_mb: 64
+  maintenance_work_mem_mb: 512
