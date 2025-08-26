@@ -29,6 +29,7 @@ interface Form {
 const { t } = useI18n()
 const multipleSelectionAll = ref<any[]>([])
 const keywords = ref('')
+const oldKeywords = ref('')
 const searchLoading = ref(false)
 
 const selectable = () => {
@@ -49,11 +50,12 @@ const pageInfo = reactive({
 })
 
 const dialogTitle = ref('')
+const updateLoading = ref(false)
 const defaultForm = {
   id: null,
   word: null,
   description: null,
-  other_words: [],
+  other_words: [''],
 }
 const pageForm = ref<Form>(cloneDeep(defaultForm))
 
@@ -72,7 +74,7 @@ const exportBatchUser = () => {
       cancelButtonText: t('common.cancel'),
       customClass: 'confirm-no_icon',
       autofocus: false,
-    },
+    }
   ).then(() => {
     professionalApi.deleteEmbedded(multipleSelectionAll.value.map((ele) => ele.id)).then(() => {
       ElMessage({
@@ -112,7 +114,7 @@ const deleteBatchUser = () => {
       cancelButtonText: t('common.cancel'),
       customClass: 'confirm-no_icon',
       autofocus: false,
-    },
+    }
   ).then(() => {
     professionalApi.deleteEmbedded(multipleSelectionAll.value.map((ele) => ele.id)).then(() => {
       ElMessage({
@@ -125,7 +127,7 @@ const deleteBatchUser = () => {
   })
 }
 const deleteHandler = (row: any) => {
-  ElMessageBox.confirm(t('professional.the_term_gmv', { msg: row.name }), {
+  ElMessageBox.confirm(t('professional.the_term_gmv', { msg: row.word }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
     cancelButtonText: t('common.cancel'),
@@ -183,6 +185,7 @@ const handleToggleRowSelection = (check: boolean = true) => {
 
 const search = () => {
   searchLoading.value = true
+  oldKeywords.value = keywords.value
   professionalApi
     .getList(pageInfo.currentPage, pageInfo.pageSize, { word: keywords.value })
     .then((res) => {
@@ -220,17 +223,23 @@ const saveHandler = () => {
   termFormRef.value.validate((res: any) => {
     if (res) {
       const obj = unref(pageForm)
-      if (obj.id === '') {
+      if (!obj.id) {
         delete obj.id
       }
-      professionalApi.updateEmbedded(obj).then(() => {
-        ElMessage({
-          type: 'success',
-          message: t('common.save_success'),
+      updateLoading.value = true
+      professionalApi
+        .updateEmbedded(obj)
+        .then(() => {
+          ElMessage({
+            type: 'success',
+            message: t('common.save_success'),
+          })
+          search()
+          onFormClose()
         })
-        search()
-        onFormClose()
-      })
+        .finally(() => {
+          updateLoading.value = false
+        })
     }
   })
 }
@@ -324,7 +333,7 @@ const deleteHandlerItem = (idx: number) => {
       class="table-content"
       :class="multipleSelectionAll?.length && 'show-pagination_height'"
     >
-      <template v-if="!keywords && !fieldList.length">
+      <template v-if="!oldKeywords && !fieldList.length">
         <EmptyBackground
           class="datasource-yet"
           :description="$t('professional.no_term')"
@@ -393,13 +402,13 @@ const deleteHandlerItem = (idx: number) => {
           </el-table-column>
           <template #empty>
             <EmptyBackground
-              v-if="!keywords && !fieldList.length"
+              v-if="!oldKeywords && !fieldList.length"
               :description="$t('professional.no_term')"
               img-type="noneWhite"
             />
 
             <EmptyBackground
-              v-if="!!keywords && !fieldList.length"
+              v-if="!!oldKeywords && !fieldList.length"
               :description="$t('datasource.relevant_content_found')"
               img-type="tree"
             />
@@ -428,15 +437,15 @@ const deleteHandlerItem = (idx: number) => {
       >
         {{ $t('datasource.select_all') }}
       </el-checkbox>
-      <button class="primary-button" @click="exportBatchUser">
+      <button v-if="false" class="primary-button" @click="exportBatchUser">
         {{ $t('professional.export') }}
       </button>
 
       <button class="danger-button" @click="deleteBatchUser">{{ $t('dashboard.delete') }}</button>
 
       <span class="selected">{{
-          $t('user.selected_2_items', { msg: multipleSelectionAll.length })
-        }}</span>
+        $t('user.selected_2_items', { msg: multipleSelectionAll.length })
+      }}</span>
 
       <el-button text @click="cancelDelete">
         {{ $t('common.cancel') }}
@@ -485,8 +494,8 @@ const deleteHandlerItem = (idx: number) => {
         <template #label>
           <div style="display: flex; align-items: center">
             <span>{{ t('professional.synonyms') }}</span>
-            <span class="btn">
-              <el-icon style="margin-right: 4px" size="16" @click="pageForm.other_words.push('')">
+            <span class="btn" @click="pageForm.other_words.push('')">
+              <el-icon style="margin-right: 4px" size="16">
                 <icon_add_outlined></icon_add_outlined>
               </el-icon>
               {{ $t('model.add') }}
@@ -495,7 +504,7 @@ const deleteHandlerItem = (idx: number) => {
         </template>
         <div class="synonyms-list">
           <el-scrollbar max-height="218px">
-            <div v-for="(item, index) in pageForm.other_words" :key="item" class="scrollbar-item">
+            <div v-for="(_, index) in pageForm.other_words" :key="index" class="scrollbar-item">
               <el-input
                 v-model="pageForm.other_words[index]"
                 style="width: 528px"
@@ -524,7 +533,7 @@ const deleteHandlerItem = (idx: number) => {
       </el-form-item>
     </el-form>
     <template #footer>
-      <div class="dialog-footer">
+      <div v-loading="updateLoading" class="dialog-footer">
         <el-button secondary @click="onFormClose">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" @click="saveHandler">
           {{ $t('common.save') }}
@@ -548,7 +557,7 @@ const deleteHandlerItem = (idx: number) => {
       </el-form-item>
       <el-form-item :label="t('professional.synonyms')">
         <div class="content">
-          {{ pageForm.other_words }}
+          {{ pageForm.other_words.join(',') }}
         </div>
       </el-form-item>
       <el-form-item :label="t('professional.term_description')">
@@ -577,6 +586,10 @@ const deleteHandlerItem = (idx: number) => {
     padding-bottom: 0;
     height: auto;
     padding-top: 200px;
+  }
+
+  :deep(.ed-table__cell) {
+    cursor: pointer;
   }
 
   .tool-left {

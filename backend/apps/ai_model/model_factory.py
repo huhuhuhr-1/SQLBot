@@ -12,7 +12,7 @@ from apps.system.models.system_model import AiModelDetail
 from common.core.db import engine
 from common.utils.utils import prepare_model_arg
 from langchain_community.llms import VLLMOpenAI
-
+from langchain_openai import AzureChatOpenAI
 # from langchain_community.llms import Tongyi, VLLM
 
 class LLMConfig(BaseModel):
@@ -69,6 +69,24 @@ class OpenAIvLLM(BaseLLM):
             streaming=True,
             **self.config.additional_params,
         )
+
+class OpenAIAzureLLM(BaseLLM):
+    def _init_llm(self) -> AzureChatOpenAI:
+        api_version = self.config.additional_params.get("api_version")
+        deployment_name = self.config.additional_params.get("deployment_name")
+        if api_version:
+            self.config.additional_params.pop("api_version")
+        if deployment_name:
+            self.config.additional_params.pop("deployment_name")
+        return AzureChatOpenAI(
+            azure_endpoint=self.config.api_base_url,
+            api_key=self.config.api_key or 'Empty',
+            model_name=self.config.model_name,
+            api_version=api_version,
+            deployment_name=deployment_name,
+            streaming=True,
+            **self.config.additional_params,
+        )
 class OpenAILLM(BaseLLM):
     def _init_llm(self) -> BaseChatModel:
         return BaseChatOpenAI(
@@ -89,7 +107,8 @@ class LLMFactory:
     _llm_types: Dict[str, Type[BaseLLM]] = {
         "openai": OpenAILLM,
         "tongyi": OpenAILLM,
-        "vllm": OpenAIvLLM
+        "vllm": OpenAIvLLM,
+        "azure": OpenAIAzureLLM,
     }
 
     @classmethod

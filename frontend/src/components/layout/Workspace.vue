@@ -78,7 +78,7 @@ onMounted(async () => {
   >
     <template #reference>
       <button class="workspace" :class="collapse && 'collapse'">
-        <el-icon size="16">
+        <el-icon size="18">
           <icon_moments_categories_outlined></icon_moments_categories_outlined>
         </el-icon>
         <span v-if="!collapse" :title="currentWorkspace.name" class="name ellipsis">{{
