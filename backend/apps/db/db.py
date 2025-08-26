@@ -4,7 +4,7 @@ import platform
 import urllib.parse
 from decimal import Decimal
 
-from apps.db.db_sql import get_table_sql, get_field_sql
+from apps.db.db_sql import get_table_sql, get_field_sql, get_version_sql
 
 if platform.system() != "Darwin":
     import dmPython
@@ -139,6 +139,35 @@ def check_connection(trans: Trans, ds: CoreDatasource, is_raise: bool = False):
                     if is_raise:
                         raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                     return False
+
+
+def get_version(ds: CoreDatasource):
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+    db = DB.get_db(ds.type)
+    sql = get_version_sql(ds, conf)
+    try:
+        if db.connect_type == ConnectType.sqlalchemy:
+            with get_session(ds) as session:
+                with session.execute(text(sql)) as result:
+                    res = result.fetchall()
+                    return res[0][0]
+        else:
+            if ds.type == 'dm':
+                with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
+                                      port=conf.port) as conn, conn.cursor() as cursor:
+                    cursor.execute(sql, timeout=10)
+                    res = cursor.fetchall()
+                    return res[0][0]
+            elif ds.type == 'doris':
+                with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
+                                     port=conf.port, db=conf.database, connect_timeout=10,
+                                     read_timeout=10) as conn, conn.cursor() as cursor:
+                    cursor.execute(sql)
+                    res = cursor.fetchall()
+                    return res[0][0]
+    except Exception as e:
+        print(e)
+        return ''
 
 
 def get_schema(ds: CoreDatasource):

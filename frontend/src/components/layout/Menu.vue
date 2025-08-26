@@ -95,6 +95,7 @@ const routerList = computed(() => {
     .ed-sub-menu__title {
       background-color: #fff !important;
       color: var(--ed-color-primary) !important;
+      font-weight: 500;
     }
   }
 

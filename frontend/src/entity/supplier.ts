@@ -8,7 +8,9 @@ import icon_openai_colorful from '@/assets/model/icon_openai_colorful.png'
 import icon_kimi_colorful from '@/assets/model/icon_kimi_colorful.png'
 import icon_txhy_colorful from '@/assets/model/icon_txhy_colorful.png'
 import icon_hsyq_colorful from '@/assets/model/icon_hsyq_colorful.png'
-import icon_vllm_colorful from '@/assets/model/icon_vllm_colorful.png'
+// import icon_vllm_colorful from '@/assets/model/icon_vllm_colorful.png'
+import icon_common_openai from '@/assets/model/icon_common_openai.png'
+import icon_azure_openAI_colorful from '@/assets/model/icon_Azure_OpenAI_colorful.png'
 
 type ModelArg = { key: string; val?: string | number; type: string; range?: string }
 type ModelOption = { name: string; api_domain?: string; args?: ModelArg[] }
@@ -266,7 +268,7 @@ export const supplierList: Array<{
       },
     },
   },
-  {
+  /* {
     id: 11,
     name: 'vLLM',
     icon: icon_vllm_colorful,
@@ -277,6 +279,64 @@ export const supplierList: Array<{
         api_domain: 'http://127.0.0.1:8000/v1',
         common_args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
         model_options: [],
+      },
+    },
+  }, */
+  {
+    id: 12,
+    name: 'Azure OpenAI',
+    icon: icon_azure_openAI_colorful,
+    type: 'azure',
+    is_private: true,
+    model_config: {
+      0: {
+        api_domain: 'https://{your resource name}.openai.azure.cn/',
+        common_args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+        model_options: [
+          {
+            name: 'Azure OpenAI',
+            args: [
+              { key: 'api_version', val: '2024-02-15-preview', type: 'string' },
+              { key: 'deployment_name', val: '', type: 'string' },
+            ],
+          },
+          {
+            name: 'gpt-4',
+            args: [
+              { key: 'api_version', val: '2024-02-15-preview', type: 'string' },
+              { key: 'deployment_name', val: '', type: 'string' },
+            ],
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: 15,
+    name: '通用OpenAI',
+    icon: icon_common_openai,
+    is_private: true,
+    model_config: {
+      0: {
+        api_domain: 'http://127.0.0.1:8000/v1',
+        common_args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+        model_options: [
+          { name: 'gpt-4.1' },
+          { name: 'gpt-4.1-mini' },
+          { name: 'gpt-4.1-nano' },
+          { name: 'gpt-4o' },
+          { name: 'gpt-4o-mini' },
+          { name: 'chatgpt-4o' },
+          { name: 'o4-mini' },
+          { name: 'o4-mini-deep-research' },
+          { name: 'o3' },
+          { name: 'o3-pro' },
+          { name: 'o3-mini' },
+          { name: 'o3-deep-research' },
+          { name: 'o1' },
+          { name: 'o1-pro' },
+          { name: 'o1-mini' },
+        ],
       },
     },
   },

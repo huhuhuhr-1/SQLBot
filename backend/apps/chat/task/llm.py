@@ -28,7 +28,7 @@ from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameCh
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import exec_sql
+from apps.db.db import exec_sql, get_version
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
@@ -91,13 +91,13 @@ class LLMService:
                 ds = self.out_ds_instance.get_ds(chat.datasource)
                 if not ds:
                     raise SingleMessageError("No available datasource configuration found")
-                chat_question.engine = ds.type
+                chat_question.engine = ds.type + get_version(ds)
                 chat_question.db_schema = self.out_ds_instance.get_db_schema(ds.id)
             else:
                 ds = self.session.get(CoreDatasource, chat.datasource)
                 if not ds:
                     raise SingleMessageError("No available datasource configuration found")
-                chat_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
+                chat_question.engine = (ds.type_name if ds.type != 'excel' else 'PostgreSQL') + get_version(ds)
                 chat_question.db_schema = get_table_schema(session=self.session, current_user=current_user, ds=ds)
 
         self.generate_sql_logs = list_generate_sql_logs(session=self.session, chart_id=chat_id)
@@ -451,7 +451,7 @@ class LLMService:
                 if self.current_assistant and self.current_assistant.type in dynamic_ds_types:
                     _ds = self.out_ds_instance.get_ds(data['id'])
                     self.ds = _ds
-                    self.chat_question.engine = _ds.type
+                    self.chat_question.engine = _ds.type + get_version(self.ds)
                     self.chat_question.db_schema = self.out_ds_instance.get_db_schema(self.ds.id)
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type
@@ -461,7 +461,8 @@ class LLMService:
                         _datasource = None
                         raise SingleMessageError(f"Datasource configuration with id {_datasource} not found")
                     self.ds = CoreDatasource(**_ds.model_dump())
-                    self.chat_question.engine = _ds.type_name if _ds.type != 'excel' else 'PostgreSQL'
+                    self.chat_question.engine = (_ds.type_name if _ds.type != 'excel' else 'PostgreSQL') + get_version(
+                        self.ds)
                     self.chat_question.db_schema = get_table_schema(session=self.session,
                                                                     current_user=self.current_user, ds=self.ds)
                     _engine_type = self.chat_question.engine

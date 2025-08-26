@@ -112,7 +112,7 @@ async def clear_ui_cache(id: int):
 
 @router.get("", response_model=list[AssistantModel])
 async def query(session: SessionDep):
-    list_result = session.exec(select(AssistantModel).where(AssistantModel.type.in_([0, 1])).order_by(AssistantModel.name, AssistantModel.create_time)).all()
+    list_result = session.exec(select(AssistantModel).where(AssistantModel.type != 4).order_by(AssistantModel.name, AssistantModel.create_time)).all()
     return list_result
 
 @router.post("")

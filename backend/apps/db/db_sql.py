@@ -3,6 +3,32 @@
 from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
 
 
+def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
+    if ds.type == "mysql" or ds.type == "doris":
+        return f"""
+                SELECT VERSION()
+                """
+    elif ds.type == "sqlServer":
+        return f"""
+                select SERVERPROPERTY('ProductVersion')
+                """
+    elif ds.type == "pg" or ds.type == "excel":
+        return f"""
+              select  version()
+              """
+    elif ds.type == "oracle":
+        return f"""
+                SELECT version FROM v$instance
+                """
+    elif ds.type == "ck":
+        return f"""
+                select  version()
+                """
+    elif ds.type == 'dm':
+        return f"""
+                SELECT * FROM v$version
+                """
+
 def get_table_sql(ds: CoreDatasource, conf: DatasourceConf):
     if ds.type == "mysql" or ds.type == "doris":
         return f"""
