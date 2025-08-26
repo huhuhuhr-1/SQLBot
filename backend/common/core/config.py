@@ -1,5 +1,7 @@
+import pathlib
 import secrets
 from typing import Annotated, Any, Literal
+import os
 
 from pydantic import (
     AnyUrl,
@@ -22,7 +24,7 @@ def parse_cors(v: Any) -> list[str] | str:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Use top level .env file (one level above ./backend/)
-        env_file="../.env",
+        env_file=pathlib.Path(__file__).resolve().parent.parent.parent / ".env",
         env_ignore_empty=True,
         extra="ignore",
     )
