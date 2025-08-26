@@ -9,7 +9,7 @@
 | [DEBUG_GUIDE.md](./DEBUG_GUIDE.md) | 调试完整指南 | 开发调试 |
 | [BUILD_GUIDE.md](./BUILD_GUIDE.md) | 构建部署指南 | 构建部署 |
 | [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) | 生产部署指南 | 生产部署 |
-| [SCRIPTS.md](../SCRIPTS.md) | 脚本使用说明 | 脚本使用 |
+| [SCRIPTS.md](SCRIPTS.md) | 脚本使用说明 | 脚本使用 |
 | [G2_SSR_GUIDE.md](./G2_SSR_GUIDE.md) | G2-SSR 服务说明 | 图表渲染 |
 
 ## 🚀 快速开始
