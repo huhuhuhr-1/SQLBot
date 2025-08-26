@@ -884,7 +884,7 @@ const saveHandler = () => {
         <div class="code">
           <div class="copy">
             {{ $t('embedded.code_to_embed') }}
-            <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
+            <el-tooltip :offset="12" effect="dark" :content="t('datasource.copy')" placement="top">
               <el-icon size="16" @click="copyCode">
                 <icon_copy_outlined></icon_copy_outlined>
               </el-icon>
@@ -900,7 +900,7 @@ const saveHandler = () => {
         <div class="code">
           <div class="copy">
             {{ $t('professional.code_for_debugging') }}
-            <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
+            <el-tooltip :offset="12" effect="dark" :content="t('datasource.copy')" placement="top">
               <el-icon size="16" @click="copyJsCode">
                 <icon_copy_outlined></icon_copy_outlined>
               </el-icon>
@@ -916,7 +916,7 @@ const saveHandler = () => {
         <div class="code">
           <div class="copy">
             {{ $t('embedded.code_to_embed') }}
-            <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
+            <el-tooltip :offset="12" effect="dark" :content="t('datasource.copy')" placement="top">
               <el-icon size="16" @click="copyJsCodeFull">
                 <icon_copy_outlined></icon_copy_outlined>
               </el-icon>

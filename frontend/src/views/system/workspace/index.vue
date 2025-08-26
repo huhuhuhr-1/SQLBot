@@ -296,7 +296,12 @@ const handleCurrentChange = (val: number) => {
       <div class="select-table_top">
         {{ $t('user.workspace') }}
 
-        <el-tooltip effect="dark" :content="$t('workspace.add_workspace')" placement="top">
+        <el-tooltip
+          :offset="12"
+          effect="dark"
+          :content="$t('workspace.add_workspace')"
+          placement="top"
+        >
           <el-icon size="18" @click="addWorkspace">
             <icon_add_outlined></icon_add_outlined>
           </el-icon>
