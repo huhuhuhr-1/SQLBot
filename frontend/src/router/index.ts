@@ -15,6 +15,7 @@ import assistantTest from '@/views/system/embedded/Test.vue'
 import assistant from '@/views/embedded/index.vue'
 import EmbeddedPage from '@/views/embedded/page.vue'
 import Member from '@/views/system/member/index.vue'
+import Professional from '@/views/system/professional/index.vue'
 import Appearance from '@/views/system/appearance/index.vue'
 import Permission from '@/views/system/permission/index.vue'
 import User from '@/views/system/user/User.vue'
@@ -104,6 +105,12 @@ export const routes = [
         name: 'permission',
         component: Permission,
         meta: { title: t('workspace.permission_configuration') },
+      },
+      {
+        path: '/set/professional',
+        name: 'professional',
+        component: Professional,
+        meta: { title: t('professional.professional_terminology') },
       },
     ],
   },

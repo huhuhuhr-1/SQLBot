@@ -1,4 +1,3 @@
-import pathlib
 import secrets
 from typing import Annotated, Any, Literal
 import os
@@ -87,6 +86,12 @@ class Settings(BaseSettings):
     EXCEL_PATH: str = '/opt/sqlbot/data/excel'
     MCP_IMAGE_HOST: str = 'http://localhost:3000'
     SERVER_IMAGE_HOST: str = ''
+
+    LOCAL_MODEL_PATH: str = '/opt/sqlbot/models'
+    DEFAULT_EMBEDDING_MODEL: str = 'shibing624/text2vec-base-chinese'
+
+    EMBEDDING_SIMILARITY: float = 0.6
+    EMBEDDING_TOP_COUNT: int = 3
 
 
 settings = Settings()  # type: ignore

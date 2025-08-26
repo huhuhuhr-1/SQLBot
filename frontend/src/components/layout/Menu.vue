@@ -49,6 +49,7 @@ const routerList = computed(() => {
       !route.path.includes('embeddedPage') &&
       !route.path.includes('canvas') &&
       !route.path.includes('member') &&
+      !route.path.includes('professional') &&
       !route.path.includes('permission') &&
       !route.path.includes('preview') &&
       route.path !== '/login' &&
@@ -92,6 +93,7 @@ const routerList = computed(() => {
 
   .ed-sub-menu.is-active {
     .ed-sub-menu__title {
+      background-color: #fff !important;
       color: var(--ed-color-primary) !important;
     }
   }

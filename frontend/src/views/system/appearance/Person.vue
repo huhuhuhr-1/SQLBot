@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
-import Default_avatar from '@/assets/workspace/default_avatar.png'
+import Default_avatar_custom from '@/assets/img/Default-avatar.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_info_outlined_1 from '@/assets/svg/icon_info_outlined_1.svg'
 import icon_maybe_outlined from '@/assets/svg/icon-maybe_outlined.svg'
@@ -9,7 +9,6 @@ import icon_translate_outlined from '@/assets/svg/icon_translate_outlined.svg'
 import icon_logout_outlined from '@/assets/svg/icon_logout_outlined.svg'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import { useUserStore } from '@/stores/user'
-import DefaultAvatarBlue from '@/assets/blue/Default-avatar_blue.png'
 
 defineProps({
   showDoc: { type: [Boolean], required: true },
@@ -24,19 +23,18 @@ const account = computed(() => userStore.getAccount)
 <template>
   <div style="position: relative">
     <button class="person" :title="name">
-      <img
-        class="default-avatar"
-        :src="isBlue ? DefaultAvatarBlue : Default_avatar"
-        width="32px"
-        height="32px"
-      />
+      <el-icon class="default-avatar" size="32">
+        <Default_avatar_custom></Default_avatar_custom>
+      </el-icon>
       <span class="name ellipsis">{{ name }}</span>
     </button>
     <div class="ed-popper is-light ed-popover system-person_style">
       <div class="popover">
         <div class="popover-content">
           <div class="info">
-            <img :src="isBlue ? DefaultAvatarBlue : Default_avatar" width="40px" height="40px" />
+            <el-icon class="img" size="40">
+              <Default_avatar_custom></Default_avatar_custom>
+            </el-icon>
             <div :title="name" class="top ellipsis">{{ name }}</div>
             <div :title="account" class="bottom ellipsis">{{ account }}</div>
           </div>
@@ -156,7 +154,7 @@ const account = computed(() => userStore.getAccount)
       height: 62px;
       padding: 8px;
 
-      img {
+      .img {
         float: left;
         margin: 3px 8px 0 7px;
       }
