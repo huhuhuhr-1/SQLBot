@@ -1,0 +1,18 @@
+services:
+  sqlbot-db:
+    image: pgvector/pgvector:pg17
+    container_name: sqlbot-db
+    restart: always
+    networks:
+      - sqlbot-network
+    ports:
+      - "5432:5432"  # 添加端口映射：主机端口:容器端口
+    volumes:
+      - ./data/postgresql:/var/lib/postgresql/data
+    env_file:
+      - conf/sqlbot.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
