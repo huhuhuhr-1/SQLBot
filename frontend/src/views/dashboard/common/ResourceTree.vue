@@ -329,7 +329,7 @@ defineExpose({
           effect="dark"
         >
           <el-icon
-            class="custom-icon btn hover-icon_with_bg"
+            class="custom-icon btn hover-icon_with_bg primary-icon"
             @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
           >
             <Icon name="dv-new-folder">
