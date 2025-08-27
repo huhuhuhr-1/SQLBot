@@ -127,7 +127,18 @@ const routerList = computed(() => {
     border-radius: 6px;
     &.is-active {
       background-color: #fff !important;
+      font-weight: 500;
     }
   }
+}
+.ed-sub-menu {
+  .subTitleMenu {
+    display: none;
+  }
+}
+
+.ed-menu--popup-container .subTitleMenu {
+  color: #646a73 !important;
+  pointer-events: none;
 }
 </style>

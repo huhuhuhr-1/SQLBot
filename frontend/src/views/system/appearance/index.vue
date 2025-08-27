@@ -289,13 +289,6 @@ const loginForm = reactive<LoginForm>(cloneDeep(defaultLoginForm))
 
 const rules = reactive<FormRules>({
   name: [{ required: true, message: t('system.the_website_name'), trigger: 'blur' }],
-  slogan: [
-    {
-      required: true,
-      message: t('system.enter_the_slogan'),
-      trigger: 'blur',
-    },
-  ],
   foot: [
     {
       required: true,

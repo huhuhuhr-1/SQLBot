@@ -170,10 +170,11 @@ class AiModelQuestion(BaseModel):
     lang: str = "简体中文"
     filter: str = []
     sub_query: Optional[list[dict]] = None
+    terminologies: str = ""
 
     def sql_sys_question(self):
         return get_sql_template()['system'].format(engine=self.engine, schema=self.db_schema, question=self.question,
-                                                   lang=self.lang)
+                                                   lang=self.lang, terminologies=self.terminologies)
 
     def sql_user_question(self):
         return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=self.question,
@@ -186,7 +187,7 @@ class AiModelQuestion(BaseModel):
         return get_chart_template()['user'].format(sql=self.sql, question=self.question, rule=self.rule)
 
     def analysis_sys_question(self):
-        return get_analysis_template()['system'].format(lang=self.lang)
+        return get_analysis_template()['system'].format(lang=self.lang, terminologies=self.terminologies)
 
     def analysis_user_question(self):
         return get_analysis_template()['user'].format(fields=self.fields, data=self.data)

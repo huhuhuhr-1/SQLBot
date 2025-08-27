@@ -88,9 +88,9 @@ class Settings(BaseSettings):
 
     LOCAL_MODEL_PATH: str = '/opt/sqlbot/models'
     DEFAULT_EMBEDDING_MODEL: str = 'shibing624/text2vec-base-chinese'
-
-    EMBEDDING_SIMILARITY: float = 0.6
-    EMBEDDING_TOP_COUNT: int = 3
+    EMBEDDING_ENABLED: bool = True
+    EMBEDDING_SIMILARITY: float = 0.4
+    EMBEDDING_TOP_COUNT: int = 5
 
 
 settings = Settings()  # type: ignore
