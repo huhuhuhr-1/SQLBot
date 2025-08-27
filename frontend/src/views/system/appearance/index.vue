@@ -148,12 +148,7 @@
                 <div class="navigate-preview" style="height: 425px">
                   <div class="navigate-head">
                     <div class="header-sql">
-                      <img
-                        v-if="navigate"
-                        class="logo"
-                        :src="navigate.startsWith('blob') ? navigate : baseUrl + navigate"
-                        alt=""
-                      />
+                      <custom_small v-if="themeColor === 'custom'" class="logo" />
 
                       <img
                         v-else-if="isBlue"
@@ -224,6 +219,7 @@
 
 <script lang="ts" setup>
 import logo from '@/assets/LOGO.svg'
+import custom_small from '@/assets/svg/LOGO-custom.svg'
 import { ref, unref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import {
   type FormInstance,
@@ -268,8 +264,6 @@ const COLOR_PANEL = [
   '#000000',
   '#FFFFFF',
 ]
-const basePath = import.meta.env.VITE_API_BASEPATH
-const baseUrl = basePath + '/system/appearance/image/'
 const fileList = ref<(UploadUserFile & { flag: string })[]>([])
 const navigateBg = ref('dark')
 const themeColor = ref('default')
@@ -295,13 +289,6 @@ const loginForm = reactive<LoginForm>(cloneDeep(defaultLoginForm))
 
 const rules = reactive<FormRules>({
   name: [{ required: true, message: t('system.the_website_name'), trigger: 'blur' }],
-  slogan: [
-    {
-      required: true,
-      message: t('system.enter_the_slogan'),
-      trigger: 'blur',
-    },
-  ],
   foot: [
     {
       required: true,

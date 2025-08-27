@@ -31,6 +31,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.schemas.system_schema import AssistantOutDsSchema
+from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, CurrentUser
 from common.error import SingleMessageError
@@ -69,7 +70,7 @@ class LLMService:
     future: Future
 
     def __init__(self, current_user: CurrentUser, chat_question: ChatQuestion,
-                 current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False):
+                 current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False, config: LLMConfig = None):
         self.chunk_list = []
         engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
         session_maker = sessionmaker(bind=engine)
@@ -109,7 +110,7 @@ class LLMService:
 
         self.ds = (ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None
         self.chat_question = chat_question
-        self.config = get_default_config()
+        self.config = config
         if no_reasoning:
             # only work while using qwen
             if self.config.additional_params:
@@ -125,6 +126,12 @@ class LLMService:
         self.llm = llm_instance.llm
 
         self.init_messages()
+    
+    @classmethod
+    async def create(cls, *args, **kwargs):
+        config: LLMConfig = await get_default_config()
+        instance = cls(*args, **kwargs, config=config)
+        return instance
 
     def is_running(self, timeout=0.5):
         try:
@@ -210,6 +217,9 @@ class LLMService:
         data = get_chat_chart_data(self.session, self.record.id)
         self.chat_question.data = orjson.dumps(data.get('data')).decode()
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
+
+        self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question)
+
         analysis_msg.append(SystemMessage(content=self.chat_question.analysis_sys_question()))
         analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
 
@@ -860,6 +870,9 @@ class LLMService:
 
     def run_task(self, in_chat: bool = True):
         try:
+            self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question)
+            self.init_messages()
+
             # return id
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'

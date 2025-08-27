@@ -107,7 +107,7 @@ async def mcp_question(session: SessionDep, chat: McpQuestion):
 
     mcp_chat = ChatMcp(token=chat.token, chat_id=chat.chat_id, question=chat.question)
     # ask
-    llm_service = LLMService(session_user, mcp_chat)
+    llm_service = await LLMService.create(session_user, mcp_chat)
     llm_service.init_record()
 
     return StreamingResponse(llm_service.run_task(False), media_type="text/event-stream")
