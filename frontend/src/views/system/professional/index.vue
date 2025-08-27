@@ -204,7 +204,7 @@ const search = () => {
 const termFormRef = ref()
 
 const rules = {
-  name: [
+  word: [
     {
       required: true,
       message: t('datasource.please_enter') + t('common.empty') + t('professional.term_name'),
@@ -358,12 +358,29 @@ const deleteHandlerItem = (idx: number) => {
           @selection-change="handleSelectionChange"
         >
           <el-table-column :selectable="selectable" type="selection" width="55" />
-          <el-table-column prop="word" :label="$t('professional.term_name')" width="280" />
+          <el-table-column prop="word" :label="$t('professional.term_name')" width="280">
+            <template #default="scope">
+              {{ scope.row.word }}
+              <span style="display: inline-block; width: 8px; height: 1px"></span>
+              {{
+                scope.row.other_words.filter((ele: any) => !!ele).length
+                  ? `(${scope.row.other_words.join(',')})`
+                  : ''
+              }}
+            </template>
+          </el-table-column>
           <el-table-column
             prop="description"
             :label="$t('professional.term_description')"
             min-width="240"
-          />
+            ><template #default="scope">
+              <div class="field-comment_d">
+                <span :title="scope.row.description" class="notes-in_table">{{
+                  scope.row.description
+                }}</span>
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column
             prop="create_time"
             sortable
@@ -566,14 +583,6 @@ const deleteHandlerItem = (idx: number) => {
         </div>
       </el-form-item>
     </el-form>
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button secondary @click="onRowFormClose">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="saveHandler">
-          {{ $t('common.save') }}
-        </el-button>
-      </div>
-    </template>
   </el-drawer>
 </template>
 
@@ -621,6 +630,20 @@ const deleteHandlerItem = (idx: number) => {
     }
 
     .preview-or-schema {
+      .field-comment_d {
+        display: flex;
+        align-items: center;
+        min-height: 24px;
+      }
+      .notes-in_table {
+        max-width: 100%;
+        display: -webkit-box;
+        max-height: 66px;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2; /* 限制行数为3 */
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .ed-icon {
         color: #646a73;
       }

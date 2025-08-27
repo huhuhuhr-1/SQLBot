@@ -97,6 +97,7 @@ const init = () => {
 const giveUp = () => {
   resetSqlBotForm(false)
   init()
+  dialogVisible.value = false
 }
 
 const emits = defineEmits(['refresh'])
@@ -201,7 +202,6 @@ const clearFiles = (array?: string[]) => {
 }
 
 const open = (row: any) => {
-  console.log(JSON.parse(row.configuration))
   rawData = JSON.parse(row.configuration)
   currentId.value = row.id
   dialogVisible.value = true

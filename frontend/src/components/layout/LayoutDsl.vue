@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import { ref, computed } from 'vue'
 import Menu from './Menu.vue'
+import LOGOCustom from '@/assets/svg/LOGO-custom.svg'
+import custom_small from '@/assets/svg/logo-custom_small.svg'
 import Workspace from './Workspace.vue'
 import Person from './Person.vue'
 import LOGO from '@/assets/LOGO.svg'
@@ -50,6 +52,10 @@ const showSysmenu = computed(() => {
           style="margin: 0 0 6px 5px"
         />
         <img v-else width="130" height="31" :src="logo_blue" style="margin-bottom: 6px" />
+      </template>
+      <template v-else-if="appearanceStore.themeColor === 'custom'">
+        <custom_small v-if="collapse" style="margin: 0 0 6px 5px"></custom_small>
+        <LOGOCustom v-else style="margin-bottom: 6px"></LOGOCustom>
       </template>
       <template v-else>
         <LOGO_fold v-if="collapse" style="margin: 0 0 6px 5px"></LOGO_fold>
