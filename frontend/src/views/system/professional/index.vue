@@ -528,6 +528,7 @@ const deleteHandlerItem = (idx: number) => {
                 :placeholder="
                   $t('datasource.please_enter') + $t('common.empty') + $t('professional.synonyms')
                 "
+                maxlength="100"
                 clearable
               />
               <el-tooltip

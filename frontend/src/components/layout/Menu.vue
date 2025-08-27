@@ -91,9 +91,16 @@ const routerList = computed(() => {
     border-radius: 6px;
   }
 
-  .ed-sub-menu.is-active {
+  .ed-sub-menu.is-active:not(.is-opened) {
     .ed-sub-menu__title {
       background-color: #fff !important;
+      color: var(--ed-color-primary) !important;
+      font-weight: 500;
+    }
+  }
+
+  .ed-sub-menu.is-active.is-opened {
+    .ed-sub-menu__title {
       color: var(--ed-color-primary) !important;
       font-weight: 500;
     }
