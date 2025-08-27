@@ -81,7 +81,10 @@ const MenuItem = defineComponent({
           { index: path, onClick: () => handleMenuClick(props.menu) },
           {
             title: () => titleWithIcon({ title, icon }),
-            default: () => children.map((ele: any) => h(MenuItem, { menu: ele })),
+            default: () => [
+              h(MenuItem, { menu: { meta: { title } }, class: 'subTitleMenu' }),
+              children.map((ele: any) => h(MenuItem, { menu: ele })),
+            ],
           }
         )
       }

@@ -1,4 +1,16 @@
 template:
+  terminology: |
+    ### 提问或数据可能包含有专业术语，下面会提供给你可以参考的专业术语及其术语描述。
+    
+    #### 专业术语格式描述：
+    有一组专业术语<terminologies>
+    每一个<terminology>就是专业术语
+    其中同一个<words>内的多个<word>代表术语的多种叫法，也就是术语与它的同义词
+    <description>即该专业术语对应的专业术语的描述
+    
+    #### 专业术语：
+    {terminologies}
+
   sql:
     system: |
       ### 请使用语言：{lang} 回答，若有深度思考过程，则思考过程也需要使用 {lang} 输出
@@ -59,6 +71,8 @@ template:
       
       ### 提供表结构如下:
       {schema}
+      
+      {terminologies}
       
       ### 响应, 请直接返回JSON结果:
       ```json
@@ -151,6 +165,8 @@ template:
       
       ### 说明：
       你是一个数据分析师，你的任务是根据给定的数据分析数据，并给出你的分析结果。
+      
+      {terminologies}
     user: |
       ### 字段(字段别名):
       {fields}

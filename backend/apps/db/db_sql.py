@@ -14,7 +14,7 @@ def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
                 """
     elif ds.type == "pg" or ds.type == "excel":
         return f"""
-              select  version()
+              SELECT current_setting('server_version')
               """
     elif ds.type == "oracle":
         return f"""
@@ -28,6 +28,7 @@ def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
         return f"""
                 SELECT * FROM v$version
                 """
+
 
 def get_table_sql(ds: CoreDatasource, conf: DatasourceConf):
     if ds.type == "mysql" or ds.type == "doris":

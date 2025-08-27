@@ -1,11 +1,23 @@
 import datetime
+import logging
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
+from xml.dom.minidom import parseString
 
-from sqlalchemy import and_, or_, select, func, delete, update
+import dicttoxml
+from sqlalchemy import and_, or_, select, func, delete, update, union
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import aliased
+from sqlalchemy.orm import sessionmaker
 
+from apps.ai_model.embedding import EmbeddingModelCache
+from apps.template.generate_chart.generator import get_base_terminology_template
 from apps.terminology.models.terminology_model import Terminology, TerminologyInfo
+from common.core.config import settings
 from common.core.deps import SessionDep
+
+executor = ThreadPoolExecutor(max_workers=200)
 
 
 def page_terminology(session: SessionDep, current_page: int = 1, page_size: int = 10, name: Optional[str] = None):
@@ -24,7 +36,7 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
         # 步骤1：先找到所有匹配的节点ID（无论是父节点还是子节点）
         matched_ids_subquery = (
             select(Terminology.id)
-            .where(Terminology.word.like(keyword_pattern))  # LIKE查询条件
+            .where(Terminology.word.ilike(keyword_pattern))  # LIKE查询条件
             .subquery()
         )
 
@@ -82,7 +94,6 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
             .where(Terminology.id.in_(paginated_parent_ids))
             .order_by(Terminology.create_time.desc())
         )
-        print(str(stmt))
     else:
         parent_ids_subquery = (
             select(Terminology.id)
@@ -113,7 +124,6 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
             .group_by(Terminology.id, Terminology.word)
             .order_by(Terminology.create_time.desc())
         )
-        print(str(stmt))
 
     result = session.execute(stmt)
 
@@ -145,13 +155,16 @@ def create_terminology(session: SessionDep, info: TerminologyInfo):
     _list: List[Terminology] = []
     if info.other_words:
         for other_word in info.other_words:
+            if other_word.strip() == "":
+                continue
             _list.append(
                 Terminology(pid=result.id, word=other_word, create_time=create_time))
     session.bulk_save_objects(_list)
     session.flush()
     session.commit()
 
-    # todo embedding
+    # embedding
+    run_save_embeddings([result.id])
 
     return result.id
 
@@ -172,13 +185,16 @@ def update_terminology(session: SessionDep, info: TerminologyInfo):
     _list: List[Terminology] = []
     if info.other_words:
         for other_word in info.other_words:
+            if other_word.strip() == "":
+                continue
             _list.append(
                 Terminology(pid=info.id, word=other_word, create_time=create_time))
     session.bulk_save_objects(_list)
     session.flush()
     session.commit()
 
-    # todo embedding
+    # embedding
+    run_save_embeddings([info.id])
 
     return info.id
 
@@ -187,3 +203,172 @@ def delete_terminology(session: SessionDep, ids: list[int]):
     stmt = delete(Terminology).where(or_(Terminology.id.in_(ids), Terminology.pid.in_(ids)))
     session.execute(stmt)
     session.commit()
+
+
+def run_save_embeddings(ids: List[int]):
+    executor.submit(save_embeddings, ids)
+
+
+def fill_empty_embeddings():
+    executor.submit(run_fill_empty_embeddings)
+
+
+def run_fill_empty_embeddings():
+    if not settings.EMBEDDING_ENABLED:
+        return
+    engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+    session_maker = sessionmaker(bind=engine)
+    session = session_maker()
+    stmt1 = select(Terminology.id).where(and_(Terminology.embedding.is_(None), Terminology.pid.is_(None)))
+    stmt2 = select(Terminology.pid).where(and_(Terminology.embedding.is_(None), Terminology.pid.isnot(None))).distinct()
+    combined_stmt = union(stmt1, stmt2)
+    results = session.execute(combined_stmt).scalars().all()
+    save_embeddings(results)
+
+
+def save_embeddings(ids: List[int]):
+    if not settings.EMBEDDING_ENABLED:
+        return
+
+    if not ids or len(ids) == 0:
+        return
+    try:
+        engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+        session_maker = sessionmaker(bind=engine)
+        session = session_maker()
+
+        _list = session.query(Terminology).filter(or_(Terminology.id.in_(ids), Terminology.pid.in_(ids))).all()
+
+        _words_list = [item.word for item in _list]
+
+        model = EmbeddingModelCache.get_model()
+
+        results = model.embed_documents(_words_list)
+
+        for index in range(len(results)):
+            item = results[index]
+            stmt = update(Terminology).where(and_(Terminology.id == _list[index].id)).values(embedding=item)
+            session.execute(stmt)
+            session.commit()
+
+    except Exception:
+        traceback.print_exc()
+
+
+embedding_sql = f"""
+SELECT id, pid, word, description, similarity
+FROM
+(SELECT id, pid, word, 
+COALESCE(
+        description,
+        (SELECT description FROM terminology AS parent WHERE parent.id = child.pid)
+    ) AS description,
+( 1 - (embedding <=> :embedding_array) ) AS similarity
+FROM terminology AS child
+) TEMP
+WHERE similarity > {settings.EMBEDDING_SIMILARITY}
+ORDER BY similarity DESC
+LIMIT {settings.EMBEDDING_TOP_COUNT}
+"""
+
+
+def select_terminology_by_word(session: SessionDep, word: str):
+    if word.strip() == "":
+        return []
+
+    _list: List[Terminology] = []
+
+    stmt = (
+        select(
+            Terminology.id,
+            Terminology.pid,
+            Terminology.word,
+            func.coalesce(
+                Terminology.description,
+                select(Terminology.description)
+                .where(and_(Terminology.id == Terminology.pid))
+                .scalar_subquery()
+            ).label('description')
+        )
+        .where(
+            text(":sentence ILIKE '%' || word || '%'")
+        )
+    )
+
+    results = session.execute(stmt, {'sentence': word}).fetchall()
+
+    for row in results:
+        _list.append(Terminology(id=row.id, word=row.word, pid=row.pid, description=row.description))
+
+    if settings.EMBEDDING_ENABLED:
+        try:
+            model = EmbeddingModelCache.get_model()
+
+            embedding = model.embed_query(word)
+
+            print(embedding_sql)
+            results = session.execute(text(embedding_sql), {'embedding_array': str(embedding)})
+
+            for row in results:
+                _list.append(Terminology(id=row.id, word=row.word, pid=row.pid, description=row.description))
+
+        except Exception:
+            traceback.print_exc()
+
+    _map: dict = {}
+    _ids: set[int] = set()
+    for row in _list:
+        if row.id in _ids:
+            continue
+        _ids.add(row.id)
+        if row.pid:
+            pid = str(row.pid)
+        else:
+            pid = str(row.id)
+        if _map.get(pid) is None:
+            _map[pid] = {'words': [], 'description': row.description}
+        _map[pid]['words'].append(row.word)
+
+    _results: list[dict] = []
+    for key in _map.keys():
+        _results.append(_map.get(key))
+
+    return _results
+
+
+def get_example():
+    _obj = {
+        'terminologies': [
+            {'words': ['GDP', '国内生产总值'],
+             'description': '指在一个季度或一年，一个国家或地区的经济中所生产出的全部最终产品和劳务的价值。'},
+        ]
+    }
+    return to_xml_string(_obj, 'example')
+
+
+def to_xml_string(_dict: list[dict] | dict, root: str = 'terminologies') -> str:
+    item_name_func = lambda x: 'terminology' if x == 'terminologies' else 'word' if x == 'words' else 'item'
+    dicttoxml.LOG.setLevel(logging.ERROR)
+    xml = dicttoxml.dicttoxml(_dict,
+                              custom_root=root,
+                              item_func=item_name_func,
+                              xml_declaration=False,
+                              encoding='utf-8',
+                              attr_type=False).decode('utf-8')
+    pretty_xml = parseString(xml).toprettyxml()
+
+    if pretty_xml.startswith('<?xml'):
+        end_index = pretty_xml.find('>') + 1
+        pretty_xml = pretty_xml[end_index:].lstrip()
+
+    return pretty_xml
+
+
+def get_terminology_template(session: SessionDep, question: str) -> str:
+    _results = select_terminology_by_word(session, question)
+    if _results and len(_results) > 0:
+        terminology = to_xml_string(_results)
+        template = get_base_terminology_template().format(terminologies=terminology)
+        return template
+    else:
+        return ''

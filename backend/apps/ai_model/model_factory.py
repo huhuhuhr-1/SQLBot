@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 from apps.ai_model.openai.llm import BaseChatOpenAI
 from apps.system.models.system_model import AiModelDetail
 from common.core.db import engine
+from common.utils.crypto import sqlbot_decrypt
 from common.utils.utils import prepare_model_arg
 from langchain_community.llms import VLLMOpenAI
 from langchain_openai import AzureChatOpenAI
@@ -137,7 +138,7 @@ class LLMFactory:
     return config """
 
 
-def get_default_config() -> LLMConfig:
+async def get_default_config() -> LLMConfig:
     with Session(engine) as session:
         db_model = session.exec(
             select(AiModelDetail).where(AiModelDetail.default_model == True)
@@ -152,6 +153,11 @@ def get_default_config() -> LLMConfig:
                 additional_params = {item["key"]: prepare_model_arg(item.get('val')) for item in config_raw if "key" in item and "val" in item}
             except Exception:
                 pass
+        if not db_model.api_domain.startswith("http"):
+            db_model.api_domain = await sqlbot_decrypt(db_model.api_domain)
+            if db_model.api_key:
+                db_model.api_key = await sqlbot_decrypt(db_model.api_key)
+            
 
         # 构造 LLMConfig
         return LLMConfig(

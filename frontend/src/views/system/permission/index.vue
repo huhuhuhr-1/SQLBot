@@ -667,6 +667,8 @@ const columnRules = {
                   display: flex;
                   align-items: center;
                   justify-content: space-between;
+                  font-size: 16px;
+                  font-weight: 500;
                 "
               >
                 {{ t('permission.permission_rule') }}

@@ -1,4 +1,5 @@
 # Build sqlbot
+FROM ghcr.io/1panel-dev/maxkb-vector-model:v1.0.1 AS vector-model
 FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS sqlbot-builder
 
 # Set build environment variables
@@ -32,7 +33,7 @@ COPY ./backend ${APP_HOME}
 
 # Final sync to ensure all dependencies are installed
 RUN --mount=type=cache,target=/root/.cache/uv \
-   uv sync
+   uv sync --extra cpu
 
 # Build g2-ssr
 FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS ssr-builder
@@ -58,6 +59,7 @@ COPY start.sh /opt/sqlbot/app/start.sh
 COPY g2-ssr/*.ttf /usr/share/fonts/truetype/liberation/
 COPY --from=sqlbot-builder ${SQLBOT_HOME} ${SQLBOT_HOME}
 COPY --from=ssr-builder /app /opt/sqlbot/g2-ssr
+COPY --from=vector-model /opt/maxkb/app/model /opt/sqlbot/models
 
 WORKDIR ${SQLBOT_HOME}/app
 
