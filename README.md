@@ -33,7 +33,10 @@ curl -o docker-compose.yaml https://raw.githubusercontent.com/dataease/SQLBot/ma
 docker compose up -d
 ```
 
-你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署 SQLBot；
+你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署 SQLBot。
+
+如果是内网环境，你可以通过 [离线安装包方式](https://community.fit2cloud.com/#/products/sqlbot/downloads) 部署 SQLBot。
+
 
 ### 访问方式
 

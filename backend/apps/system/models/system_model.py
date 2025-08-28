@@ -14,8 +14,8 @@ class AiModelBase:
 
 class AiModelDetail(SnowflakeBase, AiModelBase, table=True):
    __tablename__ = "ai_model"
-   api_key: str | None = Field(max_length=255, nullable=True)
-   api_domain: str = Field(max_length=255, nullable=False)
+   api_key: str | None = Field(nullable=True)
+   api_domain: str = Field(nullable=False)
    protocol: int = Field(nullable=False, default = 1)
    config: str = Field(sa_type = Text())
    status: int = Field(nullable=False, default = 1)

@@ -12,7 +12,7 @@ template:
           <Infos>内有<db-engine><m-schema><terminologies>等信息；
           其中，<db-engine>：提供数据库引擎及版本信息；
           <m-schema>：以 M-Schema 格式提供数据库表结构信息；
-          <terminologies>：提供一组专业术语，块内每一个<terminology>就是专业术语，其中同一个<words>内的多个<word>代表术语的多种叫法，也就是术语与它的同义词，<description>即该专业术语对应的专业术语的描述，其中也可能是能够用来参考的计算公式
+          <terminologies>：提供一组专业术语，块内每一个<terminology>就是专业术语，其中同一个<words>内的多个<word>代表术语的多种叫法，也就是术语与它的同义词，<description>即该专业术语对应的专业术语的描述，其中也可能是能够用来参考的计算公式，或者是一些其他的查询条件
         用户的提问在<user-question>内，<error-msg>内则会提供上次执行你提供的SQL时会出现的错误信息，<background-infos>内的<current-time>会告诉你用户当前提问的时间
       </Instruction>
       
@@ -128,6 +128,13 @@ template:
                 </words>
                 <description>指在一个季度或一年，一个国家或地区的经济中所生产出的全部最终产品和劳务的价值。</description>
             </terminology>
+            <terminology>
+                <words>
+                    <word>中国</word>
+                    <word>中国大陆</word>
+                </words>
+                <description>查询SQL时若作为查询条件，将"中国"作为查询用的值</description>
+            </terminology>
         </terminologies>
         </Info>
       
@@ -166,7 +173,7 @@ template:
               <user-question>查询各个国家每年的GDP</user-question>
             </input>
             <output>
-                {{"success":true,"sql":"SELECT \"country\" AS \"country_alias\", \"continent\" AS \"continent_alias\", \"year\" AS \"year_alias\", \"gdp\" AS \"gdp_alias\" FROM \"Sample_Database\".\"sample_country_gdp\" ORDER BY \"country\", \"year\" LIMIT 1000","tables":["sample_country_gdp"],"chart-type":"line"}}
+                {{"success":true,"sql":"SELECT \"country\" AS \"country_name\", \"continent\" AS \"continent_name\", \"year\" AS \"year\", \"gdp\" AS \"gdp\" FROM \"Sample_Database\".\"sample_country_gdp\" ORDER BY \"country\", \"year\" LIMIT 1000","tables":["sample_country_gdp"],"chart-type":"line"}}
             </output>
           </example>
           <example>
@@ -178,7 +185,20 @@ template:
               <background-infos>
               <user-question>使用饼图展示去年各个国家的GDP</user-question>
             </input>
-                {{"success":true,"sql":"SELECT \"country\" AS \"country_alias\", \"gdp\" AS \"gdp_alias\" FROM \"Sample_Database\".\"sample_country_gdp\" WHERE \"year\" = '2024' ORDER BY \"gdp\" DESC LIMIT 1000","tables":["sample_country_gdp"],"chart-type":"pie"}}
+                {{"success":true,"sql":"SELECT \"country\" AS \"country_name\", \"gdp\" AS \"gdp\" FROM \"Sample_Database\".\"sample_country_gdp\" WHERE \"year\" = '2024' ORDER BY \"gdp\" DESC LIMIT 1000","tables":["sample_country_gdp"],"chart-type":"pie"}}
+            <output>
+            </output>
+          </example>
+          <example>
+            <input>
+              <background-infos>
+                <current-time>
+                2025-08-08 11:24:00
+                </current-time>
+              <background-infos>
+              <user-question>查询今年中国大陆的GDP</user-question>
+            </input>
+                {{"success":true,"sql":"SELECT \"country\" AS \"country_name\", \"gdp\" AS \"gdp\" FROM \"Sample_Database\".\"sample_country_gdp\" WHERE \"year\" = '2025' AND \"国家\" = '中国' LIMIT 1000","tables":["sample_country_gdp"],"chart-type":"table"}}
             <output>
             </output>
           </example>

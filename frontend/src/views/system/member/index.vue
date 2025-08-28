@@ -19,6 +19,7 @@ const { t } = useI18n()
 const multipleSelectionAll = ref<any[]>([])
 const keywordsMember = ref('')
 const userStore = useUserStore()
+const searchLoading = ref(false)
 
 const workspaceForm = reactive({
   name: '',
@@ -134,18 +135,19 @@ const handleToggleRowSelection = (check: boolean = true) => {
 }
 
 const search = () => {
-  workspaceUserList(
-    { keyword: keywordsMember.value },
-    pageInfo.currentPage,
-    pageInfo.pageSize
-  ).then((res) => {
-    toggleRowLoading.value = true
-    fieldList.value = res.items
-    pageInfo.total = res.total
-    nextTick(() => {
-      handleToggleRowSelection()
+  searchLoading.value = true
+  workspaceUserList({ keyword: keywordsMember.value }, pageInfo.currentPage, pageInfo.pageSize)
+    .then((res) => {
+      toggleRowLoading.value = true
+      fieldList.value = res.items
+      pageInfo.total = res.total
+      nextTick(() => {
+        handleToggleRowSelection()
+      })
     })
-  })
+    .finally(() => {
+      searchLoading.value = false
+    })
 }
 
 const closeField = () => {
@@ -204,7 +206,7 @@ const handleCurrentChange = (val: number) => {
 </script>
 
 <template>
-  <div class="member">
+  <div v-loading="searchLoading" class="member">
     <div class="tool-left">
       <span class="page-title">{{ $t('workspace.member_management') }}</span>
       <div class="search-bar">

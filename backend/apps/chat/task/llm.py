@@ -220,7 +220,7 @@ class LLMService:
         self.chat_question.data = orjson.dumps(data.get('data')).decode()
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
 
-        self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question)
+        self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question, self.current_user.oid)
 
         analysis_msg.append(SystemMessage(content=self.chat_question.analysis_sys_question()))
         analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
@@ -894,7 +894,7 @@ class LLMService:
 
     def run_task(self, in_chat: bool = True):
         try:
-            self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question)
+            self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question, self.current_user.oid)
             self.init_messages()
 
             # return id

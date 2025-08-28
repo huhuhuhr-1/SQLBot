@@ -15,12 +15,13 @@ from apps.ai_model.embedding import EmbeddingModelCache
 from apps.template.generate_chart.generator import get_base_terminology_template
 from apps.terminology.models.terminology_model import Terminology, TerminologyInfo
 from common.core.config import settings
-from common.core.deps import SessionDep
+from common.core.deps import SessionDep, Trans
 
 executor = ThreadPoolExecutor(max_workers=200)
 
 
-def page_terminology(session: SessionDep, current_page: int = 1, page_size: int = 10, name: Optional[str] = None):
+def page_terminology(session: SessionDep, current_page: int = 1, page_size: int = 10, name: Optional[str] = None,
+                     oid: Optional[int] = 1):
     _list: List[TerminologyInfo] = []
 
     child = aliased(Terminology)
@@ -58,6 +59,10 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
         total_count = session.execute(count_stmt).scalar()
         total_pages = (total_count + page_size - 1) // page_size
 
+        if current_page > total_pages:
+            current_page = 1
+
+
         # 步骤3：获取分页后的父节点ID
         paginated_parent_ids = (
             parent_ids_subquery
@@ -91,7 +96,7 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
                 children_subquery,
                 Terminology.id == children_subquery.c.pid
             )
-            .where(Terminology.id.in_(paginated_parent_ids))
+            .where(and_(Terminology.id.in_(paginated_parent_ids), Terminology.oid == oid))
             .order_by(Terminology.create_time.desc())
         )
     else:
@@ -102,6 +107,9 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
         count_stmt = select(func.count()).select_from(parent_ids_subquery.subquery())
         total_count = session.execute(count_stmt).scalar()
         total_pages = (total_count + page_size - 1) // page_size
+
+        if current_page > total_pages:
+            current_page = 1
 
         paginated_parent_ids = (
             parent_ids_subquery
@@ -120,7 +128,7 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
                 func.jsonb_agg(child.word).filter(child.word.isnot(None)).label('other_words')
             )
             .outerjoin(child, and_(Terminology.id == child.pid))
-            .where(Terminology.id.in_(paginated_parent_ids))
+            .where(and_(Terminology.id.in_(paginated_parent_ids), Terminology.oid == oid))
             .group_by(Terminology.id, Terminology.word)
             .order_by(Terminology.create_time.desc())
         )
@@ -139,9 +147,9 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
     return current_page, page_size, total_count, total_pages, _list
 
 
-def create_terminology(session: SessionDep, info: TerminologyInfo):
+def create_terminology(session: SessionDep, info: TerminologyInfo, oid: int):
     create_time = datetime.datetime.now()
-    parent = Terminology(word=info.word, create_time=create_time, description=info.description)
+    parent = Terminology(word=info.word, create_time=create_time, description=info.description, oid=oid)
 
     result = Terminology(**parent.model_dump())
 
@@ -158,7 +166,7 @@ def create_terminology(session: SessionDep, info: TerminologyInfo):
             if other_word.strip() == "":
                 continue
             _list.append(
-                Terminology(pid=result.id, word=other_word, create_time=create_time))
+                Terminology(pid=result.id, word=other_word, create_time=create_time, oid=oid))
     session.bulk_save_objects(_list)
     session.flush()
     session.commit()
@@ -169,7 +177,14 @@ def create_terminology(session: SessionDep, info: TerminologyInfo):
     return result.id
 
 
-def update_terminology(session: SessionDep, info: TerminologyInfo):
+def update_terminology(session: SessionDep, info: TerminologyInfo, oid: int, trans: Trans):
+    count = session.query(Terminology).filter(
+        Terminology.oid == oid,
+        Terminology.id == info.id
+    ).count()
+    if count == 0:
+        raise Exception(trans('i18n_terminology.terminology_not_exists'))
+
     stmt = update(Terminology).where(and_(Terminology.id == info.id)).values(
         word=info.word,
         description=info.description,
@@ -188,13 +203,14 @@ def update_terminology(session: SessionDep, info: TerminologyInfo):
             if other_word.strip() == "":
                 continue
             _list.append(
-                Terminology(pid=info.id, word=other_word, create_time=create_time))
+                Terminology(pid=info.id, word=other_word, create_time=create_time, oid=oid))
     session.bulk_save_objects(_list)
     session.flush()
     session.commit()
 
     # embedding
     run_save_embeddings([info.id])
+
 
     return info.id
 
@@ -256,23 +272,19 @@ def save_embeddings(ids: List[int]):
 
 
 embedding_sql = f"""
-SELECT id, pid, word, description, similarity
+SELECT id, pid, word, similarity
 FROM
-(SELECT id, pid, word, 
-COALESCE(
-        description,
-        (SELECT description FROM terminology AS parent WHERE parent.id = child.pid)
-    ) AS description,
+(SELECT id, pid, word, oid,
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM terminology AS child
 ) TEMP
-WHERE similarity > {settings.EMBEDDING_SIMILARITY}
+WHERE similarity > {settings.EMBEDDING_SIMILARITY} and oid = :oid
 ORDER BY similarity DESC
 LIMIT {settings.EMBEDDING_TOP_COUNT}
 """
 
 
-def select_terminology_by_word(session: SessionDep, word: str):
+def select_terminology_by_word(session: SessionDep, word: str, oid: int):
     if word.strip() == "":
         return []
 
@@ -283,22 +295,16 @@ def select_terminology_by_word(session: SessionDep, word: str):
             Terminology.id,
             Terminology.pid,
             Terminology.word,
-            func.coalesce(
-                Terminology.description,
-                select(Terminology.description)
-                .where(and_(Terminology.id == Terminology.pid))
-                .scalar_subquery()
-            ).label('description')
         )
         .where(
-            text(":sentence ILIKE '%' || word || '%'")
+            and_(text(":sentence ILIKE '%' || word || '%'"), Terminology.oid == oid)
         )
     )
 
     results = session.execute(stmt, {'sentence': word}).fetchall()
 
     for row in results:
-        _list.append(Terminology(id=row.id, word=row.word, pid=row.pid, description=row.description))
+        _list.append(Terminology(id=row.id, word=row.word, pid=row.pid))
 
     if settings.EMBEDDING_ENABLED:
         try:
@@ -306,25 +312,31 @@ def select_terminology_by_word(session: SessionDep, word: str):
 
             embedding = model.embed_query(word)
 
-            print(embedding_sql)
-            results = session.execute(text(embedding_sql), {'embedding_array': str(embedding)})
+            results = session.execute(text(embedding_sql), {'embedding_array': str(embedding), 'oid': oid})
 
             for row in results:
-                _list.append(Terminology(id=row.id, word=row.word, pid=row.pid, description=row.description))
+                _list.append(Terminology(id=row.id, word=row.word, pid=row.pid))
 
         except Exception:
             traceback.print_exc()
 
     _map: dict = {}
-    _ids: set[int] = set()
+    _ids: list[int] = []
     for row in _list:
-        if row.id in _ids:
+        if row.id in _ids or row.pid in _ids:
             continue
-        _ids.add(row.id)
-        if row.pid:
-            pid = str(row.pid)
+        if row.pid is not None:
+            _ids.append(row.pid)
         else:
-            pid = str(row.id)
+            _ids.append(row.id)
+
+    if len(_ids) == 0:
+        return []
+
+    t_list = session.query(Terminology.id, Terminology.pid, Terminology.word, Terminology.description).filter(
+        or_(Terminology.id.in_(_ids), Terminology.pid.in_(_ids))).all()
+    for row in t_list:
+        pid = str(row.pid) if row.pid is not None else str(row.id)
         if _map.get(pid) is None:
             _map[pid] = {'words': [], 'description': row.description}
         _map[pid]['words'].append(row.word)
@@ -350,6 +362,7 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'terminologies') -> str:
     item_name_func = lambda x: 'terminology' if x == 'terminologies' else 'word' if x == 'words' else 'item'
     dicttoxml.LOG.setLevel(logging.ERROR)
     xml = dicttoxml.dicttoxml(_dict,
+                              cdata=['word', 'description'],
                               custom_root=root,
                               item_func=item_name_func,
                               xml_declaration=False,
@@ -361,11 +374,22 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'terminologies') -> str:
         end_index = pretty_xml.find('>') + 1
         pretty_xml = pretty_xml[end_index:].lstrip()
 
+    # 替换所有 XML 转义字符
+    escape_map = {
+        '&lt;': '<',
+        '&gt;': '>',
+        '&amp;': '&',
+        '&quot;': '"',
+        '&apos;': "'"
+    }
+    for escaped, original in escape_map.items():
+        pretty_xml = pretty_xml.replace(escaped, original)
+
     return pretty_xml
 
 
-def get_terminology_template(session: SessionDep, question: str) -> str:
-    _results = select_terminology_by_word(session, question)
+def get_terminology_template(session: SessionDep, question: str, oid: int) -> str:
+    _results = select_terminology_by_word(session, question, oid)
     if _results and len(_results) > 0:
         terminology = to_xml_string(_results)
         template = get_base_terminology_template().format(terminologies=terminology)

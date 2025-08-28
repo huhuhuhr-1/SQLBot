@@ -155,8 +155,19 @@ def check_connection(trans: Trans, ds: CoreDatasource, is_raise: bool = False):
                     return False
 
 
-def get_version(ds: CoreDatasource):
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+def get_version(ds: CoreDatasource | AssistantOutDsSchema):
+    conf = None
+    if isinstance(ds, CoreDatasource):
+        conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+    if isinstance(ds, AssistantOutDsSchema):
+        conf = DatasourceConf()
+        conf.host = ds.host
+        conf.port = ds.port
+        conf.username = ds.user
+        conf.password = ds.password
+        conf.database = ds.dataBase
+        conf.dbSchema = ds.db_schema
+        conf.timeout = 10
     db = DB.get_db(ds.type)
     sql = get_version_sql(ds, conf)
     try:

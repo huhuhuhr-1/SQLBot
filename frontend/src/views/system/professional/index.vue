@@ -520,7 +520,7 @@ const deleteHandlerItem = (idx: number) => {
           </div>
         </template>
         <div class="synonyms-list">
-          <el-scrollbar max-height="218px">
+          <el-scrollbar>
             <div v-for="(_, index) in pageForm.other_words" :key="index" class="scrollbar-item">
               <el-input
                 v-model="pageForm.other_words[index]"
@@ -798,6 +798,7 @@ const deleteHandlerItem = (idx: number) => {
     left: 0;
     top: 0;
     width: calc(100% + 4px);
+    height: calc(100vh - 390px);
   }
 
   .btn {
