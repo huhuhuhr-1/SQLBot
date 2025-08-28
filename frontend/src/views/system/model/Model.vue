@@ -119,9 +119,11 @@ const duplicateName = async (item: any) => {
     ElMessage.error(t('embedded.duplicate_name'))
     return
   }
-
+  const param = {
+    ...item,
+  }
   if (!item.id) {
-    modelApi.add(item).then(() => {
+    modelApi.add(param).then(() => {
       beforeClose()
       search()
       ElMessage({
@@ -132,7 +134,7 @@ const duplicateName = async (item: any) => {
     })
     return
   }
-  modelApi.edit(item).then(() => {
+  modelApi.edit(param).then(() => {
     beforeClose()
     search()
     ElMessage({

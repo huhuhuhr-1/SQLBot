@@ -5,7 +5,7 @@
     </div>
     <div class="login-content">
       <div class="login-right">
-        <img width="227" height="52" :src="loginBg" alt="" />
+        <img width="auto" height="52" :src="loginBg" alt="" />
         <div class="welcome">
           {{ appearanceStore.slogan || $t('common.intelligent_questioning_platform') }}
         </div>

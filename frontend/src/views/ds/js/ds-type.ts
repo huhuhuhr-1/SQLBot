@@ -6,6 +6,7 @@ import sqlServer from '@/assets/datasource/icon_SQL_Server.png'
 import ck from '@/assets/datasource/icon_ck.png'
 import dm from '@/assets/datasource/icon_dm.png'
 import doris from '@/assets/datasource/icon_doris.png'
+import redshift from '@/assets/datasource/icon_redshift.png'
 import { i18n } from '@/i18n'
 
 const t = i18n.global.t
@@ -18,6 +19,7 @@ export const dsType = [
   { label: 'ClickHouse', value: 'ck' },
   { label: '达梦', value: 'dm' },
   { label: 'Apache Doris', value: 'doris' },
+  { label: 'AWS Redshift', value: 'redshift' },
 ]
 
 export const dsTypeWithImg = [
@@ -29,6 +31,7 @@ export const dsTypeWithImg = [
   { name: 'ClickHouse', type: 'ck', img: ck },
   { name: '达梦', type: 'dm', img: dm },
   { name: 'Apache Doris', type: 'doris', img: doris },
+  { name: 'AWS Redshift', type: 'redshift', img: redshift },
 ]
 
-export const haveSchema = ['sqlServer', 'pg', 'oracle', 'dm']
+export const haveSchema = ['sqlServer', 'pg', 'oracle', 'dm', 'redshift']

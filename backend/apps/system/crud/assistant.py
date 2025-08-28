@@ -15,8 +15,8 @@ from apps.system.schemas.system_schema import AssistantHeader, AssistantOutDsSch
 from common.core.config import settings
 from common.core.db import engine
 from common.core.sqlbot_cache import cache
+from common.utils.aes_crypto import simple_aes_decrypt
 from common.utils.utils import string_to_numeric_hash
-
 
 @cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
 async def get_assistant_info(*, session: Session, assistant_id: int) -> AssistantModel | None:
@@ -117,13 +117,13 @@ class AssistantOutDs:
         res = requests.get(url=endpoint, params=param, headers=header, cookies=cookies, timeout=10)
         if res.status_code == 200:
             result_json: dict[any] = json.loads(res.text)
-            if result_json.get('code') == 0:
+            if result_json.get('code') == 0 or result_json.get('code') == 200:
                 temp_list = result_json.get('data', [])
-                self.ds_list = [
-                    self.convert2schema(item)
+                temp_ds_list = [
+                    self.convert2schema(item, config)
                     for item in temp_list
                 ]
-
+                self.ds_list = temp_ds_list
                 return self.ds_list
             else:
                 raise Exception(f"Failed to get datasource list from {endpoint}, error: {result_json.get('message')}")
@@ -169,9 +169,19 @@ class AssistantOutDs:
             raise Exception("Datasource list is not found.")
         raise Exception(f"Datasource with id {ds_id} not found.")
 
-    def convert2schema(self, ds_dict: dict) -> AssistantOutDsSchema:
+    def convert2schema(self, ds_dict: dict, config: dict[any]) -> AssistantOutDsSchema:
         id_marker: str = ''
         attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema']
+        if config.get('encrypt', True):
+            key = config.get('aes_key', None)
+            iv = config.get('aes_iv', None)
+            aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema']
+            for attr in aes_attrs:
+                if attr in ds_dict and ds_dict[attr]:
+                    try:
+                        ds_dict[attr] = simple_aes_decrypt(ds_dict[attr], key, iv)
+                    except Exception as e:
+                        raise Exception(f"Failed to encrypt {attr} for datasource {ds_dict.get('name')}, error: {str(e)}")
         for attr in attr_list:
             if attr in ds_dict:
                 id_marker += str(ds_dict.get(attr, '')) + '--sqlbot--'
@@ -179,7 +189,6 @@ class AssistantOutDs:
         db_schema = ds_dict.get('schema', ds_dict.get('db_schema', ''))
         ds_dict.pop("schema", None)
         return AssistantOutDsSchema(**{**ds_dict, "id": id, "db_schema": db_schema})
-
 
 class AssistantOutDsFactory:
     @staticmethod

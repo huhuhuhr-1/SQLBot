@@ -205,6 +205,7 @@ def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, field
 
             record.field_comment = item.fieldComment
             record.field_index = index
+            record.field_type = item.fieldType
             session.add(record)
             session.commit()
         else:
@@ -275,7 +276,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
         sql = f"""SELECT TOP 100 [{"], [".join(fields)}] FROM [{conf.dbSchema}].[{data.table.table_name}]
             {where} 
             """
-    elif ds.type == "pg" or ds.type == "excel":
+    elif ds.type == "pg" or ds.type == "excel" or ds.type == "redshift":
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}" 
             {where} 
             LIMIT 100"""

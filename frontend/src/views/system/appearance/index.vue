@@ -88,7 +88,7 @@
                       :show-file-list="false"
                       class="upload-demo"
                       accept=".jpeg,.jpg,.png,.gif,.svg"
-                      :before-upload="(e: any) => beforeUpload(e, ele.type)"
+                      :before-upload="(e: any) => beforeUpload(e, ele)"
                       :http-request="uploadImg"
                     >
                       <el-button secondary>{{ t('system.replace_image') }}</el-button>
@@ -103,17 +103,22 @@
                   :rules="rules"
                   require-asterisk-position="right"
                   label-width="120px"
-                  class="page-Form"
+                  class="page-Form form-content_error_a"
                 >
                   <el-form-item :label="t('system.website_name')" prop="name">
-                    <el-input v-model="loginForm.name" maxlength="20" />
+                    <el-input
+                      v-model="loginForm.name"
+                      :placeholder="
+                        $t('datasource.please_enter') +
+                        $t('common.empty') +
+                        $t('system.website_name')
+                      "
+                      maxlength="20"
+                    />
                     <div class="form-tips">{{ t('system.on_webpage_tabs') }}</div>
                   </el-form-item>
                   <el-form-item :label="$t('system.welcome_message')" prop="slogan">
                     <el-input v-model="loginForm.slogan" maxlength="50" />
-                    <div class="form-tips">
-                      {{ t('system.the_product_logo') }}
-                    </div>
                   </el-form-item>
                   <!-- <el-form-item :label="t('system.footer')" prop="foot">
                   <el-switch v-model="loginForm.foot" active-value="true" inactive-value="false" />
@@ -234,8 +239,7 @@ import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import LoginPreview from './LoginPreview.vue'
 import Person from './Person.vue'
-import colorFunctions from 'less/lib/less/functions/color.js'
-import colorTree from 'less/lib/less/tree/color.js'
+import { setCurrentColor } from '@/utils/utils'
 // import TinymceEditor from '@/components/rich-text/TinymceEditor.vue'
 import { cloneDeep } from 'lodash-es'
 const appearanceStore = useAppearanceStoreWithOut()
@@ -288,7 +292,13 @@ const defaultLoginForm = reactive<LoginForm>({
 const loginForm = reactive<LoginForm>(cloneDeep(defaultLoginForm))
 
 const rules = reactive<FormRules>({
-  name: [{ required: true, message: t('system.the_website_name'), trigger: 'blur' }],
+  name: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('system.website_name'),
+      trigger: 'blur',
+    },
+  ],
   foot: [
     {
       required: true,
@@ -318,16 +328,19 @@ const configList = [
     logo: t('system.website_logo'),
     type: 'web',
     tips: t('system.larger_than_200kb'),
+    size: 200 * 1024,
   },
   {
     logo: t('system.login_logo'),
     type: 'login',
     tips: t('system.larger_than_200kb_de'),
+    size: 200 * 1024,
   },
   {
     logo: t('system.login_background_image'),
     type: 'bg',
     tips: t('system.larger_than_5mb'),
+    size: 1024 * 1024 * 5,
   },
 ]
 
@@ -477,25 +490,7 @@ const customColorChange = (val: any) => {
 }
 const setPageCustomColor = (val: any) => {
   const ele = document.getElementsByClassName('appearance-table__content')[0] as HTMLElement
-
-  ele.style.setProperty('--ed-color-primary', val)
-  ele.style.setProperty('--van-blue', val)
-  ele.style.setProperty(
-    '--ed-color-primary-light-5',
-    colorFunctions.mix(new colorTree('ffffff'), new colorTree(val.substr(1)), { value: 40 }).toRGB()
-  )
-  ele.style.setProperty(
-    '--ed-color-primary-light-3',
-    colorFunctions.mix(new colorTree('ffffff'), new colorTree(val.substr(1)), { value: 15 }).toRGB()
-  )
-  ele.style.setProperty('--ed-color-primary-1a', `${val}1a`)
-  ele.style.setProperty('--ed-color-primary-14', `${val}14`)
-  ele.style.setProperty('--ed-color-primary-33', `${val}33`)
-  ele.style.setProperty('--ed-color-primary-99', `${val}99`)
-  ele.style.setProperty(
-    '--ed-color-primary-dark-2',
-    colorFunctions.mix(new colorTree('000000'), new colorTree(val.substr(1)), { value: 15 }).toRGB()
-  )
+  setCurrentColor(val, ele)
 }
 const resetLoginForm = (reset2Default?: boolean) => {
   for (const key in loginForm) {
@@ -549,7 +544,11 @@ const uploadImg = (options: any) => {
     mobileLoginBg.value = URL.createObjectURL(file)
   }
 }
-const beforeUpload = (file: any, type: any) => {
+const beforeUpload = (file: any, { type, size, tips }: any) => {
+  if (file.size > size) {
+    ElMessage.error(tips)
+    return false
+  }
   addChangeArray(type, file.uid, 'file')
   let len = fileList.value?.length
   let match = false
@@ -876,9 +875,6 @@ onUnmounted(() => {
                 color: #8f959e;
               }
 
-              .ed-form-item {
-                margin-bottom: 8px;
-              }
               .appearance-radio-item {
                 :deep(.ed-form-item__content) {
                   line-height: 22px;

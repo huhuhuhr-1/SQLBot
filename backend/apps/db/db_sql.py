@@ -28,6 +28,8 @@ def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
         return f"""
                 SELECT * FROM v$version
                 """
+    elif ds.type == 'redshift':
+        return ''
 
 
 def get_table_sql(ds: CoreDatasource, conf: DatasourceConf):
@@ -107,6 +109,17 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf):
                 where owner='{conf.dbSchema}'
                 AND (table_type = 'TABLE' or table_type = 'VIEW')
                 """
+    elif ds.type == 'redshift':
+        return f"""
+                SELECT  
+                  relname AS TableName, 
+                  obj_description(relfilenode::regclass, 'pg_class') AS TableDescription
+                FROM 
+                  pg_class 
+                WHERE 
+                  relkind in  ('r','p', 'f') 
+                  AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '{conf.dbSchema}')
+                """
 
 
 def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = None):
@@ -141,7 +154,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                 """
         sql2 = f" AND C.TABLE_NAME = '{table_name}'" if table_name is not None and table_name != "" else ""
         return sql1 + sql2
-    elif ds.type == "pg" or ds.type == "excel":
+    elif ds.type == "pg" or ds.type == "excel" or ds.type == "redshift":
         sql1 = f"""
                SELECT a.attname                                       AS COLUMN_NAME,
                       pg_catalog.format_type(a.atttypid, a.atttypmod) AS DATA_TYPE,

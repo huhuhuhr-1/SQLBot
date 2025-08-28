@@ -70,7 +70,7 @@ const showSysmenu = computed(() => {
           :class="collapse && 'collapse'"
           @click="toWorkspace"
         >
-          <el-icon size="16">
+          <el-icon size="18">
             <icon_moments_categories_outlined></icon_moments_categories_outlined>
           </el-icon>
           {{ collapse ? '' : $t('workspace.return_to_workspace') }}

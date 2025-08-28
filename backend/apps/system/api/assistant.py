@@ -31,6 +31,8 @@ async def info(request: Request, response: Response, session: SessionDep, trans:
     db_model = AssistantModel.model_validate(db_model)
     response.headers["Access-Control-Allow-Origin"] = db_model.domain
     origin = request.headers.get("origin") or get_origin_from_referer(request)
+    if not origin:
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin = origin or ''))
     origin = origin.rstrip('/')
     if origin != db_model.domain:
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin = origin or ''))

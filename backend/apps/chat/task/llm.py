@@ -3,6 +3,7 @@ import json
 import traceback
 import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
+from datetime import datetime
 from typing import Any, List, Optional, Union, Dict
 
 import numpy as np
@@ -70,7 +71,8 @@ class LLMService:
     future: Future
 
     def __init__(self, current_user: CurrentUser, chat_question: ChatQuestion,
-                 current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False, config: LLMConfig = None):
+                 current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
+                 config: LLMConfig = None):
         self.chunk_list = []
         engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
         session_maker = sessionmaker(bind=engine)
@@ -126,7 +128,7 @@ class LLMService:
         self.llm = llm_instance.llm
 
         self.init_messages()
-    
+
     @classmethod
     async def create(cls, *args, **kwargs):
         config: LLMConfig = await get_default_config()
@@ -503,7 +505,8 @@ class LLMService:
 
     def generate_sql(self):
         # append current question
-        self.sql_message.append(HumanMessage(self.chat_question.sql_user_question()))
+        self.sql_message.append(HumanMessage(
+            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))))
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=self.session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -670,9 +673,9 @@ class LLMService:
             return None
         return self.build_table_filter(sql=sql, filters=filters)
 
-    def generate_chart(self):
+    def generate_chart(self, chart_type: Optional[str] = ''):
         # append current question
-        self.chart_message.append(HumanMessage(self.chat_question.chart_user_question()))
+        self.chart_message.append(HumanMessage(self.chat_question.chart_user_question(chart_type)))
 
         self.current_logs[OperationEnum.GENERATE_CHART] = start_log(session=self.session,
                                                                     ai_modal_id=self.chat_question.ai_modal_id,
@@ -714,7 +717,8 @@ class LLMService:
                                                                   reasoning_content=full_thinking_text,
                                                                   token_usage=token_usage)
 
-    def check_sql(self, res: str) -> tuple[any]:
+    @staticmethod
+    def check_sql(res: str) -> tuple[str, Optional[list]]:
         json_str = extract_nested_json(res)
         if json_str is None:
             raise SingleMessageError(orjson.dumps({'message': 'Cannot parse sql from answer',
@@ -738,6 +742,26 @@ class LLMService:
         if sql.strip() == '':
             raise SingleMessageError("SQL query is empty")
         return sql, data.get('tables')
+
+    @staticmethod
+    def get_chart_type_from_sql_answer(res: str) -> Optional[str]:
+        json_str = extract_nested_json(res)
+        if json_str is None:
+            return None
+
+        chart_type: Optional[str]
+        data: dict
+        try:
+            data = orjson.loads(json_str)
+
+            if data['success']:
+                chart_type = data['chart-type']
+            else:
+                return None
+        except Exception:
+            return None
+
+        return chart_type
 
     def check_save_sql(self, res: str) -> str:
         sql, *_ = self.check_sql(res=res)
@@ -921,6 +945,9 @@ class LLMService:
 
             # filter sql
             SQLBotLogUtil.info(full_sql_text)
+
+            chart_type = self.get_chart_type_from_sql_answer(full_sql_text)
+
             use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
 
             # todo row permission
@@ -962,7 +989,7 @@ class LLMService:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
 
             # generate chart
-            chart_res = self.generate_chart()
+            chart_res = self.generate_chart(chart_type)
             full_chart_text = ''
             for chunk in chart_res:
                 full_chart_text += chunk.get('content')

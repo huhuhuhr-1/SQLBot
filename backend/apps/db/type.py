@@ -12,5 +12,6 @@ def db_type_relation() -> Dict:
         "oracle": "Oracle",
         "ck": "ClickHouse",
         "dm": "达梦",
-        "doris": "Apache Doris"
+        "doris": "Apache Doris",
+        "redshift": "AWS Redshift"
     }

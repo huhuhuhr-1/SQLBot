@@ -21,6 +21,7 @@ class DB(Enum):
     ck = ('ck', '"', '"', ConnectType.sqlalchemy)
     dm = ('dm', '"', '"', ConnectType.py_driver)
     doris = ('doris', '`', '`', ConnectType.py_driver)
+    redshift = ('redshift', '"', '"', ConnectType.py_driver)
 
     def __init__(self, type, prefix, suffix, connect_type: ConnectType):
         self.type = type
