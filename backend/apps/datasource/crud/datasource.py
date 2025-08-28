@@ -251,7 +251,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     if is_normal_user(current_user):
         # column is checked, and, column permission for data.fields
         f_list = get_column_permission_fields(session=session, current_user=current_user, table=data.table,
-                                              fields=f_list) or f_list
+                                              fields=f_list)
 
         # row permission tree
         where_str = ''
@@ -336,8 +336,7 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
         fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
 
         # do column permissions, filter fields
-        fields = get_column_permission_fields(session=session, current_user=current_user, table=table,
-                                              fields=fields) or fields
+        fields = get_column_permission_fields(session=session, current_user=current_user, table=table, fields=fields)
         _list.append(TableAndFields(schema=schema, table=table, fields=fields))
     return _list
 
