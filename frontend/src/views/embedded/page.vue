@@ -1,20 +1,39 @@
 <template>
   <div class="sqlbot--embedded-page">
-    <chat-component v-if="!loading" ref="chatRef" />
+    <chat-component
+      v-if="!loading"
+      ref="chatRef"
+      :welcome="customSet.welcome"
+      :welcome-desc="customSet.welcome_desc"
+      :logo-assistant="logo"
+    />
   </div>
 </template>
 <script setup lang="ts">
 import ChatComponent from '@/views/chat/index.vue'
-import { onBeforeMount, onBeforeUnmount, ref } from 'vue'
+import { nextTick, onBeforeMount, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { assistantApi } from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistant'
+import { useI18n } from 'vue-i18n'
+import { request } from '@/utils/request'
+import { setCurrentColor } from '@/utils/utils'
 
+const { t } = useI18n()
 const chatRef = ref()
 const assistantStore = useAssistantStore()
 const route = useRoute()
 const assistantName = ref('')
-
+const customSet = reactive({
+  name: '',
+  welcome: t('embedded.i_am_sqlbot'),
+  welcome_desc: t('embedded.data_analysis_now'),
+  theme: '#1CBA90',
+  header_font_color: '#1F2329',
+}) as { [key: string]: any }
+const logo = ref()
+const basePath = import.meta.env.VITE_API_BASE_URL
+const baseUrl = basePath + '/system/assistant/picture/'
 const validator = ref({
   id: '',
   valid: false,
@@ -73,6 +92,11 @@ const registerReady = (assistantId: any) => {
   window.parent.postMessage(readyData, '*')
 }
 
+const setPageCustomColor = (val: any) => {
+  const ele = document.querySelector('.sqlbot--embedded-page') as HTMLElement
+  setCurrentColor(val, ele)
+}
+
 onBeforeMount(async () => {
   const assistantId = route.query.id
   if (!assistantId) {
@@ -111,6 +135,25 @@ onBeforeMount(async () => {
   loading.value = false
 
   registerReady(assistantId)
+
+  request.get(`/system/assistant/${assistantId}`).then((res) => {
+    if (res?.configuration) {
+      const rawData = JSON.parse(res?.configuration)
+      if (rawData.logo) {
+        logo.value = baseUrl + rawData.logo
+      }
+
+      for (const key in customSet) {
+        if (Object.prototype.hasOwnProperty.call(customSet, key) && rawData[key]) {
+          customSet[key] = rawData[key]
+        }
+      }
+
+      nextTick(() => {
+        setPageCustomColor(customSet.theme)
+      })
+    }
+  })
 })
 
 onBeforeUnmount(() => {
