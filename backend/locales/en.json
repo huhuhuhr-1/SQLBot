@@ -38,6 +38,8 @@
     "invalid_origin": "Domain verification failed [{origin}]"
   },
   "i18n_terminology": {
-    "terminology_not_exists": "Terminology does not exists"
+    "terminology_not_exists": "Terminology does not exists",
+    "cannot_be_repeated": "Term name, synonyms cannot be repeated",
+    "exists_in_db": "Term name, synonyms exists"
   }
 }

@@ -6,6 +6,7 @@
     "AI Model Configuration": "AI Model Configuration"
   },
   "professional": {
+    "cannot_be_repeated": "Term name, synonyms cannot be repeated",
     "code_for_debugging": "Copy the following code for debugging",
     "full_screen_mode": "Full screen mode",
     "editing_terminology": "Editing Terminology",
@@ -513,6 +514,8 @@
     "creating_advanced_applications": "Creating Advanced Applications",
     "configure_interface": "Configure interface",
     "interface_url": "Interface URL",
+    "aes_enable": "Enable AES encryption. The fields (host, user, password, dataBase, schema) are all encrypted using the AES-CBC-PKCS5Padding encryption method",
+    "bit": "bit",
     "credential_acquisition_method": "Credential acquisition method",
     "table_notes": "Table notes",
     "system_credential_type": "Source system credential type",

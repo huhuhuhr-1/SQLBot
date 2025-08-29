@@ -38,6 +38,8 @@
     "invalid_origin": "域名校验失败【{origin}】"
   },
   "i18n_terminology": {
-    "terminology_not_exists": "该术语不存在"
+    "terminology_not_exists": "该术语不存在",
+    "cannot_be_repeated": "术语名称，同义词不能重复",
+    "exists_in_db":  "术语名称，同义词已存在"
   }
 }

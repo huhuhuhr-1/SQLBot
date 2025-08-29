@@ -701,7 +701,7 @@ def get_old_questions(session: SessionDep, datasource: int):
     if not datasource:
         return records
     stmt = select(ChatRecord.question).where(
-        and_(ChatRecord.datasource == datasource, ChatRecord.question.isnot(None))).order_by(
+        and_(ChatRecord.datasource == datasource, ChatRecord.question.isnot(None), ChatRecord.error.is_(None))).order_by(
         ChatRecord.create_time.desc()).limit(20)
     result = session.execute(stmt)
     for r in result:

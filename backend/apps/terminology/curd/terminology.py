@@ -62,7 +62,6 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
         if current_page > total_pages:
             current_page = 1
 
-
         # 步骤3：获取分页后的父节点ID
         paginated_parent_ids = (
             parent_ids_subquery
@@ -147,9 +146,21 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
     return current_page, page_size, total_count, total_pages, _list
 
 
-def create_terminology(session: SessionDep, info: TerminologyInfo, oid: int):
+def create_terminology(session: SessionDep, info: TerminologyInfo, oid: int, trans: Trans):
     create_time = datetime.datetime.now()
     parent = Terminology(word=info.word, create_time=create_time, description=info.description, oid=oid)
+
+    words = [info.word]
+    for child in info.other_words:
+        if child in words:
+            raise Exception(trans("i18n_terminology.cannot_be_repeated"))
+        else:
+            words.append(child)
+
+    exists = session.query(
+        session.query(Terminology).filter(and_(Terminology.word.in_(words), Terminology.oid == oid)).exists()).scalar()
+    if exists:
+        raise Exception(trans("i18n_terminology.exists_in_db"))
 
     result = Terminology(**parent.model_dump())
 
@@ -185,6 +196,26 @@ def update_terminology(session: SessionDep, info: TerminologyInfo, oid: int, tra
     if count == 0:
         raise Exception(trans('i18n_terminology.terminology_not_exists'))
 
+    words = [info.word]
+    for child in info.other_words:
+        if child in words:
+            raise Exception(trans("i18n_terminology.cannot_be_repeated"))
+        else:
+            words.append(child)
+
+    exists = session.query(
+        session.query(Terminology).filter(
+            Terminology.word.in_(words),
+            Terminology.oid == oid,
+            or_(
+                Terminology.pid != info.id,
+                and_(Terminology.pid.is_(None), Terminology.id != info.id)
+            ),
+            Terminology.id != info.id
+        ).exists()).scalar()
+    if exists:
+        raise Exception(trans("i18n_terminology.exists_in_db"))
+
     stmt = update(Terminology).where(and_(Terminology.id == info.id)).values(
         word=info.word,
         description=info.description,
@@ -210,7 +241,6 @@ def update_terminology(session: SessionDep, info: TerminologyInfo, oid: int, tra
 
     # embedding
     run_save_embeddings([info.id])
-
 
     return info.id
 

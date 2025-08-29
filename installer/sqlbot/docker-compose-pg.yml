@@ -1,6 +1,6 @@
 services:
   sqlbot-db:
-    image: registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.5
+    image: registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6
     container_name: sqlbot-db
     restart: always
     networks:

@@ -1,11 +1,12 @@
 <template>
-  <div class="sqlbot--embedded-page">
+  <div :class="dynamicType === 4 ? 'sqlbot--embedded-page' : 'sqlbot-embedded-assistant-page'">
     <chat-component
       v-if="!loading"
       ref="chatRef"
       :welcome="customSet.welcome"
       :welcome-desc="customSet.welcome_desc"
       :logo-assistant="logo"
+      :page-embedded="true"
     />
   </div>
 </template>
@@ -22,8 +23,10 @@ import { setCurrentColor } from '@/utils/utils'
 const { t } = useI18n()
 const chatRef = ref()
 const assistantStore = useAssistantStore()
+assistantStore.setPageEmbedded(true)
 const route = useRoute()
 const assistantName = ref('')
+const dynamicType = ref(0)
 const customSet = reactive({
   name: '',
   welcome: t('embedded.i_am_sqlbot'),
@@ -50,7 +53,7 @@ const communicationCb = async (event: any) => {
     if (event.data?.busi == 'certificate') {
       const type = parseInt(event.data['type'])
       const certificate = event.data['certificate']
-      assistantStore.setType(type || 3)
+      assistantStore.setType(type)
       if (type === 4) {
         assistantStore.setToken(certificate)
         assistantStore.setAssistant(true)
@@ -93,7 +96,9 @@ const registerReady = (assistantId: any) => {
 }
 
 const setPageCustomColor = (val: any) => {
-  const ele = document.querySelector('.sqlbot--embedded-page') as HTMLElement
+  const selector =
+    dynamicType.value === 4 ? '.sqlbot--embedded-page' : '.sqlbot-embedded-assistant-page'
+  const ele = document.querySelector(selector) as HTMLElement
   setCurrentColor(val, ele)
 }
 
@@ -109,6 +114,7 @@ onBeforeMount(async () => {
     assistantType = parseInt(typeParam.toString())
     assistantStore.setType(assistantType)
   }
+  dynamicType.value = assistantType
   const online = route.query.online
   setFormatOnline(online)
 
@@ -167,5 +173,16 @@ onBeforeUnmount(() => {
   height: 100%;
   position: relative;
   background: #f7f8fa;
+}
+.sqlbot-embedded-assistant-page {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: #f7f8fa;
+  box-sizing: border-box;
+  overflow: auto;
+  padding-bottom: 48px;
 }
 </style>

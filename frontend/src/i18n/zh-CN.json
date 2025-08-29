@@ -6,6 +6,7 @@
     "AI Model Configuration": "模型配置"
   },
   "professional": {
+    "cannot_be_repeated": "术语名称，同义词不能重复",
     "code_for_debugging": "复制以下代码进行调试",
     "full_screen_mode": "全屏模式",
     "editing_terminology": "编辑术语",
@@ -512,6 +513,8 @@
     "private": "私有",
     "configure_interface": "配置接口",
     "interface_url": "接口 URL",
+    "aes_enable": "开启 AES 加密，加密字段 (host, user, password, dataBase, schema) 均采用 AES-CBC-PKCS5Padding 加密方式",
+    "bit": "位",
     "creating_advanced_applications": "创建高级应用",
     "credential_acquisition_method": "凭证获取方式",
     "table_notes": "表备注",

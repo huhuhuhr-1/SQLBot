@@ -19,6 +19,7 @@ interface AssistantState {
   type: number
   certificate: string
   online: boolean
+  pageEmbedded?: boolean
   requestPromiseMap: Map<string, PendingRequest>
 }
 
@@ -32,6 +33,7 @@ export const AssistantStore = defineStore('assistant', {
       type: 0,
       certificate: '',
       online: false,
+      pageEmbedded: false,
       requestPromiseMap: new Map<string, PendingRequest>(),
     }
   },
@@ -57,13 +59,16 @@ export const AssistantStore = defineStore('assistant', {
     getOnline(): boolean {
       return this.online
     },
+    getPageEmbedded(): boolean {
+      return this.pageEmbedded || false
+    },
     getEmbedded(): boolean {
       return this.assistant && this.type === 4
     },
   },
   actions: {
     refreshCertificate<T>() {
-      const timeout = 5000
+      const timeout = 30000
       return new Promise((resolve, reject) => {
         const timeoutId = setTimeout(() => {
           this.requestPromiseMap.delete(this.id)
@@ -82,7 +87,7 @@ export const AssistantStore = defineStore('assistant', {
           },
         })
         const readyData = {
-          eventName: 'sqlbot_assistant_event',
+          eventName: this.pageEmbedded ? 'sqlbot_embedded_event' : 'sqlbot_assistant_event',
           busi: 'ready',
           ready: true,
           messageId: this.id,
@@ -118,6 +123,9 @@ export const AssistantStore = defineStore('assistant', {
         this.flag = flag
         wsCache.set(flagKey, flag)
       }
+    },
+    setPageEmbedded(embedded?: boolean) {
+      this.pageEmbedded = !!embedded
     },
     setOnline(online: boolean) {
       this.online = !!online

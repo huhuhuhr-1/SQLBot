@@ -79,6 +79,9 @@ const certificateForm = reactive(cloneDeep(defaultCertificateForm))
 
 const defaultUrlForm = {
   endpoint: '',
+  encrypt: true,
+  aes_key: '',
+  aes_iv: '',
   certificate: [] as any,
 }
 const urlForm = reactive(cloneDeep(defaultUrlForm))
@@ -718,6 +721,37 @@ const saveHandler = () => {
               clearable
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + $t('embedded.interface_url')
+              "
+              autocomplete="off"
+            />
+          </el-form-item>
+          <el-form-item prop="AES" :label="t('embedded.aes_enable')">
+            <el-switch v-model="urlForm.encrypt" />
+          </el-form-item>
+          <el-form-item v-if="urlForm.encrypt" prop="aes_key" label="AES Key">
+            <el-input
+              v-model="urlForm.aes_key"
+              clearable
+              :placeholder="
+                $t('datasource.please_enter') +
+                $t('common.empty') +
+                ' 32 ' +
+                $t('embedded.bit') +
+                ' AES Key'
+              "
+              autocomplete="off"
+            />
+          </el-form-item>
+          <el-form-item v-if="urlForm.encrypt" prop="aes_iv" label="AES IV">
+            <el-input
+              v-model="urlForm.aes_iv"
+              clearable
+              :placeholder="
+                $t('datasource.please_enter') +
+                $t('common.empty') +
+                ' 16 ' +
+                $t('embedded.bit') +
+                ' AES IV'
               "
               autocomplete="off"
             />

@@ -13,7 +13,8 @@ router = APIRouter(tags=["Terminology"], prefix="/system/terminology")
 @router.get("/page/{current_page}/{page_size}")
 async def pager(session: SessionDep, current_user: CurrentUser, current_page: int, page_size: int,
                 word: Optional[str] = Query(None, description="搜索术语(可选)")):
-    current_page, page_size, total_count, total_pages, _list = page_terminology(session, current_page, page_size, word, current_user.oid)
+    current_page, page_size, total_count, total_pages, _list = page_terminology(session, current_page, page_size, word,
+                                                                                current_user.oid)
 
     return {
         "current_page": current_page,
@@ -30,7 +31,7 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, trans
     if info.id:
         return update_terminology(session, info, oid, trans)
     else:
-        return create_terminology(session, info, oid)
+        return create_terminology(session, info, oid, trans)
 
 
 @router.delete("")

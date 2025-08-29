@@ -1,6 +1,9 @@
 <template>
   <el-container class="chat-container no-padding">
-    <el-aside v-if="isCompletePage && chatListSideBarShow" class="chat-container-left">
+    <el-aside
+      v-if="(isCompletePage || pageEmbedded) && chatListSideBarShow"
+      class="chat-container-left"
+    >
       <ChatListContainer
         v-model:chat-list="chatList"
         v-model:current-chat-id="currentChatId"
@@ -16,9 +19,9 @@
       />
     </el-aside>
     <div
-      v-if="!isCompletePage || !chatListSideBarShow"
+      v-if="(!isCompletePage && !pageEmbedded) || !chatListSideBarShow"
       class="hidden-sidebar-btn"
-      :class="{ 'assistant-popover-sidebar': !isCompletePage }"
+      :class="{ 'assistant-popover-sidebar': !isCompletePage && !pageEmbedded }"
     >
       <el-popover
         :width="280"
@@ -86,8 +89,8 @@
       <el-main
         class="chat-record-list"
         :class="{
-          'hide-sidebar': isCompletePage && !chatListSideBarShow,
-          'assistant-chat-main': !isCompletePage,
+          'hide-sidebar': (isCompletePage || pageEmbedded) && !chatListSideBarShow,
+          'assistant-chat-main': !isCompletePage && !pageEmbedded,
         }"
       >
         <div v-if="computedMessages.length == 0 && !loading" class="welcome-content-block">
@@ -392,6 +395,7 @@ const props = defineProps<{
   welcomeDesc?: string
   logoAssistant?: string
   welcome?: string
+  pageEmbedded?: boolean
 }>()
 const floatPopoverRef = ref()
 const floatPopoverVisible = ref(false)
@@ -588,7 +592,7 @@ function onChatRenamed(chat: Chat) {
 
 const chatListSideBarShow = ref<boolean>(true)
 function hideSideBar() {
-  if (!isCompletePage.value) {
+  if (!isCompletePage.value && !props.pageEmbedded) {
     floatPopoverVisible.value = false
     return
   }
@@ -894,7 +898,7 @@ const showFloatPopover = () => {
   }
 }
 const assistantPrepareInit = () => {
-  if (isCompletePage.value) {
+  if (isCompletePage.value || props.pageEmbedded) {
     return
   }
   Object.assign(defaultFloatPopoverStyle.value, {

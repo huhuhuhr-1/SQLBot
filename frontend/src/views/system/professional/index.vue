@@ -222,6 +222,10 @@ const rules = {
 const saveHandler = () => {
   termFormRef.value.validate((res: any) => {
     if (res) {
+      const arr = [...pageForm.value.other_words.filter((ele) => !!ele), pageForm.value.word]
+      if (arr.length !== new Set(arr).size) {
+        return ElMessage.error(t('professional.cannot_be_repeated'))
+      }
       const obj = unref(pageForm)
       if (!obj.id) {
         delete obj.id
