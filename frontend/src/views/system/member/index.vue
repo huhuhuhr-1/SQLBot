@@ -167,7 +167,7 @@ const saveField = () => {
       message: t('common.save_success'),
     })
     search()
-    fieldDialog.value = false
+    closeField()
   })
 }
 

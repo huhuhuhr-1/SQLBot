@@ -151,6 +151,7 @@ const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
 
 const open = async (user: any) => {
   loading.value = true
+  search.value = ''
   checkedWorkspace.value = []
   checkAll.value = false
   checkTableList.value = []
