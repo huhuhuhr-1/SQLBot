@@ -117,7 +117,15 @@
                     />
                     <div class="form-tips">{{ t('system.on_webpage_tabs') }}</div>
                   </el-form-item>
-                  <el-form-item :label="$t('system.welcome_message')" prop="slogan">
+                  <el-form-item>
+                    <template #label>
+                      <el-checkbox
+                        v-model="loginForm.showSlogan"
+                        true-value="0"
+                        false-value="1"
+                        :label="$t('system.welcome_message')"
+                      />
+                    </template>
                     <el-input v-model="loginForm.slogan" maxlength="50" />
                   </el-form-item>
                   <!-- <el-form-item :label="t('system.footer')" prop="foot">
@@ -248,6 +256,7 @@ interface LoginForm {
   name: string
   slogan: string
   foot: string
+  showSlogan: string
   footContent?: string
 }
 interface ConfigItem {
@@ -287,6 +296,7 @@ const defaultLoginForm = reactive<LoginForm>({
   name: 'SQLBot',
   slogan: t('common.intelligent_questioning_platform'),
   foot: 'false',
+  showSlogan: '0',
   footContent: '',
 })
 const loginForm = reactive<LoginForm>(cloneDeep(defaultLoginForm))
