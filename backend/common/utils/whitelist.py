@@ -7,6 +7,7 @@ wlist = [
     "/",
     "/docs",
     "/login/*",
+    "/openapi/get_token",
     "*.json",
     "*.ico",
     "*.html",

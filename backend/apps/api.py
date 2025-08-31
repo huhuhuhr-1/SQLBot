@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from apps.openapi import openapi
 from apps.terminology.api import terminology
 from apps.chat.api import chat
 from apps.dashboard.api import dashboard_api
@@ -18,5 +19,4 @@ api_router.include_router(datasource.router)
 api_router.include_router(chat.router)
 api_router.include_router(dashboard_api.router)
 api_router.include_router(mcp.router)
-
-
+api_router.include_router(openapi.router)

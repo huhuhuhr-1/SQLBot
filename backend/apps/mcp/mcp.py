@@ -25,6 +25,8 @@ from common.core.config import settings
 from common.core.deps import SessionDep
 from common.core.schemas import TokenPayload, XOAuth2PasswordBearer, Token
 from common.core.security import create_access_token
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
 
 reusable_oauth2 = XOAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
@@ -106,8 +108,21 @@ async def mcp_question(session: SessionDep, chat: McpQuestion):
         raise HTTPException(status_code=400, detail="Inactive user")
 
     mcp_chat = ChatMcp(token=chat.token, chat_id=chat.chat_id, question=chat.question)
+    # 确保 FastAPICache 已初始化
+    init_fastapi_cache()
     # ask
     llm_service = await LLMService.create(session_user, mcp_chat)
     llm_service.init_record()
 
     return StreamingResponse(llm_service.run_task(False), media_type="text/event-stream")
+
+
+def init_fastapi_cache():
+    """
+    初始化 FastAPICache（如果尚未初始化）
+    """
+    try:
+        FastAPICache.get_prefix()
+    except AssertionError:
+        # 未初始化时进行初始化
+        FastAPICache.init(InMemoryBackend(), prefix="sqlbot-cache")
