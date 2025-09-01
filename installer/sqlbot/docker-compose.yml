@@ -8,12 +8,14 @@ services:
     ports:
       - ${SQLBOT_WEB_PORT}:8000
       - ${SQLBOT_MCP_PORT}:8001
+      - 5432:5432
     env_file:
       - conf/sqlbot.conf
     volumes:
       - ./data/sqlbot/excel:/opt/sqlbot/data/excel
       - ./data/sqlbot/images:/opt/sqlbot/images
       - ./data/sqlbot/logs:/opt/sqlbot/logs
+      - ./data/postgresql:/var/lib/postgresql/data
     depends_on:
       sqlbot-db:
         condition: service_healthy

@@ -156,9 +156,11 @@ def check_connection(trans: Trans, ds: CoreDatasource, is_raise: bool = False):
 
 
 def get_version(ds: CoreDatasource | AssistantOutDsSchema):
+    version = ''
     conf = None
     if isinstance(ds, CoreDatasource):
-        conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+        conf = DatasourceConf(
+            **json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     if isinstance(ds, AssistantOutDsSchema):
         conf = DatasourceConf()
         conf.host = ds.host
@@ -175,26 +177,27 @@ def get_version(ds: CoreDatasource | AssistantOutDsSchema):
             with get_session(ds) as session:
                 with session.execute(text(sql)) as result:
                     res = result.fetchall()
-                    return res[0][0]
+                    version = res[0][0]
         else:
             if ds.type == 'dm':
                 with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
                                       port=conf.port) as conn, conn.cursor() as cursor:
                     cursor.execute(sql, timeout=10)
                     res = cursor.fetchall()
-                    return res[0][0]
+                    version = res[0][0]
             elif ds.type == 'doris':
                 with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
                                      port=conf.port, db=conf.database, connect_timeout=10,
                                      read_timeout=10) as conn, conn.cursor() as cursor:
                     cursor.execute(sql)
                     res = cursor.fetchall()
-                    return res[0][0]
+                    version = res[0][0]
             elif ds.type == 'redshift':
-                return ''
+                version = ''
     except Exception as e:
         print(e)
-        return ''
+        version = ''
+    return version.decode() if isinstance(version, bytes) else version
 
 
 def get_schema(ds: CoreDatasource):

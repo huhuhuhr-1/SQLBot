@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined_nofill.svg'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
-import LOGO from '@/assets/embedded/LOGO.png'
+import LOGO from '@/assets/svg/logo-custom_small.svg'
 import disable_answer from '@/assets/embedded/disable.png'
 import icon_close_outlined from '@/assets/svg/icon_close_outlined.svg'
 import icon_magnify_outlined from '@/assets/svg/icon_magnify_outlined.svg'
@@ -19,7 +19,7 @@ const basePath = import.meta.env.VITE_API_BASE_URL
 const baseUrl = basePath + '/system/assistant/picture/'
 
 const pageLogo = computed(() => {
-  return !props.logo ? LOGO : props.logo.startsWith('blob') ? props.logo : baseUrl + props.logo
+  return props.logo.startsWith('blob') ? props.logo : baseUrl + props.logo
 })
 </script>
 
@@ -29,7 +29,10 @@ const pageLogo = computed(() => {
       <el-icon size="20">
         <icon_sidebar_outlined></icon_sidebar_outlined>
       </el-icon>
-      <img :src="pageLogo" class="logo" width="30px" height="30px" alt="" />
+      <el-icon v-if="!props.logo" class="logo" size="30">
+        <LOGO></LOGO>
+      </el-icon>
+      <img v-else :src="pageLogo" class="logo" width="30px" height="30px" alt="" />
       <span class="title">{{ name }}</span>
 
       <el-tooltip effect="dark" :content="$t('embedded.new_conversation')" placement="top">
@@ -47,7 +50,10 @@ const pageLogo = computed(() => {
       </el-icon>
     </div>
     <div class="center">
-      <img :src="pageLogo" class="logo" width="30px" height="30px" alt="" />
+      <el-icon v-if="!props.logo" class="logo" size="30">
+        <LOGO></LOGO>
+      </el-icon>
+      <img v-else :src="pageLogo" class="logo" width="30px" height="30px" alt="" />
       <div class="i-am">{{ welcome }}</div>
       <div class="i-can">{{ welcomeDesc }}</div>
     </div>

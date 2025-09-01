@@ -1,4 +1,5 @@
 
+import base64
 from typing import Optional
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -127,11 +128,12 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 options={"verify_signature": False, "verify_exp": False},
                 algorithms=[security.ALGORITHM]
             )
-            if not payload['embeddedId']:
-                return False, f"Miss embeddedId payload error!"
+            app_key = payload.get('appId', '')
+            embeddedId = payload.get('embeddedId', None)
+            if not embeddedId:
+                embeddedId = xor_decrypt(app_key)
             if not payload['account']:
                 return False, f"Miss account payload error!"
-            embeddedId = payload['embeddedId']
             account = payload['account']
             with Session(engine) as session:
                 """ session_user = await get_user_info(session = session, user_id = token_data.id)
@@ -157,3 +159,9 @@ class TokenMiddleware(BaseHTTPMiddleware):
             SQLBotLogUtil.exception(f"Embedded validation error: {str(e)}")
             # Return False and the exception message
             return False, e
+    
+def xor_decrypt(encrypted_str: str, key: int = 0xABCD1234) -> int:
+    encrypted_bytes = base64.urlsafe_b64decode(encrypted_str)
+    hex_str = encrypted_bytes.hex()
+    encrypted_num = int(hex_str, 16)
+    return encrypted_num ^ key

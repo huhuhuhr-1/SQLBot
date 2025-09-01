@@ -94,8 +94,8 @@ def chooseTables(session: SessionDep, trans: Trans, id: int, tables: List[CoreTa
 def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
     ds.id = int(ds.id)
     check_name(session, trans, user, ds)
-    status = check_status(session, trans, ds)
-    ds.status = "Success" if status is True else "Fail"
+    # status = check_status(session, trans, ds)
+    ds.status = "Success"
     record = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds.id)).first()
     update_data = ds.model_dump(exclude_unset=True)
     for field, value in update_data.items():

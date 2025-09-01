@@ -6,11 +6,12 @@ import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
 import { setCurrentColor } from '@/utils/utils'
 import { cloneDeep } from 'lodash-es'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
 
 const { t } = useI18n()
+const appearanceStore = useAppearanceStoreWithOut()
 const currentId = ref()
 interface SqlBotForm {
-  name: string
   theme: string
   header_font_color: string
   // logo?: string
@@ -63,7 +64,6 @@ const logo = ref('')
 const floatIcon = ref('')
 
 const defaultSqlBotForm = reactive<SqlBotForm>({
-  name: t('embedded.intelligent_customer_service'),
   x_type: 'right',
   y_type: 'bottom',
   x_val: 30,
@@ -79,14 +79,26 @@ const defaultSqlBotForm = reactive<SqlBotForm>({
 const sqlBotForm = reactive<SqlBotForm>(cloneDeep(defaultSqlBotForm)) as { [key: string]: any }
 let rawData = {} as { [key: string]: any }
 const init = () => {
+  Object.assign(sqlBotForm, cloneDeep(defaultSqlBotForm))
   fileList.value = []
   logo.value = rawData.logo
   floatIcon.value = rawData.float_icon
 
   for (const key in sqlBotForm) {
-    if (Object.prototype.hasOwnProperty.call(sqlBotForm, key) && rawData[key]) {
+    if (Object.prototype.hasOwnProperty.call(sqlBotForm, key)) {
       sqlBotForm[key] = rawData[key]
     }
+  }
+
+  if (!rawData.theme) {
+    const { customColor, themeColor } = appearanceStore
+    const currentColor =
+      themeColor === 'custom' && customColor
+        ? customColor
+        : themeColor === 'blue'
+          ? '#3370ff'
+          : '#1CBA90'
+    sqlBotForm.theme = currentColor || sqlBotForm.theme
   }
 
   nextTick(() => {
@@ -200,10 +212,11 @@ const clearFiles = (array?: string[]) => {
     }
   }
 }
-
+const appName = ref('')
 const open = (row: any) => {
   rawData = JSON.parse(row.configuration)
   currentId.value = row.id
+  appName.value = row.name
   dialogVisible.value = true
   init()
 }
@@ -224,7 +237,7 @@ defineExpose({
         <assistant
           :welcome-desc="sqlBotForm.welcome_desc"
           :welcome="sqlBotForm.welcome"
-          :name="sqlBotForm.name"
+          :name="appName"
           :logo="logo"
         ></assistant>
       </div>
@@ -329,15 +342,6 @@ defineExpose({
           label-width="120px"
           class="page-Form"
         >
-          <el-form-item :label="t('embedded.application_name')">
-            <el-input
-              v-model="sqlBotForm.name"
-              :placeholder="
-                $t('datasource.please_enter') + $t('common.empty') + $t('embedded.application_name')
-              "
-              maxlength="20"
-            />
-          </el-form-item>
           <el-form-item :label="$t('system.welcome_message')">
             <el-input
               v-model="sqlBotForm.welcome"

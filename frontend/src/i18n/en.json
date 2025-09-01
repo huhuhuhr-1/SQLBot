@@ -220,7 +220,7 @@
       "database": "Database",
       "connect_mode": "Connect Mode",
       "service_name": "Service Name",
-      "extra_jdbc": "Extra JDBC String",
+      "extra_jdbc": "Extra Config",
       "schema": "Schema",
       "get_schema": "Get Schema",
       "file": "File",

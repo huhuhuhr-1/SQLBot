@@ -373,6 +373,12 @@ const handleCurrentChange = (val: number) => {
           {{ $t('workspace.relevant_content_found') }}
         </div>
       </div>
+      <EmptyBackground
+        v-if="!!keyword && !tableListWithSearch.length"
+        :description="$t('datasource.relevant_content_found')"
+        img-type="tree"
+        style="width: 100%"
+      />
     </div>
 
     <div v-if="currentTable.name" class="info-table">

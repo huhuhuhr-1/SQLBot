@@ -220,7 +220,7 @@
       "database": "数据库",
       "connect_mode": "连接方式",
       "service_name": "服务名",
-      "extra_jdbc": "额外的 JDBC 连接字符串",
+      "extra_jdbc": "额外的数据库连接配置",
       "schema": "模式",
       "get_schema": "获取模式",
       "file": "文件",

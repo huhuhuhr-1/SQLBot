@@ -38,6 +38,23 @@ async def info(request: Request, response: Response, session: SessionDep, trans:
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin = origin or ''))
     return db_model
 
+@router.get("/app/{appId}") 
+async def getApp(request: Request, response: Response, session: SessionDep, trans: Trans, appId: str) -> AssistantModel:
+    if not appId:
+        raise Exception('miss assistant appId')
+    db_model = session.exec(select(AssistantModel).where(AssistantModel.app_id == appId)).first()
+    if not db_model:
+        raise RuntimeError(f"assistant application not exist")
+    db_model = AssistantModel.model_validate(db_model)
+    response.headers["Access-Control-Allow-Origin"] = db_model.domain
+    origin = request.headers.get("origin") or get_origin_from_referer(request)
+    if not origin:
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin = origin or ''))
+    origin = origin.rstrip('/')
+    if origin != db_model.domain:
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin = origin or ''))
+    return db_model
+
 @router.get("/validator", response_model=AssistantValidator) 
 async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query(None)):
     if not id:

@@ -130,6 +130,7 @@ const close = () => {
 
 const initForm = (item: any, editTable: boolean = false) => {
   isEditTable.value = false
+  keywords.value = ''
   dsFormRef.value!.clearValidate()
   if (item) {
     dialogTitle.value = editTable ? t('ds.form.title.choose_tables') : t('ds.form.title.edit')
@@ -228,15 +229,15 @@ const save = async (formEl: FormInstance | undefined) => {
     if (valid) {
       const list = tableList.value
         .filter((ele: any) => {
-          return checkList.value.includes(ele.tableName)
+          return checkTableList.value.includes(ele.tableName)
         })
         .map((ele: any) => {
           return { table_name: ele.tableName, table_comment: ele.tableComment }
         })
 
-      if (checkList.value.length > 30) {
+      if (checkTableList.value.length > 30) {
         const excessive = await ElMessageBox.confirm(t('common.excessive_tables_selected'), {
-          tip: t('common.to_continue_saving', { msg: checkList.value.length }),
+          tip: t('common.to_continue_saving', { msg: checkTableList.value.length }),
           confirmButtonText: t('common.save'),
           cancelButtonText: t('common.cancel'),
           confirmButtonType: 'primary',
@@ -434,7 +435,7 @@ const tableListWithSearch = computed(() => {
 
 watch(keywords, () => {
   const tableNameArr = tableListWithSearch.value.map((ele: any) => ele.tableName)
-  checkList.value = checkTableList.filter((ele) => tableNameArr.includes(ele))
+  checkList.value = checkTableList.value.filter((ele) => tableNameArr.includes(ele))
   const checkedCount = checkList.value.length
   checkAll.value = checkedCount === tableListWithSearch.value.length
   isIndeterminate.value = checkedCount > 0 && checkedCount < tableListWithSearch.value.length
@@ -460,7 +461,7 @@ const setFile = (file: any) => {
 
 const checkAll = ref(false)
 const isIndeterminate = ref(false)
-let checkTableList = [] as any[]
+const checkTableList = ref([] as any[])
 
 const handleCheckAllChange = (val: any) => {
   checkList.value = val
@@ -473,9 +474,9 @@ const handleCheckAllChange = (val: any) => {
     : []
   isIndeterminate.value = false
   const tableNameArr = tableListWithSearch.value.map((ele: any) => ele.tableName)
-  checkTableList = val
-    ? [...new Set([...tableNameArr, ...checkTableList])]
-    : checkTableList.filter((ele) => !tableNameArr.includes(ele))
+  checkTableList.value = val
+    ? [...new Set([...tableNameArr, ...checkTableList.value])]
+    : checkTableList.value.filter((ele) => !tableNameArr.includes(ele))
 }
 
 const handleCheckedTablesChange = (value: any[]) => {
@@ -483,8 +484,8 @@ const handleCheckedTablesChange = (value: any[]) => {
   checkAll.value = checkedCount === tableListWithSearch.value.length
   isIndeterminate.value = checkedCount > 0 && checkedCount < tableListWithSearch.value.length
   const tableNameArr = tableListWithSearch.value.map((ele: any) => ele.tableName)
-  checkTableList = [
-    ...new Set([...checkTableList.filter((ele) => !tableNameArr.includes(ele)), ...value]),
+  checkTableList.value = [
+    ...new Set([...checkTableList.value.filter((ele) => !tableNameArr.includes(ele)), ...value]),
   ]
 }
 
@@ -693,7 +694,7 @@ defineExpose({
       </el-form>
       <div v-show="activeStep === 2" v-loading="tableListLoading" class="select-data_table">
         <div class="title">
-          {{ $t('ds.form.choose_tables') }} ({{ checkList.length }}/ {{ tableList.length }})
+          {{ $t('ds.form.choose_tables') }} ({{ checkTableList.length }}/ {{ tableList.length }})
         </div>
         <el-input
           v-model="keywords"
@@ -911,7 +912,7 @@ defineExpose({
     .container {
       border: 1px solid #dee0e3;
       border-radius: 4px;
-      overflow-y: auto;
+      overflow: hidden;
 
       .select-all {
         background: #f5f6f7;

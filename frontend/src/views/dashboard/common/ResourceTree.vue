@@ -482,11 +482,11 @@ defineExpose({
 
     &:hover,
     &:focus {
-      background: #d2f1e9;
+      background: var(--ed-color-primary-80, #d2f1e9);
     }
 
     &:active {
-      background: #a4e3d3;
+      background: var(--ed-color-primary-60, #a4e3d3);
     }
   }
 }
@@ -625,6 +625,9 @@ defineExpose({
   li {
     border-radius: 4px;
     padding: 0 8px !important;
+  }
+  .ed-dropdown-menu__item:not(.is-disabled):not(.selected):hover {
+    color: #1f2329;
   }
 }
 .menu-outer-dv_popper {

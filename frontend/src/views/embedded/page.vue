@@ -150,7 +150,7 @@ onBeforeMount(async () => {
       }
 
       for (const key in customSet) {
-        if (Object.prototype.hasOwnProperty.call(customSet, key) && rawData[key]) {
+        if (Object.prototype.hasOwnProperty.call(customSet, key)) {
           customSet[key] = rawData[key]
         }
       }

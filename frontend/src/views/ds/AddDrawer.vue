@@ -71,6 +71,7 @@ defineExpose({
   <el-drawer
     v-model="datasourceConfigVisible"
     :close-on-click-modal="false"
+    destroy-on-close
     size="calc(100% - 100px)"
     modal-class="datasource-drawer-fullscreen"
     direction="btt"

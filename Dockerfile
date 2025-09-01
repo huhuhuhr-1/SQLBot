@@ -45,6 +45,8 @@ COPY g2-ssr/charts/* /app/charts/
 
 RUN npm install
 
+FROM registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6 AS pg-builder
+
 # Runtime stage
 FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
 
@@ -53,6 +55,12 @@ ENV PYTHONUNBUFFERED=1
 ENV SQLBOT_HOME=/opt/sqlbot
 ENV PYTHONPATH=${SQLBOT_HOME}/app
 ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
+
+ENV PG_PATH=/var/lib/postgresql/data
+ENV PG_SH=/usr/local/bin
+RUN mkdir -p ${PG_PATH}
+COPY --from=pg-builder ${PG_PATH} ${PG_PATH}
+COPY --from=pg-builder ${PG_SH} ${PG_SH}
 
 # Copy necessary files from builder
 COPY start.sh /opt/sqlbot/app/start.sh

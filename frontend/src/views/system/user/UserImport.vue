@@ -383,7 +383,7 @@ defineExpose({
   width: 100%;
   height: 40px;
   line-height: 40px;
-  background: #d2f1e9;
+  background: var(--ed-color-primary-80, #d2f1e9);
   border-radius: 4px;
   padding-left: 10px;
   .icon-span {
