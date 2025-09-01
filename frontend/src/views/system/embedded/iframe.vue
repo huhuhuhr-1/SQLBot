@@ -725,13 +725,20 @@ const saveHandler = () => {
               autocomplete="off"
             />
           </el-form-item>
-          <el-form-item prop="AES" :label="t('embedded.aes_enable')">
+          <el-form-item prop="AES" class="custom-require">
+            <template #label>
+              <span class="custom-require_danger">{{ t('embedded.aes_enable') }}</span>
+            </template>
+
             <el-switch v-model="urlForm.encrypt" />
+            <span class="aes-encrypt-tips">{{ t('embedded.aes_enable_tips') }}</span>
           </el-form-item>
           <el-form-item v-if="urlForm.encrypt" prop="aes_key" label="AES Key">
             <el-input
               v-model="urlForm.aes_key"
               clearable
+              type="password"
+              show-password
               :placeholder="
                 $t('datasource.please_enter') +
                 $t('common.empty') +
@@ -1174,6 +1181,13 @@ const saveHandler = () => {
     .ed-form-item {
       &:last-child {
         margin-bottom: 0;
+      }
+      .aes-encrypt-tips {
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 22px;
+        color: #ff8800;
+        margin-left: 8px;
       }
     }
   }
