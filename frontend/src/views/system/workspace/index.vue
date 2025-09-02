@@ -358,7 +358,7 @@ const handleCurrentChange = (val: number) => {
                   </el-icon>
                   {{ $t('dashboard.rename') }}
                 </div>
-                <div class="item" @click.stop="delWorkspace(ele)">
+                <div v-if="ele.id !== 1" class="item" @click.stop="delWorkspace(ele)">
                   <el-icon size="16">
                     <delIcon></delIcon>
                   </el-icon>

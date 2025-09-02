@@ -3,6 +3,7 @@
   "i18n_ds_name_exist": "名称已存在",
   "i18n_concat_admin": "请联系管理员！",
   "i18n_exist": "{msg}已存在！",
+  "i18n_name": "名称",
   "i18n_not_exist": "{msg}不存在！",
   "i18n_error": "{key}错误！",
   "i18n_miss_args": "缺失{key}参数！",

@@ -40,9 +40,14 @@ def get_assistant_ds(session: Session, llm_service) -> list[dict]:
             stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(
                 CoreDatasource.oid == oid)
             if not assistant.online:
-                private_list: list[int] = config.get('private_list') or None
+                public_list: list[int] = config.get('public_list') or None
+                if public_list:
+                    stmt = stmt.where(CoreDatasource.id.in_(public_list))
+                else:
+                    raise RuntimeError('no public datasource valid')
+                """ private_list: list[int] = config.get('private_list') or None
                 if private_list:
-                    stmt = stmt.where(~CoreDatasource.id.in_(private_list))
+                    stmt = stmt.where(~CoreDatasource.id.in_(private_list)) """
         db_ds_list = session.exec(stmt)
 
         result_list = [

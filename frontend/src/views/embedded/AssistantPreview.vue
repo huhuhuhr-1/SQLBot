@@ -33,7 +33,7 @@ const pageLogo = computed(() => {
         <LOGO></LOGO>
       </el-icon>
       <img v-else :src="pageLogo" class="logo" width="30px" height="30px" alt="" />
-      <span class="title">{{ name }}</span>
+      <span :title="name" class="title ellipsis">{{ name }}</span>
 
       <el-tooltip effect="dark" :content="$t('embedded.new_conversation')" placement="top">
         <el-icon class="new-chat" size="20">
@@ -115,10 +115,10 @@ const pageLogo = computed(() => {
       font-size: 16px;
       line-height: 24px;
       color: var(--ed-text-color-primary);
+      width: 242px;
     }
 
-    .ed-icon {
-      position: relative;
+    .ed-icon:not(.logo) {
       cursor: pointer;
 
       &::after {

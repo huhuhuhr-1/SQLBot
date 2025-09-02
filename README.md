@@ -56,6 +56,11 @@ docker compose up -d
     <img alt="q&a" src="https://github.com/user-attachments/assets/55526514-52f3-4cfe-98ec-08a986259280"   />
   </tr>
 
+## Roadmap
+
+- 术语库：开发中...
+- SQL 示例库：开发中...
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=dataease/sqlbot&type=Date)](https://www.star-history.com/#dataease/sqlbot&Date)

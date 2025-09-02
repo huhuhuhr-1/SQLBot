@@ -63,7 +63,7 @@ const currentEmbedded = reactive<any>(cloneDeep(defaultEmbedded))
 const isCreate = ref(false)
 const defaultForm = {
   oid: 1,
-  private_list: [] as any,
+  public_list: [] as any,
 }
 const dsForm = reactive(cloneDeep(defaultForm))
 
@@ -124,7 +124,7 @@ const handleAddEmbedded = (val: any) => {
   }
 }
 const wsChanged = (val: any) => {
-  dsForm.private_list = []
+  dsForm.public_list = []
   dsForm.oid = val
   getDsList(true)
 }
@@ -132,7 +132,7 @@ const getDsList = (change: boolean = false) => {
   dsApi(dsForm.oid).then((res: any) => {
     dsListOptions.value = res || []
     if (change || !currentEmbedded.id) {
-      dsForm.private_list = dsListOptions.value.map((ele) => ele.id)
+      dsForm.public_list = dsListOptions.value.map((ele: any) => ele.id)
     }
   })
 }
@@ -185,11 +185,11 @@ const handleActive = (row: any) => {
 }
 
 const handlePrivate = (row: any) => {
-  dsForm.private_list.push(row.id)
+  dsForm.public_list = dsForm.public_list.filter((ele: any) => ele !== row.id)
 }
 
 const handlePublic = (row: any) => {
-  dsForm.private_list = dsForm.private_list.filter((ele: any) => ele !== row.id)
+  dsForm.public_list.push(row.id)
 }
 
 const searchLoading = ref(false)
@@ -250,7 +250,24 @@ const setUiRef = ref()
 const handleSetUi = (row: any) => {
   setUiRef.value.open(row)
 }
-
+const validateUrl = (_: any, value: any, callback: any) => {
+  if (value === '') {
+    callback(
+      new Error(
+        t('datasource.please_enter') + t('common.empty') + t('embedded.cross_domain_settings')
+      )
+    )
+  } else {
+    // var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
+    var Expression = /^https?:\/\/[^\s/?#]+(:\d+)?/i
+    var objExp = new RegExp(Expression)
+    if (objExp.test(value) && !value.endsWith('/')) {
+      callback()
+    } else {
+      callback(t('embedded.format_is_incorrect'))
+    }
+  }
+}
 const rules = {
   name: [
     {
@@ -262,13 +279,7 @@ const rules = {
   domain: [
     {
       required: true,
-      message:
-        t('datasource.please_enter') + t('common.empty') + t('embedded.cross_domain_settings'),
-      trigger: 'blur',
-    },
-    {
-      pattern: /^(https?:\/\/)?([\w-]+\.)*[\w-]+(:\d+)?$/,
-      message: t('embedded.origin_format_error'),
+      validator: validateUrl,
       trigger: 'blur',
     },
   ],
@@ -283,20 +294,42 @@ const dsRules = {
     },
   ],
 }
+const validatePass = (_: any, value: any, callback: any) => {
+  if (value === '') {
+    callback(
+      new Error(t('datasource.please_enter') + t('common.empty') + t('embedded.interface_url'))
+    )
+  } else {
+    var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
+    var objExp = new RegExp(Expression)
+    if (objExp.test(value) && value.startsWith(currentEmbedded.domain)) {
+      callback()
+    } else {
+      callback(t('embedded.format_is_incorrect'))
+    }
+  }
+}
+
+const validateCertificate = (_: any, value: any, callback: any) => {
+  if (!value.length) {
+    callback(new Error(t('menu.add_interface_credentials')))
+  } else {
+    callback()
+  }
+}
 
 const urlRules = {
   endpoint: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('embedded.interface_url'),
+      validator: validatePass,
       trigger: 'blur',
     },
   ],
   certificate: [
     {
       required: true,
-      message:
-        t('datasource.Please_select') + t('common.empty') + t('embedded.system_credential_type'),
+      validator: validateCertificate,
       trigger: 'change',
     },
   ],
@@ -407,11 +440,13 @@ const handleEmbedded = (row: any) => {
     script.src = "${origin + pathname}xpack_static/sqlbot-embedded-dynamic.umd.js";
     document.head.appendChild(script);
   })()
-  
-  sqlbot_embedded_handler.mounted('.copilot', {
-    "embeddedId": "${row.id}",
-    "online": true
-})`
+  let sqlbot_embedded_timer = setInterval(() => {
+    if (sqlbot_embedded_handler?.mounted) {
+      sqlbot_embedded_handler.mounted('.copilot', { "embeddedId": "${row.id}" })
+      clearInterval(sqlbot_embedded_timer)
+    }
+  }, 1000)
+  `
 }
 const copyJsCode = () => {
   copy(jsCodeElement.value)
@@ -577,6 +612,7 @@ const saveHandler = () => {
             :name="ele.name"
             :is-base="ele.type === 0"
             :description="ele.description"
+            :logo="JSON.parse(ele.configuration).logo"
             @embedded="handleEmbedded(ele)"
             @edit="handleEditRule(ele)"
             @del="deleteHandler(ele)"
@@ -764,7 +800,7 @@ const saveHandler = () => {
               autocomplete="off"
             />
           </el-form-item>
-          <el-form-item class="certificate-table_form" prop="type">
+          <el-form-item class="certificate-table_form" prop="certificate">
             <template #label>
               <div class="title-content">
                 <span class="title-form">{{ t('embedded.interface_credentials') }}</span>
@@ -872,7 +908,7 @@ const saveHandler = () => {
                 :type="ele.type"
                 :type-name="ele.type_name"
                 :description="ele.description"
-                :is-private="dsForm.private_list.includes(ele.id)"
+                :is-private="!dsForm.public_list.includes(ele.id)"
                 :num="ele.num"
                 @active="handleActive(ele)"
                 @private="handlePrivate(ele)"
@@ -1155,7 +1191,7 @@ const saveHandler = () => {
   }
 
   .card-ds_content {
-    width: 100%;
+    width: 800px;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
@@ -1191,6 +1227,10 @@ const saveHandler = () => {
         margin-left: 8px;
       }
     }
+  }
+
+  .drawer-content_scroll {
+    overflow: hidden;
   }
 
   .certificate-table_form {

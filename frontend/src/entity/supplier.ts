@@ -217,11 +217,11 @@ export const supplierList: Array<{
         model_options: [
           {
             name: 'kimi-k2-0711-preview',
-            args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+            args: [{ key: 'temperature', val: 0.3, type: 'number', range: '[0, 1]' }],
           },
           {
             name: 'kimi-k2-turbo-preview',
-            args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+            args: [{ key: 'temperature', val: 0.3, type: 'number', range: '[0, 1]' }],
           },
           { name: 'moonshot-v1-8k' },
           { name: 'moonshot-v1-32k' },

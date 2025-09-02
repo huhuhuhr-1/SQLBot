@@ -22,9 +22,9 @@ if [ $? -ne 0 ]; then
    fi
 fi
 
-if [[ ! ${SQLBOT_EXTERNAL_DB} ]] || [ "${SQLBOT_EXTERNAL_DB}" = "false" ]; then
-  compose_files="${compose_files} -f docker-compose-pg.yml"
-fi
+#if [[ ! ${SQLBOT_EXTERNAL_DB} ]] || [ "${SQLBOT_EXTERNAL_DB}" = "false" ]; then
+#  compose_files="${compose_files} -f docker-compose-pg.yml"
+#fi
 
 function usage() {
    echo "SQLBot 控制脚本"

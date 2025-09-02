@@ -234,6 +234,7 @@ defineExpose({
       >
         <el-select
           v-model="resourceForm.dashboardId"
+          filterable
           :placeholder="t('dashboard.select_dashboard')"
         >
           <el-option

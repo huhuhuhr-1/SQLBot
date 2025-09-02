@@ -1,5 +1,6 @@
 {
   "menu": {
+    "add_interface_credentials": "Please add interface credentials",
     "Data Q&A": "Data Q&A",
     "Data Connections": "Data Sources",
     "Dashboard": "Dashboard",
@@ -308,6 +309,7 @@
     "select_supplier": "Select supplier",
     "the_basic_model": "Please set a name for the basic model",
     "the_basic_model_de": "Please select the basic model",
+    "length_max_error": "{msg} is limited to {max} characters",
     "model_name": "Model name",
     "custom_model_name": "Custom model name",
     "enter_to_add": "For models not listed in the list, just enter the model name and press Enter to add",
@@ -386,7 +388,8 @@
       "old_pwd": "Old password",
       "new_pwd": "New password",
       "confirm_pwd": "Confirm password",
-      "two_pwd_not_match": "The two passwords do not match"
+      "two_pwd_not_match": "The two passwords do not match",
+      "pwd_format_error": "8-20 characters including uppercase, lowercase, number, and special character"
     }
   },
   "workspace": {
@@ -514,6 +517,7 @@
     "creating_advanced_applications": "Creating Advanced Applications",
     "configure_interface": "Configure interface",
     "interface_url": "Interface URL",
+    "format_is_incorrect": "format is incorrect",
     "aes_enable": "Enable AES encryption",
     "aes_enable_tips": "The fields (host, user, password, dataBase, schema) are all encrypted using the AES-CBC-PKCS5Padding encryption method",
     "bit": "bit",
@@ -590,6 +594,7 @@
     "data_over_limit": "The data is too large, only the first {0} entries are displayed.",
     "ds_is_invalid": "Datasource is invalid",
     "error": "Error",
+    "exec-sql-err": "Execute SQL failed",
     "no_data": "No Data",
     "show_error_detail": "Show error info"
   },

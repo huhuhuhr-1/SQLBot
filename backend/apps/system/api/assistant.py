@@ -115,7 +115,13 @@ async def ui(session: SessionDep, data: str = Form(), files: List[UploadFile] = 
                 ui_schema_dict[flag_name] = file_id
             else:
                 raise ValueError(f"Unsupported file flag: {flag_name}")
-    
+            
+    for flag_name in ['logo', 'float_icon']:
+        file_val = config_obj.get(flag_name)
+        if file_val and not ui_schema_dict.get(flag_name):
+            config_obj[flag_name] = None
+            SQLBotFileUtils.detete_file(file_val)
+            
     for attr, value in ui_schema_dict.items():
         if attr != 'id' and not attr.startswith("__"):
             config_obj[attr] = value

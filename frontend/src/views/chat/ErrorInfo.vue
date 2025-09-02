@@ -17,12 +17,13 @@ const showBlock = computed(() => {
 })
 
 const errorMessage = computed(() => {
-  const obj = { message: props.error, showMore: false, traceback: '' }
+  const obj = { message: props.error, showMore: false, traceback: '', type: undefined }
   if (showBlock.value && props.error?.trim().startsWith('{') && props.error?.trim().endsWith('}')) {
     try {
       const json = JSON.parse(props.error?.trim())
       obj.message = json['message']
       obj.traceback = json['traceback']
+      obj.type = json['type']
       if (obj.traceback?.trim().length > 0) {
         obj.showMore = true
       }
@@ -43,13 +44,23 @@ function showTraceBack() {
 <template>
   <div v-if="showBlock">
     <div
-      v-if="!errorMessage.showMore"
+      v-if="!errorMessage.showMore && errorMessage.type == undefined"
       v-dompurify-html="errorMessage.message"
       class="error-container"
     ></div>
     <div v-else class="error-container row">
-      {{ t('chat.error') }}
-      <el-button text @click="showTraceBack">{{ t('chat.show_error_detail') }}</el-button>
+      <template v-if="errorMessage.type === 'db-connection-err'">
+        {{ t('chat.ds_is_invalid') }}
+      </template>
+      <template v-else-if="errorMessage.type === 'exec-sql-err'">
+        {{ t('chat.exec-sql-err') }}
+      </template>
+      <template v-else>
+        {{ t('chat.error') }}
+      </template>
+      <el-button v-if="errorMessage.showMore" text @click="showTraceBack">
+        {{ t('chat.show_error_detail') }}
+      </el-button>
     </div>
 
     <el-drawer

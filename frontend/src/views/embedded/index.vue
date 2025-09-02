@@ -8,7 +8,11 @@
         <LOGO></LOGO>
       </el-icon>
       <img v-else :src="logo" class="logo" width="30px" height="30px" alt="" />
-      <span class="title">{{ appName || $t('embedded.intelligent_customer_service') }}</span>
+      <span
+        :title="appName || $t('embedded.intelligent_customer_service')"
+        class="title ellipsis"
+        >{{ appName || $t('embedded.intelligent_customer_service') }}</span
+      >
 
       <el-tooltip effect="dark" :content="$t('embedded.new_conversation')" placement="top">
         <el-icon class="new-chat" size="20" @click="createChat">
@@ -171,7 +175,10 @@ onBeforeMount(async () => {
       }
 
       for (const key in customSet) {
-        if (Object.prototype.hasOwnProperty.call(customSet, key)) {
+        if (
+          Object.prototype.hasOwnProperty.call(customSet, key) &&
+          ![null, undefined].includes(rawData[key])
+        ) {
           customSet[key] = rawData[key]
         }
       }
@@ -227,10 +234,10 @@ onBeforeUnmount(() => {
       font-size: 16px;
       line-height: 24px;
       color: var(--ed-text-color-primary);
+      max-width: calc(100% - 172px);
     }
 
-    .ed-icon {
-      position: relative;
+    .ed-icon:not(.logo) {
       cursor: pointer;
 
       &::after {
