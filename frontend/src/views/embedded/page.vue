@@ -16,12 +16,14 @@ import { nextTick, onBeforeMount, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { assistantApi } from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistant'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
 import { setCurrentColor } from '@/utils/utils'
 
 const { t } = useI18n()
 const chatRef = ref()
+const appearanceStore = useAppearanceStoreWithOut()
 const assistantStore = useAssistantStore()
 assistantStore.setPageEmbedded(true)
 const route = useRoute()
@@ -96,9 +98,7 @@ const registerReady = (assistantId: any) => {
 }
 
 const setPageCustomColor = (val: any) => {
-  const selector =
-    dynamicType.value === 4 ? '.sqlbot--embedded-page' : '.sqlbot-embedded-assistant-page'
-  const ele = document.querySelector(selector) as HTMLElement
+  const ele = document.querySelector('body') as HTMLElement
   setCurrentColor(val, ele)
 }
 
@@ -150,9 +150,23 @@ onBeforeMount(async () => {
       }
 
       for (const key in customSet) {
-        if (Object.prototype.hasOwnProperty.call(customSet, key) && rawData[key]) {
+        if (
+          Object.prototype.hasOwnProperty.call(customSet, key) &&
+          ![null, undefined].includes(rawData[key])
+        ) {
           customSet[key] = rawData[key]
         }
+      }
+
+      if (!rawData.theme) {
+        const { customColor, themeColor } = appearanceStore
+        const currentColor =
+          themeColor === 'custom' && customColor
+            ? customColor
+            : themeColor === 'blue'
+              ? '#3370ff'
+              : '#1CBA90'
+        customSet.theme = currentColor || customSet.theme
       }
 
       nextTick(() => {
@@ -170,7 +184,7 @@ onBeforeUnmount(() => {
 <style lang="less" scoped>
 .sqlbot--embedded-page {
   width: 100%;
-  height: 100%;
+  height: 100vh;
   position: relative;
   background: #f7f8fa;
 }

@@ -205,6 +205,8 @@ async def get_one(session: SessionDep, trans: Trans, id: int):
 
 @router.delete("/{id}")  
 async def single_delete(session: SessionDep, id: int):
+    if id == 1:
+        raise HTTPException(f"Can not delete default workspace")
     db_model = session.get(WorkspaceModel, id)
     if not db_model:
         raise HTTPException(f"WorkspaceModel with id {id} not found")

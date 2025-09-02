@@ -35,6 +35,7 @@ const emits = defineEmits(['btnSelectChange'])
 const { t } = useI18n()
 const multipleSelectionAll = ref<any[]>([])
 const keywords = ref('')
+const oldKeywords = ref('')
 const searchLoading = ref(false)
 
 const selectable = () => {
@@ -62,8 +63,8 @@ const defaultForm = {
   name: null,
   domain: null,
   type: 4,
-  // configuration: null,
-  // description: null,
+  configuration: null,
+  description: null,
 }
 const pageForm = ref<Form>(cloneDeep(defaultForm))
 
@@ -114,7 +115,7 @@ const handleSelectionChange = (val: any[]) => {
   const arr = fieldList.value.filter(selectable)
   const ids = arr.map((ele: any) => ele.id)
   multipleSelectionAll.value = [
-    ...multipleSelectionAll.value.filter((ele) => !ids.includes(ele.id)),
+    ...multipleSelectionAll.value.filter((ele: any) => !ids.includes(ele.id)),
     ...val,
   ]
   isIndeterminate.value = !(val.length === 0 || val.length === arr.length)
@@ -168,10 +169,15 @@ const cancelRefresh = (row: any) => {
 }
 
 const refresh = (row: any) => {
-  embeddedApi.secret(row.id).then(() => {
-    ElMessage.success(t('common.update_success'))
-  })
-  cancelRefresh(row)
+  embeddedApi
+    .secret(row.id)
+    .then(() => {
+      ElMessage.success(t('common.update_success'))
+    })
+    .finally(() => {
+      cancelRefresh(row)
+      search()
+    })
 }
 
 const search = () => {
@@ -187,12 +193,30 @@ const search = () => {
       })
     })
     .finally(() => {
+      oldKeywords.value = keywords.value
       searchLoading.value = false
     })
 }
 
 const termFormRef = ref()
-
+const validateUrl = (_: any, value: any, callback: any) => {
+  if (value === '') {
+    callback(
+      new Error(
+        t('datasource.please_enter') + t('common.empty') + t('embedded.cross_domain_settings')
+      )
+    )
+  } else {
+    // var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
+    var Expression = /^https?:\/\/[^\s/?#]+(:\d+)?/i
+    var objExp = new RegExp(Expression)
+    if (objExp.test(value) && !value.endsWith('/')) {
+      callback()
+    } else {
+      callback(t('embedded.format_is_incorrect'))
+    }
+  }
+}
 const rules = {
   name: [
     {
@@ -203,8 +227,8 @@ const rules = {
   domain: [
     {
       required: true,
-      message:
-        t('datasource.please_enter') + t('common.empty') + t('embedded.cross_domain_settings'),
+      validator: validateUrl,
+      trigger: 'blur',
     },
   ],
 }
@@ -216,7 +240,8 @@ const saveHandler = () => {
       if (obj.id === '') {
         delete obj.id
       }
-      embeddedApi.addEmbedded(obj).then(() => {
+      const req = obj.id ? embeddedApi.updateEmbedded : embeddedApi.addEmbedded
+      req(obj).then(() => {
         ElMessage({
           type: 'success',
           message: t('common.save_success'),
@@ -231,7 +256,13 @@ const saveHandler = () => {
 const editHandler = (row: any) => {
   pageForm.value.id = null
   if (row) {
-    pageForm.value = cloneDeep(row)
+    const { id, name, domain, type, configuration, description } = row
+    pageForm.value.id = id
+    pageForm.value.name = name
+    pageForm.value.domain = domain
+    pageForm.value.type = type
+    pageForm.value.configuration = configuration
+    pageForm.value.description = description
   }
   dialogTitle.value = row?.id ? t('embedded.edit_app') : t('embedded.create_application')
   dialogFormVisible.value = true
@@ -290,7 +321,6 @@ const copyCode = (row: any, key: any = 'app_secret') => {
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('dashboard.search')"
           clearable
-          @keyup.enter="search"
           @blur="search"
         >
           <template #prefix>
@@ -313,7 +343,7 @@ const copyCode = (row: any, key: any = 'app_secret') => {
       class="table-content"
       :class="multipleSelectionAll.length && 'show-pagination_height'"
     >
-      <template v-if="!keywords && !fieldList.length">
+      <template v-if="!oldKeywords && !fieldList.length">
         <EmptyBackground
           class="datasource-yet"
           :description="$t('embedded.no_application')"
@@ -365,11 +395,11 @@ const copyCode = (row: any, key: any = 'app_secret') => {
             <template #default="scope">
               <div class="user-status-container">
                 <div
-                  :title="scope.row.showPwd ? scope.row.app_id : pwd"
+                  :title="scope.row.showPwd ? scope.row.app_secret : pwd"
                   class="ellipsis"
                   style="max-width: 133px"
                 >
-                  {{ scope.row.showPwd ? scope.row.app_id : pwd }}
+                  {{ scope.row.showPwd ? scope.row.app_secret : pwd }}
                 </div>
                 <el-tooltip
                   :offset="12"
@@ -486,13 +516,13 @@ const copyCode = (row: any, key: any = 'app_secret') => {
           </el-table-column>
           <template #empty>
             <EmptyBackground
-              v-if="!keywords && !fieldList.length"
+              v-if="!oldKeywords && !fieldList.length"
               :description="$t('embedded.no_application')"
               img-type="noneWhite"
             />
 
             <EmptyBackground
-              v-if="!!keywords && !fieldList.length"
+              v-if="!!oldKeywords && !fieldList.length"
               :description="$t('datasource.relevant_content_found')"
               img-type="tree"
             />

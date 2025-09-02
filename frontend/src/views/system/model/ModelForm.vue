@@ -107,7 +107,14 @@ const rules = computed(() => ({
     },
   ],
   base_model: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'blur' }],
-  name: [{ required: true, message: t('model.the_basic_model'), trigger: 'blur' }],
+  name: [
+    { required: true, message: t('model.the_basic_model'), trigger: 'blur' },
+    {
+      max: 100,
+      message: t('model.length_max_error', { msg: t('model.model_name'), max: 100 }),
+      trigger: 'blur',
+    },
+  ],
   api_key: [
     {
       required: !currentSupplier.value?.is_private,
@@ -360,7 +367,7 @@ defineExpose({
       </div>
       <div v-if="modelSelected && configExpand" class="model-params">
         {{ t('model.model_parameters') }}
-        <span class="add" @click="handleParamsCreate">
+        <span class="btn" @click="handleParamsCreate">
           <el-icon size="16">
             <icon_add_outlined></icon_add_outlined>
           </el-icon>
@@ -523,10 +530,18 @@ defineExpose({
       line-height: 22px;
       margin: 16px 0 8px 0;
 
-      .add {
+      .btn {
+        height: 26px;
         display: flex;
         align-items: center;
+        justify-content: center;
+        padding: 0 4px;
+        border-radius: 6px;
         cursor: pointer;
+
+        &:hover {
+          background-color: #1f23291a;
+        }
       }
 
       .ed-icon {

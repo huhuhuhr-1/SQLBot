@@ -9,13 +9,18 @@ const pwdForm = reactive({
   new_pwd: '',
   confirm_pwd: '',
 })
-
+const PWD_REGEX =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[~!@#$%^&*()_+\-={}|:"<>?`\[\];',./])[A-Za-z\d~!@#$%^&*()_+\-={}|:"<>?`\[\];',./]{8,20}$/
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 const validatePass = (rule: any, value: any, callback: any) => {
   if (value === '') {
     callback(new Error(t('common.please_input', { msg: t('user.upgrade_pwd.new_pwd') })))
   } else {
+    if (!PWD_REGEX.test(value)) {
+      callback(new Error(t('user.upgrade_pwd.pwd_format_error')))
+      return
+    }
     if (pwdForm.confirm_pwd !== '') {
       if (!pwdRef.value) return
       pwdRef.value.validateField('confirm_pwd')
@@ -28,6 +33,8 @@ const validatePass = (rule: any, value: any, callback: any) => {
 const validatePass2 = (rule: any, value: any, callback: any) => {
   if (value === '') {
     callback(new Error(t('common.please_input', { msg: t('user.upgrade_pwd.confirm_pwd') })))
+  } else if (!PWD_REGEX.test(value)) {
+    callback(new Error(t('user.upgrade_pwd.pwd_format_error')))
   } else if (value !== pwdForm.new_pwd) {
     callback(new Error(t('user.upgrade_pwd.two_pwd_not_match')))
   } else {

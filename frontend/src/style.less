@@ -216,7 +216,7 @@ strong {
 }
 
 .ed-button.is-plain:active {
-  background-color: #a4e3d3 !important;
+  background-color: var(--ed-color-primary-60, #a4e3d3) !important;
 }
 
 .ed-drawer__footer {
@@ -408,4 +408,8 @@ strong {
       fill: var(--ed-color-primary);
     }
   }
+}
+
+.ed-dropdown__popper {
+  --ed-dropdown-menuItem-hover-fill: #1f23291a !important;
 }

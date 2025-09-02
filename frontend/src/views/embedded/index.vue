@@ -4,8 +4,15 @@
       <el-icon size="20" @click="openHistory">
         <icon_sidebar_outlined></icon_sidebar_outlined>
       </el-icon>
-      <img :src="logo || LOGO" class="logo" width="30px" height="30px" alt="" />
-      <span class="title">{{ customSet.name || $t('embedded.intelligent_customer_service') }}</span>
+      <el-icon v-if="!logo" class="logo" size="30">
+        <LOGO></LOGO>
+      </el-icon>
+      <img v-else :src="logo" class="logo" width="30px" height="30px" alt="" />
+      <span
+        :title="appName || $t('embedded.intelligent_customer_service')"
+        class="title ellipsis"
+        >{{ appName || $t('embedded.intelligent_customer_service') }}</span
+      >
 
       <el-tooltip effect="dark" :content="$t('embedded.new_conversation')" placement="top">
         <el-icon class="new-chat" size="20" @click="createChat">
@@ -29,16 +36,19 @@
 import { onBeforeMount, nextTick, onBeforeUnmount, ref, onMounted, reactive } from 'vue'
 import ChatComponent from '@/views/chat/index.vue'
 import { request } from '@/utils/request'
-import LOGO from '@/assets/embedded/LOGO.png'
+import LOGO from '@/assets/svg/logo-custom_small.svg'
 import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined_nofill.svg'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useRoute } from 'vue-router'
 import { assistantApi } from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistant'
 import { setCurrentColor } from '@/utils/utils'
 import { useI18n } from 'vue-i18n'
+
 const { t } = useI18n()
 const assistantStore = useAssistantStore()
+const appearanceStore = useAppearanceStoreWithOut()
 const route = useRoute()
 const chatRef = ref()
 
@@ -55,6 +65,7 @@ const validator = ref({
   id_match: false,
   token: '',
 })
+const appName = ref('')
 const loading = ref(true)
 const eventName = 'sqlbot_assistant_event'
 const communicationCb = async (event: any) => {
@@ -111,12 +122,12 @@ const logo = ref()
 const basePath = import.meta.env.VITE_API_BASE_URL
 const baseUrl = basePath + '/system/assistant/picture/'
 const setPageCustomColor = (val: any) => {
-  const ele = document.querySelector('.sqlbot-assistant-container') as HTMLElement
+  const ele = document.querySelector('body') as HTMLElement
   setCurrentColor(val, ele)
 }
 
 const setPageHeaderFontColor = (val: any) => {
-  const ele = document.querySelector('.sqlbot-assistant-container') as HTMLElement
+  const ele = document.querySelector('body') as HTMLElement
   ele.style.setProperty('--ed-text-color-primary', val)
 }
 onBeforeMount(async () => {
@@ -150,6 +161,11 @@ onBeforeMount(async () => {
     messageId: assistantId,
   }
   window.parent.postMessage(readyData, '*')
+  assistantApi.query(assistantId as any).then((res) => {
+    if (res.name) {
+      appName.value = res.name
+    }
+  })
 
   request.get(`/system/assistant/${assistantId}`).then((res) => {
     if (res?.configuration) {
@@ -159,9 +175,23 @@ onBeforeMount(async () => {
       }
 
       for (const key in customSet) {
-        if (Object.prototype.hasOwnProperty.call(customSet, key) && rawData[key]) {
+        if (
+          Object.prototype.hasOwnProperty.call(customSet, key) &&
+          ![null, undefined].includes(rawData[key])
+        ) {
           customSet[key] = rawData[key]
         }
+      }
+
+      if (!rawData.theme) {
+        const { customColor, themeColor } = appearanceStore
+        const currentColor =
+          themeColor === 'custom' && customColor
+            ? customColor
+            : themeColor === 'blue'
+              ? '#3370ff'
+              : '#1CBA90'
+        customSet.theme = currentColor || customSet.theme
       }
 
       nextTick(() => {
@@ -204,10 +234,10 @@ onBeforeUnmount(() => {
       font-size: 16px;
       line-height: 24px;
       color: var(--ed-text-color-primary);
+      max-width: calc(100% - 172px);
     }
 
-    .ed-icon {
-      position: relative;
+    .ed-icon:not(.logo) {
       cursor: pointer;
 
       &::after {

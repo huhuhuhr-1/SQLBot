@@ -45,8 +45,44 @@ COPY g2-ssr/charts/* /app/charts/
 
 RUN npm install
 
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS python-builder
 # Runtime stage
-FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
+# FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
+FROM registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6
+
+# python environment
+COPY --from=python-builder /usr/local /usr/local
+
+RUN python --version && pip --version
+
+# Install uv tool
+COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
+
+ARG DEPENDENCIES="                \
+    wait-for-it                   \
+    build-essential               \
+    curl                          \
+    gnupg                         \
+    gcc                           \
+    g++                           \
+    libcairo2-dev                 \
+    libpango1.0-dev               \
+    libjpeg-dev                   \
+    libgif-dev                    \
+    librsvg2-dev"
+
+RUN apt-get update && apt-get install -y --no-install-recommends $DEPENDENCIES \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod g-xr /usr/local/bin/* /usr/bin/* /bin/* /usr/sbin/* /sbin/* /usr/lib/postgresql/17/bin/* \
+    && chmod g+xr /usr/bin/ld.so \
+    && chmod g+x /usr/local/bin/python*
+
+# ENV PGDATA=/var/lib/postgresql/data \
+#     POSTGRES_USER=root \
+#     POSTGRES_PASSWORD=Password123@pg \
+#     POSTGRES_DB=sqlbot
 
 # Set runtime environment variables
 ENV PYTHONUNBUFFERED=1
@@ -65,7 +101,7 @@ WORKDIR ${SQLBOT_HOME}/app
 
 RUN mkdir -p /opt/sqlbot/images /opt/sqlbot/g2-ssr
 
-EXPOSE 3000 8000 8001
+EXPOSE 3000 8000 8001 5432
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

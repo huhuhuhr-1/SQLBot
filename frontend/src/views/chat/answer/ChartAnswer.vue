@@ -244,7 +244,7 @@ defineExpose({ sendMessage, index: () => index.value, stop })
 
 <template>
   <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
-    <ChartBlock style="margin-top: 12px" :message="message" />
+    <ChartBlock style="margin-top: 6px" :message="message" />
     <slot></slot>
     <template #tool>
       <slot name="tool"></slot>

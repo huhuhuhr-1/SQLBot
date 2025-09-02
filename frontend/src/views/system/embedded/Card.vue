@@ -4,26 +4,31 @@ import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_embedded_outlined from '@/assets/embedded/icon_embedded_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import Lock from '@/assets/embedded/LOGO-sql.png'
-import { ref, unref } from 'vue'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
+import LOGO from '@/assets/svg/logo-custom_small.svg'
+import { ref, unref, computed } from 'vue'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import icon_style_set_outlined from '@/assets/svg/icon_style-set_outlined.svg'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     name: string
     isBase: boolean
     description: string
     id?: string
+    logo?: string
   }>(),
   {
     name: '-',
     isBase: false,
     id: '-',
     description: '-',
+    logo: '',
   }
 )
 
 const emits = defineEmits(['edit', 'del', 'embedded', 'ui'])
+const appearanceStore = useAppearanceStoreWithOut()
 
 const handleEdit = () => {
   emits('edit')
@@ -46,12 +51,21 @@ const popoverRef = ref()
 const onClickOutside = () => {
   unref(popoverRef).popperRef?.delayHide?.()
 }
+const basePath = import.meta.env.VITE_API_BASE_URL
+const baseUrl = basePath + '/system/assistant/picture/'
+const pageLogo = computed(() => {
+  return props.logo.startsWith('blob') ? props.logo : baseUrl + props.logo
+})
 </script>
 
 <template>
   <div class="card">
     <div class="name-icon">
-      <img :src="Lock" width="32px" height="32px" />
+      <img v-if="props.logo" :src="pageLogo" width="32px" height="32px" />
+      <el-icon v-else-if="appearanceStore.themeColor === 'custom'" size="32">
+        <LOGO></LOGO>
+      </el-icon>
+      <img v-else :src="Lock" width="32px" height="32px" />
       <span class="name ellipsis" :title="name">{{ name }}</span>
       <span class="default" :class="isBase && 'is-base'">{{
         isBase ? $t('embedded.basic_application') : $t('embedded.advanced_application')

@@ -3,8 +3,10 @@ import json
 import platform
 import urllib.parse
 from decimal import Decimal
+from typing import Optional
 
 from apps.db.db_sql import get_table_sql, get_field_sql, get_version_sql
+from common.error import ParseSQLResultError
 
 if platform.system() != "Darwin":
     import dmPython
@@ -100,7 +102,7 @@ def get_session(ds: CoreDatasource | AssistantOutDsSchema):
     return session
 
 
-def check_connection(trans: Trans, ds: CoreDatasource, is_raise: bool = False):
+def check_connection(trans: Optional[Trans], ds: CoreDatasource, is_raise: bool = False):
     db = DB.get_db(ds.type)
     if db.connect_type == ConnectType.sqlalchemy:
         conn = get_engine(ds, 10)
@@ -156,9 +158,11 @@ def check_connection(trans: Trans, ds: CoreDatasource, is_raise: bool = False):
 
 
 def get_version(ds: CoreDatasource | AssistantOutDsSchema):
+    version = ''
     conf = None
     if isinstance(ds, CoreDatasource):
-        conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+        conf = DatasourceConf(
+            **json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     if isinstance(ds, AssistantOutDsSchema):
         conf = DatasourceConf()
         conf.host = ds.host
@@ -175,26 +179,27 @@ def get_version(ds: CoreDatasource | AssistantOutDsSchema):
             with get_session(ds) as session:
                 with session.execute(text(sql)) as result:
                     res = result.fetchall()
-                    return res[0][0]
+                    version = res[0][0]
         else:
             if ds.type == 'dm':
                 with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
                                       port=conf.port) as conn, conn.cursor() as cursor:
                     cursor.execute(sql, timeout=10)
                     res = cursor.fetchall()
-                    return res[0][0]
+                    version = res[0][0]
             elif ds.type == 'doris':
                 with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
                                      port=conf.port, db=conf.database, connect_timeout=10,
                                      read_timeout=10) as conn, conn.cursor() as cursor:
                     cursor.execute(sql)
                     res = cursor.fetchall()
-                    return res[0][0]
+                    version = res[0][0]
             elif ds.type == 'redshift':
-                return ''
+                version = ''
     except Exception as e:
         print(e)
-        return ''
+        version = ''
+    return version.decode() if isinstance(version, bytes) else version
 
 
 def get_schema(ds: CoreDatasource):
@@ -206,7 +211,8 @@ def get_schema(ds: CoreDatasource):
             if ds.type == "sqlServer":
                 sql = f"""select name from sys.schemas"""
             elif ds.type == "pg" or ds.type == "excel":
-                sql = """SELECT nspname FROM pg_namespace"""
+                sql = """SELECT nspname
+                         FROM pg_namespace"""
             elif ds.type == "oracle":
                 sql = f"""select * from all_users"""
             with session.execute(text(sql)) as result:
@@ -322,7 +328,7 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                     return {"fields": columns, "data": result_list,
                             "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
                 except Exception as ex:
-                    raise ex
+                    raise ParseSQLResultError(str(ex))
     else:
         conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
         if ds.type == 'dm':
@@ -342,7 +348,7 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                     return {"fields": columns, "data": result_list,
                             "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
                 except Exception as ex:
-                    raise ex
+                    raise ParseSQLResultError(str(ex))
         elif ds.type == 'doris':
             with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
                                  port=conf.port, db=conf.database, connect_timeout=conf.timeout,
@@ -361,7 +367,7 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                     return {"fields": columns, "data": result_list,
                             "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
                 except Exception as ex:
-                    raise ex
+                    raise ParseSQLResultError(str(ex))
         elif ds.type == 'redshift':
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                             password=conf.password,
@@ -380,4 +386,4 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                     return {"fields": columns, "data": result_list,
                             "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
                 except Exception as ex:
-                    raise ex
+                    raise ParseSQLResultError(str(ex))

@@ -418,7 +418,9 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'terminologies') -> str:
     return pretty_xml
 
 
-def get_terminology_template(session: SessionDep, question: str, oid: int) -> str:
+def get_terminology_template(session: SessionDep, question: str, oid: Optional[int] = 1) -> str:
+    if not oid:
+        oid = 1
     _results = select_terminology_by_word(session, question, oid)
     if _results and len(_results) > 0:
         terminology = to_xml_string(_results)

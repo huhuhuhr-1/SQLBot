@@ -122,7 +122,11 @@ export const supplierList: Array<{
         model_options: [
           {
             name: '4.0Ultra',
-            args: [{ key: 'max_tokens', val: 32768, type: 'number', range: '[1, 32768]' }],
+            args: [
+              { key: 'temperature', val: 0.5, type: 'number', range: '[0, 1]' },
+              { key: 'max_tokens', val: 8192, type: 'number', range: '[1, 8192]' },
+            ],
+            api_domain: 'https://spark-api-open.xf-yun.com/v1/',
           },
           /* {
             name: 'generalv3.5',
@@ -163,7 +167,7 @@ export const supplierList: Array<{
     model_config: {
       0: {
         api_domain: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-        common_args: [{ key: 'temperature', val: 1.0, type: 'number', range: '[0, 2]' }],
+        common_args: [{ key: 'temperature', val: 0.7, type: 'number', range: '(0, 1]' }],
         model_options: [
           { name: 'gemini-2.5-pro' },
           { name: 'gemini-2.5-flash' },
@@ -213,11 +217,11 @@ export const supplierList: Array<{
         model_options: [
           {
             name: 'kimi-k2-0711-preview',
-            args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+            args: [{ key: 'temperature', val: 0.3, type: 'number', range: '[0, 1]' }],
           },
           {
             name: 'kimi-k2-turbo-preview',
-            args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+            args: [{ key: 'temperature', val: 0.3, type: 'number', range: '[0, 1]' }],
           },
           { name: 'moonshot-v1-8k' },
           { name: 'moonshot-v1-32k' },

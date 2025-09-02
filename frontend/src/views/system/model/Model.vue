@@ -419,6 +419,7 @@ const submit = (item: any) => {
       size="calc(100% - 100px)"
       modal-class="model-drawer-fullscreen"
       direction="btt"
+      destroy-on-close
       :before-close="beforeClose"
       :show-close="false"
     >

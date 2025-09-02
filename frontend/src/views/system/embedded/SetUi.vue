@@ -6,18 +6,19 @@ import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
 import { setCurrentColor } from '@/utils/utils'
 import { cloneDeep } from 'lodash-es'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
 
 const { t } = useI18n()
+const appearanceStore = useAppearanceStoreWithOut()
 const currentId = ref()
 interface SqlBotForm {
-  name: string
   theme: string
   header_font_color: string
-  // logo?: string
+  logo?: string
   x_type: string
   y_type: string
   welcome_desc: string
-  // float_icon?: string
+  float_icon?: string
   welcome: string
   float_icon_drag: boolean
   x_val: number
@@ -63,7 +64,6 @@ const logo = ref('')
 const floatIcon = ref('')
 
 const defaultSqlBotForm = reactive<SqlBotForm>({
-  name: t('embedded.intelligent_customer_service'),
   x_type: 'right',
   y_type: 'bottom',
   x_val: 30,
@@ -73,20 +73,35 @@ const defaultSqlBotForm = reactive<SqlBotForm>({
   welcome_desc: t('embedded.data_analysis_now'),
   theme: '#1CBA90',
   header_font_color: '#1F2329',
-  // logo: '',
-  // float_icon: '',
+  logo: '',
+  float_icon: '',
 })
 const sqlBotForm = reactive<SqlBotForm>(cloneDeep(defaultSqlBotForm)) as { [key: string]: any }
 let rawData = {} as { [key: string]: any }
 const init = () => {
+  Object.assign(sqlBotForm, cloneDeep(defaultSqlBotForm))
   fileList.value = []
   logo.value = rawData.logo
   floatIcon.value = rawData.float_icon
 
   for (const key in sqlBotForm) {
-    if (Object.prototype.hasOwnProperty.call(sqlBotForm, key) && rawData[key]) {
+    if (
+      Object.prototype.hasOwnProperty.call(sqlBotForm, key) &&
+      ![null, undefined].includes(rawData[key])
+    ) {
       sqlBotForm[key] = rawData[key]
     }
+  }
+
+  if (!rawData.theme) {
+    const { customColor, themeColor } = appearanceStore
+    const currentColor =
+      themeColor === 'custom' && customColor
+        ? customColor
+        : themeColor === 'blue'
+          ? '#3370ff'
+          : '#1CBA90'
+    sqlBotForm.theme = currentColor || sqlBotForm.theme
   }
 
   nextTick(() => {
@@ -155,6 +170,7 @@ const resetSqlBotForm = (reset2Default?: boolean) => {
   if (reset2Default) {
     logo.value = ''
     floatIcon.value = ''
+    sqlBotForm.restoreDefaults = true
     nextTick(() => {
       setPageCustomColor(sqlBotForm.theme)
       setPageHeaderFontColor(sqlBotForm.header_font_color)
@@ -200,10 +216,11 @@ const clearFiles = (array?: string[]) => {
     }
   }
 }
-
+const appName = ref('')
 const open = (row: any) => {
   rawData = JSON.parse(row.configuration)
   currentId.value = row.id
+  appName.value = row.name
   dialogVisible.value = true
   init()
 }
@@ -224,7 +241,7 @@ defineExpose({
         <assistant
           :welcome-desc="sqlBotForm.welcome_desc"
           :welcome="sqlBotForm.welcome"
-          :name="sqlBotForm.name"
+          :name="appName"
           :logo="logo"
         ></assistant>
       </div>
@@ -260,7 +277,7 @@ defineExpose({
             <el-upload
               name="logo"
               :show-file-list="false"
-              accept=".jpeg,.jpg,.png,.gif,.svg"
+              accept=".jpg,.png,.gif,.svg"
               :before-upload="(e: any) => beforeUpload(e, 'logo')"
               :http-request="uploadImg"
             >
@@ -276,7 +293,7 @@ defineExpose({
             <el-upload
               name="float_icon"
               :show-file-list="false"
-              accept=".jpeg,.jpg,.png,.gif,.svg"
+              accept=".jpg,.png,.gif,.svg"
               :before-upload="(e: any) => beforeUpload(e, 'float_icon')"
               :http-request="uploadImg"
             >
@@ -294,7 +311,12 @@ defineExpose({
           </div>
           <div class="position-set_input">
             <div class="x">
-              <el-input-number v-model="sqlBotForm.x_val" :min="0" controls-position="right">
+              <el-input-number
+                v-model="sqlBotForm.x_val"
+                step-strictly
+                :min="0"
+                controls-position="right"
+              >
                 <template #prefix>
                   <el-select v-model="sqlBotForm.x_type" style="width: 51px">
                     <el-option
@@ -308,7 +330,12 @@ defineExpose({
               >px
             </div>
             <div class="y">
-              <el-input-number v-model="sqlBotForm.y_val" :min="0" controls-position="right">
+              <el-input-number
+                v-model="sqlBotForm.y_val"
+                step-strictly
+                :min="0"
+                controls-position="right"
+              >
                 <template #prefix>
                   <el-select v-model="sqlBotForm.y_type" style="width: 51px">
                     <el-option
@@ -329,15 +356,6 @@ defineExpose({
           label-width="120px"
           class="page-Form"
         >
-          <el-form-item :label="t('embedded.application_name')">
-            <el-input
-              v-model="sqlBotForm.name"
-              :placeholder="
-                $t('datasource.please_enter') + $t('common.empty') + $t('embedded.application_name')
-              "
-              maxlength="20"
-            />
-          </el-form-item>
           <el-form-item :label="$t('system.welcome_message')">
             <el-input
               v-model="sqlBotForm.welcome"
@@ -385,8 +403,11 @@ defineExpose({
 
     .left-preview {
       width: 460px;
-      pointer-events: none;
       height: 100%;
+
+      .content {
+        pointer-events: none;
+      }
     }
 
     .right-form {
@@ -515,7 +536,7 @@ defineExpose({
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-top: 16px;
+        margin-top: 88px;
       }
     }
   }

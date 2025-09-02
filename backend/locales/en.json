@@ -3,6 +3,7 @@
   "i18n_ds_name_exist": "Name already exists",
   "i18n_concat_admin": "Please contact administrator!",
   "i18n_exist": "{msg} already exists!",
+  "i18n_name": "Name",
   "i18n_not_exist": "{msg} not exists",
   "i18n_error": "{key} error!",
   "i18n_miss_args": "Missing {key} parameter!",

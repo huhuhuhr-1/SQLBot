@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ChatInfo, type ChatMessage } from '@/api/chat.ts'
 import logo_fold from '@/assets/LOGO-fold.svg'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
+import custom_small from '@/assets/svg/logo-custom_small.svg'
 
 withDefaults(
   defineProps<{
@@ -12,14 +14,16 @@ withDefaults(
     hideAvatar: false,
   }
 )
+const appearanceStore = useAppearanceStoreWithOut()
 </script>
 
 <template>
   <div class="chat-row-container">
     <div class="chat-row" :class="{ 'right-to-left': msg.role === 'user' }">
       <div v-if="msg.role === 'assistant'" class="ai-avatar">
-        <el-icon>
-          <logo_fold v-if="!hideAvatar" />
+        <el-icon v-if="!hideAvatar">
+          <custom_small v-if="appearanceStore.themeColor === 'custom'"></custom_small>
+          <logo_fold v-else />
         </el-icon>
       </div>
       <div :class="{ 'row-full': msg.role === 'assistant', 'width-auto': msg.role === 'user' }">

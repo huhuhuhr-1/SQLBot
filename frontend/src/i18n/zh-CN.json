@@ -1,5 +1,6 @@
 {
   "menu": {
+    "add_interface_credentials": "请添加接口凭证",
     "Data Q&A": "智能问数",
     "Data Connections": "数据源",
     "Dashboard": "仪表盘",
@@ -220,7 +221,7 @@
       "database": "数据库",
       "connect_mode": "连接方式",
       "service_name": "服务名",
-      "extra_jdbc": "额外的 JDBC 连接字符串",
+      "extra_jdbc": "额外的数据库连接配置",
       "schema": "模式",
       "get_schema": "获取模式",
       "file": "文件",
@@ -308,6 +309,7 @@
     "select_supplier": "选择供应商",
     "the_basic_model": "请给基础模型设置一个名称",
     "the_basic_model_de": "请选择基础模型",
+    "length_max_error": "{msg}长度不能超过{max}个字符",
     "model_name": "模型名称",
     "custom_model_name": "自定义的模型名称",
     "enter_to_add": "列表中未列出的模型，直接输入模型名称，回车即可添加",
@@ -386,7 +388,8 @@
       "old_pwd": "旧密码",
       "new_pwd": "新密码",
       "confirm_pwd": "确认密码",
-      "two_pwd_not_match": "两次输入的密码不一致"
+      "two_pwd_not_match": "两次输入的密码不一致",
+      "pwd_format_error": "8-20位且至少一位大写字母、小写字母、数字、特殊字符"
     }
   },
   "workspace": {
@@ -513,7 +516,9 @@
     "private": "私有",
     "configure_interface": "配置接口",
     "interface_url": "接口 URL",
-    "aes_enable": "开启 AES 加密，加密字段 (host, user, password, dataBase, schema) 均采用 AES-CBC-PKCS5Padding 加密方式",
+    "format_is_incorrect": "格式不对",
+    "aes_enable": "开启 AES 加密",
+    "aes_enable_tips": "加密字段 (host, user, password, dataBase, schema) 均采用 AES-CBC-PKCS5Padding 加密方式",
     "bit": "位",
     "creating_advanced_applications": "创建高级应用",
     "credential_acquisition_method": "凭证获取方式",
@@ -589,6 +594,7 @@
     "data_over_limit": "数据量过大，仅展示前{0}条数据",
     "ds_is_invalid": "数据源无效",
     "error": "错误",
+    "exec-sql-err": "执行SQL失败",
     "no_data": "暂无数据",
     "show_error_detail": "查看具体信息"
   },

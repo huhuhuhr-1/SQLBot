@@ -32,6 +32,7 @@ wlist = [
     "/system/appearance/picture/*",
     "/system/assistant/validator*",
     "/system/assistant/info/*",
+    "/system/assistant/app/*",
     "/system/assistant/picture/*",
     "/datasource/uploadExcel"
 ]

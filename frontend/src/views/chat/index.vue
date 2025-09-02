@@ -382,7 +382,7 @@ import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
 import icon_screen_outlined from '@/assets/svg/icon_screen_outlined.svg'
 import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
-import logo_fold from '@/assets/LOGO-fold.svg'
+import logo_fold from '@/assets/svg/logo-custom_small.svg'
 import logo from '@/assets/LOGO.svg'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 import { useAssistantStore } from '@/stores/assistant'
@@ -1182,6 +1182,9 @@ onMounted(() => {
         font-size: 24px;
         line-height: 32px;
         margin: 16px 0;
+        max-width: 100%;
+        word-break: break-all;
+        padding: 0 20px;
       }
 
       .i-can {
@@ -1192,6 +1195,9 @@ onMounted(() => {
         font-size: 14px;
         line-height: 24px;
         color: #646a73;
+        max-width: 100%;
+        word-break: break-all;
+        padding: 0 20px;
       }
     }
 

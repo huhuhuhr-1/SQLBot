@@ -66,7 +66,7 @@ const handleDefaultChatChange = (val: any) => {
           @click="handleDefaultChatChange(ele)"
         >
           <el-icon style="color: #646a73" size="16">
-            <component :is="ele.icon" />
+            <component :is="ele.icon" :class="chartType === ele.value && 'icon-primary'" />
           </el-icon>
           <div class="model-name">{{ ele.name }}</div>
           <el-icon size="16" class="done">
