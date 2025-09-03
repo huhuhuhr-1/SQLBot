@@ -149,7 +149,7 @@ const handleSelectionChange = (val: any[]) => {
   const arr = fieldList.value.filter(selectable)
   const ids = arr.map((ele: any) => ele.id)
   multipleSelectionAll.value = [
-    ...multipleSelectionAll.value.filter((ele) => !ids.includes(ele.id)),
+    ...multipleSelectionAll.value.filter((ele: any) => !ids.includes(ele.id)),
     ...val,
   ]
   isIndeterminate.value = !(val.length === 0 || val.length === arr.length)
@@ -222,7 +222,7 @@ const rules = {
 const saveHandler = () => {
   termFormRef.value.validate((res: any) => {
     if (res) {
-      const arr = [...pageForm.value.other_words.filter((ele) => !!ele), pageForm.value.word]
+      const arr = [...pageForm.value.other_words.filter((ele: any) => !!ele), pageForm.value.word]
       if (arr.length !== new Set(arr).size) {
         return ElMessage.error(t('professional.cannot_be_repeated'))
       }
@@ -252,6 +252,9 @@ const editHandler = (row: any) => {
   pageForm.value.id = null
   if (row) {
     pageForm.value = cloneDeep(row)
+    if (!pageForm.value.other_words.length) {
+      pageForm.value.other_words = ['']
+    }
   }
   dialogTitle.value = row?.id
     ? t('professional.editing_terminology')
@@ -301,7 +304,6 @@ const deleteHandlerItem = (idx: number) => {
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('professional.search_term')"
           clearable
-          @keyup.enter="search"
           @blur="search"
         >
           <template #prefix>
@@ -337,23 +339,7 @@ const deleteHandlerItem = (idx: number) => {
       class="table-content"
       :class="multipleSelectionAll?.length && 'show-pagination_height'"
     >
-      <template v-if="!oldKeywords && !fieldList.length">
-        <EmptyBackground
-          class="datasource-yet"
-          :description="$t('professional.no_term')"
-          img-type="noneWhite"
-        />
-
-        <div style="text-align: center; margin-top: -10px">
-          <el-button type="primary" @click="editHandler(null)">
-            <template #icon>
-              <icon_add_outlined></icon_add_outlined>
-            </template>
-            {{ $t('professional.create_new_term') }}
-          </el-button>
-        </div>
-      </template>
-      <div v-else class="preview-or-schema">
+      <div class="preview-or-schema">
         <el-table
           ref="multipleTableRef"
           :data="fieldList"

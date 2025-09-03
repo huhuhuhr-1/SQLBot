@@ -20,7 +20,6 @@ const optInit = (viewInfo: any) => {
   resourceDialogShow.value = true
   state.viewInfo = viewInfo
 }
-const curOptDashboardId = ref(null)
 const state = reactive({
   dashboardList: [] as SQTreeNode[],
   viewInfo: null,
@@ -127,20 +126,19 @@ const saveResourcePrepare = () => {
 const saveResource = (params: any, commonParams: any) => {
   saveDashboardResourceTarget(params, commonParams, (res: any) => {
     const messageTips = t('dashboard.add_success')
-    curOptDashboardId.value = res?.id
-    openMessageLoading(messageTips, 'success', callbackExportSuc)
+    openMessageLoading(messageTips, 'success', res?.id, callbackExportSuc)
     resetForm()
   })
 }
 
-const callbackExportSuc = () => {
+const callbackExportSuc = (curOptDashboardIdValue: any) => {
   // do open dashboard
-  const url = `#/canvas?resourceId=${curOptDashboardId.value}`
+  const url = `#/canvas?resourceId=${curOptDashboardIdValue}`
   window.open(url, '_self')
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-const openMessageLoading = (text: string, type = 'success', cb: Function) => {
+const openMessageLoading = (text: string, type = 'success', dvId: any, cb: Function) => {
   // success error loading
   const customClass = `sq-message-${type || 'success'} sq-message-export`
   ElMessage({
@@ -161,7 +159,7 @@ const openMessageLoading = (text: string, type = 'success', cb: Function) => {
           size: 'small',
           class: 'btn-text',
           onClick: () => {
-            cb()
+            cb(dvId)
           },
         },
         t('dashboard.open_dashboard')
@@ -169,7 +167,7 @@ const openMessageLoading = (text: string, type = 'success', cb: Function) => {
     ]),
     type,
     showClose: true,
-    duration: 0,
+    duration: 2000,
     customClass,
   })
 }

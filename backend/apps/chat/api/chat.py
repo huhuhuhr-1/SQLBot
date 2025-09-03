@@ -3,6 +3,7 @@ import io
 import traceback
 
 import numpy as np
+import orjson
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -147,10 +148,11 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
         llm_service.run_task_async()
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+
+        def _err(_e: Exception):
+            yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+
+        return StreamingResponse(_err(e), media_type="text/event-stream")
 
     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 
@@ -158,45 +160,40 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
 @router.post("/record/{chat_record_id}/{action_type}")
 async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str,
                               current_assistant: CurrentAssistant):
-    if action_type != 'analysis' and action_type != 'predict':
-        raise HTTPException(
-            status_code=404,
-            detail="Not Found"
-        )
-    record: ChatRecord | None = None
-
-    stmt = select(ChatRecord.id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource, ChatRecord.engine_type,
-                  ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.chart, ChatRecord.data).where(
-        and_(ChatRecord.id == chat_record_id))
-    result = session.execute(stmt)
-    for r in result:
-        record = ChatRecord(id=r.id, question=r.question, chat_id=r.chat_id, datasource=r.datasource,
-                            engine_type=r.engine_type, ai_modal_id=r.ai_modal_id, create_by=r.create_by, chart=r.chart,
-                            data=r.data)
-
-    if not record:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Chat record with id {chat_record_id} not found"
-        )
-
-    if not record.chart:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it"
-        )
-
-    request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
-
     try:
+        if action_type != 'analysis' and action_type != 'predict':
+            raise Exception(f"Type {action_type} Not Found")
+        record: ChatRecord | None = None
+
+        stmt = select(ChatRecord.id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource,
+                      ChatRecord.engine_type,
+                      ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.chart, ChatRecord.data).where(
+            and_(ChatRecord.id == chat_record_id))
+        result = session.execute(stmt)
+        for r in result:
+            record = ChatRecord(id=r.id, question=r.question, chat_id=r.chat_id, datasource=r.datasource,
+                                engine_type=r.engine_type, ai_modal_id=r.ai_modal_id, create_by=r.create_by,
+                                chart=r.chart,
+                                data=r.data)
+
+        if not record:
+            raise Exception(f"Chat record with id {chat_record_id} not found")
+
+        if not record.chart:
+            raise Exception(
+                f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it")
+
+        request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
+
         llm_service = await LLMService.create(current_user, request_question, current_assistant)
         llm_service.run_analysis_or_predict_task_async(action_type, record)
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+
+        def _err(_e: Exception):
+            yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+
+        return StreamingResponse(_err(e), media_type="text/event-stream")
 
     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 

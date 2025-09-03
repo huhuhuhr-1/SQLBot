@@ -215,7 +215,6 @@ const handleCurrentChange = (val: number) => {
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('user.name_account_email')"
           clearable
-          @keyup.enter="search"
           @blur="search"
         >
           <template #prefix>

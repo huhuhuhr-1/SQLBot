@@ -8,7 +8,6 @@
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('user.name_account_email')"
           clearable
-          @keyup.enter="handleSearch"
           @blur="handleSearch"
         >
           <template #prefix>

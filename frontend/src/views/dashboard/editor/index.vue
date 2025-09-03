@@ -40,9 +40,20 @@ const addComponent = (componentType: string, viewInfo?: any) => {
       component.propValue[0].title = t('dashboard.new_tab')
       component.activeTabName = subTabName
     }
-    component.y = 100
+    component.y = maxYComponentCount() + 2
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     dashboardEditorInnerRef.value.addItemToBox(component)
+  }
+}
+
+const maxYComponentCount = () => {
+  if (componentData.value.length === 0) {
+    return 1
+  } else {
+    return componentData.value
+      .filter((item) => item['y'])
+      .map((item) => item['y'] + item['sizeY']) // Calculate the y+sizeY of each element
+      .reduce((max, current) => Math.max(max, current), 0)
   }
 }
 

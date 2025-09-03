@@ -438,7 +438,7 @@ const saveHandler = () => {
   })
 }
 const preview = () => {
-  currentPermission.user = selectPermissionRef.value.checkedWorkspace.map((ele: any) => ele.id)
+  currentPermission.user = selectPermissionRef.value.checkTableList.map((ele: any) => ele.id)
   activeStep.value = 0
 }
 const next = () => {
@@ -479,7 +479,7 @@ const save = () => {
     permissions: permissionsObj,
     users:
       isCreate.value || activeStep.value === 1
-        ? selectPermissionRef.value.checkedWorkspace.map((ele: any) => ele.id)
+        ? selectPermissionRef.value.checkTableList.map((ele: any) => ele.id)
         : users,
   }
   if (!id) {

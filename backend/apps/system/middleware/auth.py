@@ -1,5 +1,6 @@
 
 import base64
+import json
 from typing import Optional
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -112,6 +113,16 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 assistant_info = await get_assistant_info(session=session, assistant_id=payload['assistant_id'])
                 assistant_info = AssistantModel.model_validate(assistant_info)
                 assistant_info = AssistantHeader.model_validate(assistant_info.model_dump(exclude_unset=True))
+                if assistant_info and assistant_info.type == 0:
+                    if payload['oid']:
+                        session_user.oid = int(payload['oid'])
+                    else:
+                        assistant_oid = 1
+                        configuration = assistant_info.configuration
+                        config_obj = json.loads(configuration) if configuration else {}
+                        assistant_oid = config_obj.get('oid', 1)
+                        session_user.oid = int(assistant_oid)
+                        
                 return True, session_user, assistant_info
         except Exception as e:
             SQLBotLogUtil.exception(f"Assistant validation error: {str(e)}")

@@ -63,6 +63,8 @@ const dataObject = computed<{
 const assistantStore = useAssistantStore()
 const isCompletePage = computed(() => !assistantStore.getAssistant || assistantStore.getEmbedded)
 
+const isAssistant = computed(() => assistantStore.getAssistant)
+
 const chartId = computed(() => props.message?.record?.id + (props.enlarge ? '-fullscreen' : ''))
 
 const data = computed(() => {
@@ -216,7 +218,7 @@ function addToDashboard() {
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   const chartBaseInfo = JSON.parse(props.message?.record?.chart)
   recordeInfo['chart'] = {
-    type: chartBaseInfo.type,
+    type: currentChartType.value,
     title: chartBaseInfo.title,
     columns: chartBaseInfo.columns,
     xAxis: chartBaseInfo.axis?.x ? [chartBaseInfo.axis.x] : [],
@@ -395,7 +397,7 @@ watch(
             </div>
           </el-popover>
         </div>
-        <div v-if="message?.record?.chart">
+        <div v-if="message?.record?.chart && !isAssistant">
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
             <el-button class="tool-btn" text @click="addToDashboard">
               <el-icon size="16">

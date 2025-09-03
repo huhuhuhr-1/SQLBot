@@ -111,7 +111,9 @@ const workspaceWithKeywords = computed(() => {
 
 watch(search, () => {
   const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
-  checkedWorkspace.value = checkTableList.value.filter((ele) => tableNameArr.includes(ele.name))
+  checkedWorkspace.value = checkTableList.value.filter((ele: any) =>
+    tableNameArr.includes(ele.name)
+  )
   const checkedCount = checkedWorkspace.value.length
   checkAll.value = checkedCount === workspaceWithKeywords.value.length
   isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
@@ -122,7 +124,7 @@ const handleCheckAllChange = (val: CheckboxValueType) => {
     ? [
         ...new Set([
           ...workspaceWithKeywords.value,
-          ...checkedWorkspace.value.filter((ele) => !tableNameArr.includes(ele.name)),
+          ...checkedWorkspace.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
         ]),
       ]
     : []
@@ -131,10 +133,10 @@ const handleCheckAllChange = (val: CheckboxValueType) => {
     ? [
         ...new Set([
           ...workspaceWithKeywords.value,
-          ...checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name)),
+          ...checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
         ]),
       ]
-    : checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name))
+    : checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name))
 }
 const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
   const checkedCount = value.length
@@ -143,7 +145,7 @@ const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
   const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
   checkTableList.value = [
     ...new Set([
-      ...checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name)),
+      ...checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
       ...value,
     ]),
   ]
@@ -159,7 +161,7 @@ const open = async (user: any) => {
   const systemWorkspaceList = await workspaceUserList({}, 1, 1000)
   workspace.value = systemWorkspaceList.items as any
   if (user?.length) {
-    checkedWorkspace.value = workspace.value.filter((ele) => user.includes(ele.id))
+    checkedWorkspace.value = workspace.value.filter((ele: any) => user.includes(ele.id))
     checkTableList.value = [...checkedWorkspace.value]
     handleCheckedWorkspaceChange(checkedWorkspace.value)
   }
@@ -169,6 +171,7 @@ const open = async (user: any) => {
 
 const clearWorkspace = (val: any) => {
   checkedWorkspace.value = checkedWorkspace.value.filter((ele: any) => ele.id !== val.id)
+  checkTableList.value = checkTableList.value.filter((ele: any) => ele.id !== val.id)
   handleCheckedWorkspaceChange(checkedWorkspace.value)
 }
 
@@ -179,7 +182,7 @@ const clearWorkspaceAll = () => {
 
 defineExpose({
   open,
-  checkedWorkspace,
+  checkTableList,
 })
 </script>
 <style lang="less">

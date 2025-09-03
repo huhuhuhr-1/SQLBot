@@ -44,7 +44,7 @@ def get_assistant_ds(session: Session, llm_service) -> list[dict]:
                 if public_list:
                     stmt = stmt.where(CoreDatasource.id.in_(public_list))
                 else:
-                    raise RuntimeError('no public datasource valid')
+                    return []
                 """ private_list: list[int] = config.get('private_list') or None
                 if private_list:
                     stmt = stmt.where(~CoreDatasource.id.in_(private_list)) """
@@ -177,7 +177,7 @@ class AssistantOutDs:
     def convert2schema(self, ds_dict: dict, config: dict[any]) -> AssistantOutDsSchema:
         id_marker: str = ''
         attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema']
-        if config.get('encrypt', True):
+        if config.get('encrypt', False):
             key = config.get('aes_key', None)
             iv = config.get('aes_iv', None)
             aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema']

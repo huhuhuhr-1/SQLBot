@@ -1195,7 +1195,7 @@ onMounted(() => {
         font-size: 14px;
         line-height: 24px;
         color: #646a73;
-        max-width: 100%;
+        max-width: 88%;
         word-break: break-all;
         padding: 0 20px;
       }

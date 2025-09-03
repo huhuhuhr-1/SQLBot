@@ -45,50 +45,20 @@ COPY g2-ssr/charts/* /app/charts/
 
 RUN npm install
 
-FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS python-builder
 # Runtime stage
-# FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
-FROM registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6
-
-# python environment
-COPY --from=python-builder /usr/local /usr/local
-
-RUN python --version && pip --version
-
-# Install uv tool
-COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
-
-ARG DEPENDENCIES="                \
-    wait-for-it                   \
-    build-essential               \
-    curl                          \
-    gnupg                         \
-    gcc                           \
-    g++                           \
-    libcairo2-dev                 \
-    libpango1.0-dev               \
-    libjpeg-dev                   \
-    libgif-dev                    \
-    librsvg2-dev"
-
-RUN apt-get update && apt-get install -y --no-install-recommends $DEPENDENCIES \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/* \
-    && chmod g-xr /usr/local/bin/* /usr/bin/* /bin/* /usr/sbin/* /sbin/* /usr/lib/postgresql/17/bin/* \
-    && chmod g+xr /usr/bin/ld.so \
-    && chmod g+x /usr/local/bin/python*
-
-# ENV PGDATA=/var/lib/postgresql/data \
-#     POSTGRES_USER=root \
-#     POSTGRES_PASSWORD=Password123@pg \
-#     POSTGRES_DB=sqlbot
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
 
 # Set runtime environment variables
 ENV PYTHONUNBUFFERED=1
 ENV SQLBOT_HOME=/opt/sqlbot
 ENV PYTHONPATH=${SQLBOT_HOME}/app
 ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
+
+ENV SQLBOT_DB_HOST=localhost
+ENV SQLBOT_DB_PORT=5432
+ENV SQLBOT_DB_DB=sqlbot
+ENV SQLBOT_DB_USER=root
+ENV SQLBOT_DB_PASSWORD=Password123@pg
 
 # Copy necessary files from builder
 COPY start.sh /opt/sqlbot/app/start.sh

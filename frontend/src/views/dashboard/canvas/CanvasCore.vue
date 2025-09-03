@@ -864,7 +864,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
   html2canvas(clonedSlot).then((canvas) => {
     img.src = canvas.toDataURL()
-    infoBox.value.cloneItem.appendChild(img)
+    infoBox.value.cloneItem?.appendChild(img)
   })
 
   if (containerRef.value) {
@@ -994,6 +994,12 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
     if (infoBox.value.resizeItem) {
       delete infoBox.value.resizeItem.isPlayer
       props.resizeEnd(e, infoBox.value.resizeItem, infoBox.value.resizeItem._dragId)
+
+      if (infoBox.value.resizeItem.component === 'SQTab') {
+        const refTabInstance =
+          currentInstance.refs['shape_component_' + infoBox.value.resizeItem.id][0]
+        refTabInstance.outResizeEnd()
+      }
     }
     if (infoBox.value.moveItem) {
       props.dragEnd(e, infoBox.value.moveItem, infoBox.value.moveItem._dragId)
@@ -1063,6 +1069,8 @@ const forceComputed = () => {
 }
 
 function addItemBox(item: CanvasItem) {
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  item.x = findPositionX(item)
   canvasComponentData.value.push(item)
   forceComputed()
   nextTick(() => {
@@ -1163,6 +1171,49 @@ function tabMoveInCheckSQ() {
         item.moveInActive = activeTfAndTf && activeBfAndBf && activeTrAndTr && activeBrAndBr
       }
     })
+  }
+}
+
+/**
+ * Find position box
+ */
+function findPositionX(item: CanvasItem) {
+  const width = item.sizeX
+  let resultX = 1
+  let checkPointYIndex = -1 // -1 means not occupying any Y-direction canvas
+  // Component width
+  let pb = positionBox.value
+  if (width <= 0) return
+  // Find the highest position index of the component. Component rule: the latest y is 1.
+  canvasComponentData.value.forEach((component) => {
+    const componentYIndex = component.y + component.sizeY - 2
+    if (checkPointYIndex < componentYIndex) {
+      checkPointYIndex = componentYIndex
+    }
+  })
+  // Start checking from index i in the X direction;
+  const pbX = pb[checkPointYIndex]
+  // Get the last column array in the X direction
+  if (checkPointYIndex < 0 || !pbX) {
+    return 1
+  } else {
+    // The width to check is the component width. The end index of the check is checkEndIndex = i + width - 1;
+    // The exit condition for the check is when the end index checkEndIndex is out of bounds (exceeds the end index of pbX).
+    for (let i = 0, checkEndIndex = width - 1; checkEndIndex < pbX.length; i++, checkEndIndex++) {
+      let adaptorCount = 0
+      // Locate the occupied position in the last column
+      for (let k = 0; k < width; k++) {
+        // pbX[i + k].el === false indicates that the current matrix point is not occupied. When the width of consecutive unoccupied matrix points equals the component width, the starting point i is available.
+        if (!pbX[i + k].el) {
+          adaptorCount++
+        }
+      }
+      if (adaptorCount === width) {
+        resultX = i + 1
+        break
+      }
+    }
+    return resultX
   }
 }
 

@@ -260,6 +260,8 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       const resData = await request.get('/system/appearance/ui')
       this.loaded = true
       if (!resData?.length) {
+        setCurrentColor('#1CBA90')
+        setLinkIcon()
         return
       }
       const data: AppearanceState = { loaded: false }

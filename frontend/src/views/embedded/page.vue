@@ -186,7 +186,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100vh;
   position: relative;
-  background: #f7f8fa;
+  background: #fff;
 }
 .sqlbot-embedded-assistant-page {
   width: 100%;

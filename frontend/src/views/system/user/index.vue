@@ -8,7 +8,7 @@
           placeholder="Search"
           prefix-icon="el-icon-search"
           clearable
-          @keyup.enter="handleSearch"
+          @blur="handleSearch"
         >
           <template #prefix>
             <el-icon class="el-input__icon"><search /></el-icon>

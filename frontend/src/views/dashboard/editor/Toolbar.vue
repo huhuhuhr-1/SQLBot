@@ -91,6 +91,10 @@ const editCanvasName = () => {
     nameInput.value?.focus()
   })
 }
+const handleEnterEditCanvasName = (event: Event) => {
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  event.target?.blur()
+}
 const closeEditCanvasName = () => {
   nameEdit.value = false
   if (!inputName.value || !inputName.value.trim()) {
@@ -240,6 +244,7 @@ const previewInner = () => {
       <input
         ref="nameInput"
         v-model="inputName"
+        @keydown.enter="handleEnterEditCanvasName"
         @change="onDvNameChange"
         @blur="closeEditCanvasName"
       />

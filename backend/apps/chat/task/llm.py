@@ -399,7 +399,8 @@ class LLMService:
             ]
             """ _ds_list = self.session.exec(select(CoreDatasource).options(
                 load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all() """
-
+        if not _ds_list:
+            raise SingleMessageError('No available datasource configuration found')
         ignore_auto_select = _ds_list and len(_ds_list) == 1
         # ignore auto select ds
 
@@ -1175,7 +1176,7 @@ class LLMService:
                 match_ds = any(item.get("id") == _ds.id for item in _ds_list)
                 if not match_ds:
                     type = self.current_assistant.type
-                    msg = f"ds is invalid [please check ds list and public ds list]" if type == 0 else f"ds is invalid [please check ds api]"
+                    msg = f"[please check ds list and public ds list]" if type == 0 else f"[please check ds api]"
                     raise SingleMessageError(msg)
             except Exception as e:
                 raise SingleMessageError(f"ds is invalid [{str(e)}]")

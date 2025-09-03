@@ -64,9 +64,15 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
     if not db_model:
         return AssistantValidator()
     db_model = AssistantModel.model_validate(db_model)
+    assistant_oid = 1
+    if(db_model.type == 0):
+        configuration = db_model.configuration
+        config_obj = json.loads(configuration) if configuration else {}
+        assistant_oid = config_obj.get('oid', 1)
+    
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     assistantDict = {
-        "id": virtual, "account": 'sqlbot-inner-assistant', "oid": 1, "assistant_id": id
+        "id": virtual, "account": 'sqlbot-inner-assistant', "oid": assistant_oid, "assistant_id": id
     }
     access_token = create_access_token(
         assistantDict, expires_delta=access_token_expires

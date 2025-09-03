@@ -157,7 +157,55 @@
         closeviewport.classList.remove('sqlbot-assistant-viewportnone')
       }
     }
-    const drag = (e) => {
+    if (data.float_icon_drag) {
+      chat_button.setAttribute('draggable', 'true')
+
+      let startX = 0
+      let startY = 0
+      const img = new Image()
+      img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs='
+      chat_button.addEventListener('dragstart', (e) => {
+        startX = e.clientX - chat_button.offsetLeft
+        startY = e.clientY - chat_button.offsetTop
+        e.dataTransfer.setDragImage(img, 0, 0)
+      })
+
+      chat_button.addEventListener('drag', (e) => {
+        if (e.clientX && e.clientY) {
+          const left = e.clientX - startX
+          const top = e.clientY - startY
+
+          const maxX = window.innerWidth - chat_button.offsetWidth
+          const maxY = window.innerHeight - chat_button.offsetHeight
+
+          chat_button.style.left = Math.min(Math.max(0, left), maxX) + 'px'
+          chat_button.style.top = Math.min(Math.max(0, top), maxY) + 'px'
+        }
+      })
+
+      let touchStartX = 0
+      let touchStartY = 0
+
+      chat_button.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX - chat_button.offsetLeft
+        touchStartY = e.touches[0].clientY - chat_button.offsetTop
+        e.preventDefault()
+      })
+
+      chat_button.addEventListener('touchmove', (e) => {
+        const left = e.touches[0].clientX - touchStartX
+        const top = e.touches[0].clientY - touchStartY
+
+        const maxX = window.innerWidth - chat_button.offsetWidth
+        const maxY = window.innerHeight - chat_button.offsetHeight
+
+        chat_button.style.left = Math.min(Math.max(0, left), maxX) + 'px'
+        chat_button.style.top = Math.min(Math.max(0, top), maxY) + 'px'
+
+        e.preventDefault()
+      })
+    }
+    /*  const drag = (e) => {
       if (['touchmove', 'touchstart'].includes(e.type)) {
         chat_button.style.top = e.touches[0].clientY - chat_button_img.clientHeight / 2 + 'px'
         chat_button.style.left = e.touches[0].clientX - chat_button_img.clientHeight / 2 + 'px'
@@ -169,6 +217,7 @@
       chat_button.style.height = chat_button_img.clientHeight + 'px'
     }
     if (data.float_icon_drag) {
+      chat_button.setAttribute('draggable', 'true')
       chat_button.addEventListener('drag', drag)
       chat_button.addEventListener('dragover', (e) => {
         e.preventDefault()
@@ -176,7 +225,7 @@
       chat_button.addEventListener('dragend', drag)
       chat_button.addEventListener('touchstart', drag)
       chat_button.addEventListener('touchmove', drag)
-    }
+    } */
     viewport.onclick = viewport_func
     closeviewport.onclick = viewport_func
   }

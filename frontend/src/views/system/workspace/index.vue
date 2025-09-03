@@ -404,7 +404,6 @@ const handleCurrentChange = (val: number) => {
             style="width: 232px"
             :placeholder="$t('workspace.name_username_email')"
             @blur="search"
-            @keyup.enter="search"
           >
             <template #prefix>
               <el-icon>

@@ -79,7 +79,7 @@ const certificateForm = reactive(cloneDeep(defaultCertificateForm))
 
 const defaultUrlForm = {
   endpoint: '',
-  encrypt: true,
+  encrypt: false,
   aes_key: '',
   aes_iv: '',
   certificate: [] as any,
@@ -90,7 +90,7 @@ const dsListOptions = ref<any[]>([])
 
 const embeddedListWithSearch = computed(() => {
   if (!keywords.value) return embeddedList.value
-  return embeddedList.value.filter((ele) =>
+  return embeddedList.value.filter((ele: any) =>
     ele.name.toLowerCase().includes(keywords.value.toLowerCase())
   )
 })
@@ -126,14 +126,11 @@ const handleAddEmbedded = (val: any) => {
 const wsChanged = (val: any) => {
   dsForm.public_list = []
   dsForm.oid = val
-  getDsList(true)
+  getDsList()
 }
-const getDsList = (change: boolean = false) => {
+const getDsList = () => {
   dsApi(dsForm.oid).then((res: any) => {
     dsListOptions.value = res || []
-    if (change || !currentEmbedded.id) {
-      dsForm.public_list = dsListOptions.value.map((ele: any) => ele.id)
-    }
   })
 }
 const handleBaseEmbedded = (row: any) => {
@@ -142,7 +139,7 @@ const handleBaseEmbedded = (row: any) => {
   if (row) {
     Object.assign(dsForm, JSON.parse(row.configuration))
   }
-  getDsList(false)
+  getDsList()
   ruleConfigvVisible.value = true
   dialogTitle.value = row?.id
     ? t('embedded.edit_basic_applications')
@@ -272,7 +269,7 @@ const rules = {
   name: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('embedded.basic_information'),
+      message: t('datasource.please_enter') + t('common.empty') + t('embedded.application_name'),
       trigger: 'blur',
     },
   ],
@@ -300,7 +297,8 @@ const validatePass = (_: any, value: any, callback: any) => {
       new Error(t('datasource.please_enter') + t('common.empty') + t('embedded.interface_url'))
     )
   } else {
-    var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
+    // var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
+    var Expression = /^https?:\/\/[^\s/?#]+(:\d+)?/i
     var objExp = new RegExp(Expression)
     if (objExp.test(value) && value.startsWith(currentEmbedded.domain)) {
       callback()
@@ -519,7 +517,7 @@ const saveHandler = () => {
         type: 'success',
         message: t('common.save_success'),
       })
-
+      urlFormRef.value.validate('certificate')
       certificateBeforeClose()
     }
   })
@@ -858,65 +856,67 @@ const saveHandler = () => {
         </el-form>
       </div>
       <div v-if="activeStep === 1 && !advancedApplication" class="drawer-content">
-        <div class="title">
-          {{ $t('embedded.set_data_source') }}
-        </div>
+        <el-scrollbar>
+          <div class="title">
+            {{ $t('embedded.set_data_source') }}
+          </div>
 
-        <el-form
-          ref="dsFormRef"
-          :model="dsForm"
-          label-width="180px"
-          label-position="top"
-          :rules="dsRules"
-          class="form-content_error"
-          @submit.prevent
-        >
-          <el-form-item prop="oid" :label="t('user.workspace')">
-            <el-select
-              v-model="dsForm.oid"
-              filterable
-              :placeholder="
-                $t('datasource.please_enter') + $t('common.empty') + $t('user.workspace')
-              "
-              @change="wsChanged"
-            >
-              <el-option
-                v-for="item in workspaces"
-                :key="item.id"
-                :label="item.name"
-                :value="item.id"
-              />
-            </el-select>
-          </el-form-item>
+          <el-form
+            ref="dsFormRef"
+            :model="dsForm"
+            label-width="180px"
+            label-position="top"
+            :rules="dsRules"
+            class="form-content_error"
+            @submit.prevent
+          >
+            <el-form-item prop="oid" :label="t('user.workspace')">
+              <el-select
+                v-model="dsForm.oid"
+                filterable
+                :placeholder="
+                  $t('datasource.please_enter') + $t('common.empty') + $t('user.workspace')
+                "
+                @change="wsChanged"
+              >
+                <el-option
+                  v-for="item in workspaces"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id"
+                />
+              </el-select>
+            </el-form-item>
 
-          <el-form-item class="private-list_form">
-            <template #label>
-              <div class="private-list">
-                {{ t('embedded.set_data_source') }}
-                <span :title="$t('embedded.open_the_query')" class="open-the_query ellipsis"
-                  >{{ $t('embedded.open_the_query') }}
-                </span>
+            <el-form-item class="private-list_form">
+              <template #label>
+                <div class="private-list">
+                  {{ t('embedded.set_data_source') }}
+                  <span :title="$t('embedded.open_the_query')" class="open-the_query ellipsis"
+                    >{{ $t('embedded.open_the_query') }}
+                  </span>
+                </div>
+              </template>
+              <div class="card-ds_content">
+                <DsCard
+                  v-for="(ele, index) in dsListOptions"
+                  :id="ele.id"
+                  :key="ele.id"
+                  :class="[0, 1].includes(index) && 'no-margin_top'"
+                  :name="ele.name"
+                  :type="ele.type"
+                  :type-name="ele.type_name"
+                  :description="ele.description"
+                  :is-private="!dsForm.public_list.includes(ele.id)"
+                  :num="ele.num"
+                  @active="handleActive(ele)"
+                  @private="handlePrivate(ele)"
+                  @public="handlePublic(ele)"
+                ></DsCard>
               </div>
-            </template>
-            <div class="card-ds_content">
-              <DsCard
-                v-for="(ele, index) in dsListOptions"
-                :id="ele.id"
-                :key="ele.id"
-                :class="[0, 1].includes(index) && 'no-margin_top'"
-                :name="ele.name"
-                :type="ele.type"
-                :type-name="ele.type_name"
-                :description="ele.description"
-                :is-private="!dsForm.public_list.includes(ele.id)"
-                :num="ele.num"
-                @active="handleActive(ele)"
-                @private="handlePrivate(ele)"
-                @public="handlePublic(ele)"
-              ></DsCard>
-            </div>
-          </el-form-item>
-        </el-form>
+            </el-form-item>
+          </el-form>
+        </el-scrollbar>
       </div>
 
       <template #footer>

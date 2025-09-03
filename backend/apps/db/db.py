@@ -102,10 +102,62 @@ def get_session(ds: CoreDatasource | AssistantOutDsSchema):
     return session
 
 
-def check_connection(trans: Optional[Trans], ds: CoreDatasource, is_raise: bool = False):
-    db = DB.get_db(ds.type)
-    if db.connect_type == ConnectType.sqlalchemy:
-        conn = get_engine(ds, 10)
+def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDsSchema, is_raise: bool = False):
+    if isinstance(ds, CoreDatasource):
+        db = DB.get_db(ds.type)
+        if db.connect_type == ConnectType.sqlalchemy:
+            conn = get_engine(ds, 10)
+            try:
+                with conn.connect() as connection:
+                    SQLBotLogUtil.info("success")
+                    return True
+            except Exception as e:
+                SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                if is_raise:
+                    raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
+                return False
+        else:
+            conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+            if ds.type == 'dm':
+                with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
+                                      port=conf.port) as conn, conn.cursor() as cursor:
+                    try:
+                        cursor.execute('select 1', timeout=10).fetchall()
+                        SQLBotLogUtil.info("success")
+                        return True
+                    except Exception as e:
+                        SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                        if is_raise:
+                            raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
+                        return False
+            elif ds.type == 'doris':
+                with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
+                                     port=conf.port, db=conf.database, connect_timeout=10,
+                                     read_timeout=10) as conn, conn.cursor() as cursor:
+                    try:
+                        cursor.execute('select 1')
+                        SQLBotLogUtil.info("success")
+                        return True
+                    except Exception as e:
+                        SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                        if is_raise:
+                            raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
+                        return False
+            elif ds.type == 'redshift':
+                with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
+                                                password=conf.password,
+                                                timeout=10) as conn, conn.cursor() as cursor:
+                    try:
+                        cursor.execute('select 1')
+                        SQLBotLogUtil.info("success")
+                        return True
+                    except Exception as e:
+                        SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                        if is_raise:
+                            raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
+                        return False
+    else:
+        conn = get_ds_engine(ds)
         try:
             with conn.connect() as connection:
                 SQLBotLogUtil.info("success")
@@ -115,46 +167,8 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource, is_raise: bool 
             if is_raise:
                 raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
             return False
-    else:
-        conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
-        if ds.type == 'dm':
-            with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
-                                  port=conf.port) as conn, conn.cursor() as cursor:
-                try:
-                    cursor.execute('select 1', timeout=10).fetchall()
-                    SQLBotLogUtil.info("success")
-                    return True
-                except Exception as e:
-                    SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
-                    if is_raise:
-                        raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
-                    return False
-        elif ds.type == 'doris':
-            with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
-                                 port=conf.port, db=conf.database, connect_timeout=10,
-                                 read_timeout=10) as conn, conn.cursor() as cursor:
-                try:
-                    cursor.execute('select 1')
-                    SQLBotLogUtil.info("success")
-                    return True
-                except Exception as e:
-                    SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
-                    if is_raise:
-                        raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
-                    return False
-        elif ds.type == 'redshift':
-            with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
-                                            password=conf.password,
-                                            timeout=10) as conn, conn.cursor() as cursor:
-                try:
-                    cursor.execute('select 1')
-                    SQLBotLogUtil.info("success")
-                    return True
-                except Exception as e:
-                    SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
-                    if is_raise:
-                        raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
-                    return False
+
+    return False
 
 
 def get_version(ds: CoreDatasource | AssistantOutDsSchema):

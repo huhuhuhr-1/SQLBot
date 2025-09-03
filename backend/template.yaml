@@ -28,7 +28,7 @@ template:
           不要编造<m-schema>内没有提供给你的表结构
         </rule>
         <rule>
-          生成的SQL必须符合<db-engine>提供数据库引擎的规范
+          生成的SQL必须符合<db-engine>内提供数据库引擎的规范
         </rule>
         <rule>
           若用户提问中提供了参考SQL，你需要判断该SQL是否是查询语句
@@ -74,10 +74,14 @@ template:
           如数据库引擎是 MySQL、Doris，则在表名、字段名、别名外层加反引号；
           如数据库引擎是 Microsoft SQL Server，则在schema、表名、字段名、别名外层加方括号。
           <example>
-          以PostgreSQL为例，查询Schema为TEST表TABLE下所有数据，则生成的SQL为：
-            SELECT "id" FROM "TEST"."TABLE"
+          以PostgreSQL为例，查询Schema为TEST表TABLE下前1000条id字段，则生成的SQL为：
+            SELECT "id" FROM "TEST"."TABLE" LIMIT 1000
             - 注意在表名外双引号的位置，千万不要生成为:
-              SELECT "id" FROM "TEST.TABLE"
+              SELECT "id" FROM "TEST.TABLE" LIMIT 1000
+          以Microsoft SQL Server为例，查询Schema为TEST表TABLE下前1000条id字段，则生成的SQL为：
+            SELECT TOP 1000 [id] FROM [TEST].[TABLE]
+            - 注意在表名外方括号的位置，千万不要生成为:
+              SELECT TOP 1000 [id] FROM [TEST.TABLE]
           </example>
         </rule>
         <rule>
@@ -95,9 +99,13 @@ template:
         </rule>
         <rule>
           如果用户没有指定数据条数的限制，输出的查询SQL需要加上1000条的数据条数限制
-        </rule>
-        <rule>
           如果用户指定的限制大于1000，则按1000处理
+          <example>
+          以PostgreSQL为例，查询Schema为TEST表TABLE下id字段，则生成的SQL为：
+            SELECT "id" FROM "TEST"."TABLE" LIMIT 1000
+          以Microsoft SQL Server为例，查询Schema为TEST表TABLE下id字段，则生成的SQL为：
+            SELECT TOP 1000 [id] FROM [TEST].[TABLE]
+          </example>
         </rule>
         <rule>
           若需关联多表，优先使用<m-schema>中标记为"Primary key"/"ID"/"主键"的字段作为关联条件。

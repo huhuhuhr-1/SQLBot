@@ -37,7 +37,7 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
         # 步骤1：先找到所有匹配的节点ID（无论是父节点还是子节点）
         matched_ids_subquery = (
             select(Terminology.id)
-            .where(Terminology.word.ilike(keyword_pattern))  # LIKE查询条件
+            .where(and_(Terminology.word.ilike(keyword_pattern), Terminology.oid == oid))  # LIKE查询条件
             .subquery()
         )
 
@@ -101,7 +101,7 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
     else:
         parent_ids_subquery = (
             select(Terminology.id)
-            .where(Terminology.pid.is_(None))  # 只取父节点
+            .where(and_(Terminology.pid.is_(None), Terminology.oid == oid))  # 只取父节点
         )
         count_stmt = select(func.count()).select_from(parent_ids_subquery.subquery())
         total_count = session.execute(count_stmt).scalar()

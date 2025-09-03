@@ -137,7 +137,9 @@ const workspaceWithKeywords = computed(() => {
 })
 watch(search, () => {
   const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
-  checkedWorkspace.value = checkTableList.value.filter((ele) => tableNameArr.includes(ele.name))
+  checkedWorkspace.value = checkTableList.value.filter((ele: any) =>
+    tableNameArr.includes(ele.name)
+  )
   const checkedCount = checkedWorkspace.value.length
   checkAll.value = checkedCount === workspaceWithKeywords.value.length
   isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
@@ -148,7 +150,7 @@ const handleCheckAllChange = (val: CheckboxValueType) => {
     ? [
         ...new Set([
           ...workspaceWithKeywords.value,
-          ...checkedWorkspace.value.filter((ele) => !tableNameArr.includes(ele.name)),
+          ...checkedWorkspace.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
         ]),
       ]
     : []
@@ -157,10 +159,10 @@ const handleCheckAllChange = (val: CheckboxValueType) => {
     ? [
         ...new Set([
           ...workspaceWithKeywords.value,
-          ...checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name)),
+          ...checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
         ]),
       ]
-    : checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name))
+    : checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name))
 }
 const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
   const checkedCount = value.length
@@ -169,7 +171,7 @@ const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
   const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
   checkTableList.value = [
     ...new Set([
-      ...checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name)),
+      ...checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
       ...value,
     ]),
   ]
@@ -192,7 +194,7 @@ const open = async (id: any) => {
 const emits = defineEmits(['refresh'])
 const handleConfirm = () => {
   workspaceUwsCreate({
-    uid_list: checkedWorkspace.value.map((ele: any) => ele.id),
+    uid_list: checkTableList.value.map((ele: any) => ele.id),
     oid,
     weight: listType.value,
   }).then(() => {
@@ -203,6 +205,7 @@ const handleConfirm = () => {
 
 const clearWorkspace = (val: any) => {
   checkedWorkspace.value = checkedWorkspace.value.filter((ele: any) => ele.id !== val.id)
+  checkTableList.value = checkTableList.value.filter((ele: any) => ele.id !== val.id)
   handleCheckedWorkspaceChange(checkedWorkspace.value)
 }
 

@@ -49,17 +49,8 @@ export const supplierList: Array<{
           { name: 'qwen-max-latest' },
           { name: 'qwen-turbo' },
           { name: 'qwen-turbo-latest' },
-          { name: 'qwq-plus' },
-          { name: 'qwq-plus-latest' },
           { name: 'qwen-long' },
           { name: 'qwen-long-latest' },
-          { name: 'qwen-omni-turbo' },
-          /* { name: 'qwen-omni-turbo-realtime' },
-          { name: 'qwen-omni-turbo-realtime-latest' }, */
-          /* { name: 'qvq-max' },
-          { name: 'qvq-max-latest' },
-          { name: 'qvq-plus' },
-          { name: 'qvq-plus-latest' }, */
         ],
       },
     },
