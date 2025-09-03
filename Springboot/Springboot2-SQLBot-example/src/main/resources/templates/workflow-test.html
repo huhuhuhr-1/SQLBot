@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>业务流程测试 - SQLBot</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .test-section { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-btn { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .test-btn:hover { background: #0056b3; }
+        .result { margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; border-left: 4px solid #007bff; }
+        .back-link { display: inline-block; padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; margin-bottom: 20px; }
+        input { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; }
+        label { display: block; margin: 10px 0 5px 0; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← 返回首页</a>
+        <h1>🔄 业务流程测试</h1>
+        <p>测试完整的SQLBot业务流程</p>
+        
+        <div class="test-section">
+            <h3>🚀 完整业务流程测试</h3>
+            <p>执行完整的6步SQLBot业务流程：登录 → 获取数据源 → 聊天 → 获取数据 → 获取推荐 → 清理记录</p>
+            
+            <label>用户名: <input type="text" id="workflowUsername" value="admin"></label>
+            <label>密码: <input type="password" id="workflowPassword" value="SQLBot@123456"></label>
+            <label>测试问题: <input type="text" id="workflowQuestion" value="查询用户数据"></label>
+            <button class="test-btn" onclick="testCompleteWorkflow()">执行完整流程</button>
+            
+            <div id="workflowResult" class="result">等待测试...</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>💬 流式聊天测试</h3>
+            <p>测试实时流式聊天响应</p>
+            
+            <label>问题: <input type="text" id="streamQuestion" value="分析销售趋势"></label>
+            <button class="test-btn" onclick="testStreamChat()">测试流式聊天</button>
+            
+            <div id="streamChatResult" class="result">等待测试...</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>💡 流式推荐测试</h3>
+            <p>测试实时流式推荐响应</p>
+            
+            <label>聊天记录ID: <input type="number" id="streamRecommendId" value="123"></label>
+            <button class="test-btn" onclick="testStreamRecommend()">测试流式推荐</button>
+            
+            <div id="streamRecommendResult" class="result">等待测试...</div>
+        </div>
+    </div>
+    
+    <script>
+        async function testCompleteWorkflow() {
+            const username = document.getElementById('workflowUsername').value;
+            const password = document.getElementById('workflowPassword').value;
+            const question = document.getElementById('workflowQuestion').value;
+            
+            try {
+                const response = await fetch('/api/workflow/complete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, question })
+                });
+                
+                const result = await response.json();
+                document.getElementById('workflowResult').innerHTML = '<strong>✅ 成功:</strong><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('workflowResult').innerHTML = '<strong>❌ 错误:</strong> ' + error.message;
+            }
+        }
+        
+        async function testStreamChat() {
+            const question = document.getElementById('streamQuestion').value;
+            
+            try {
+                const response = await fetch('/api/workflow/stream-chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, dbId: 1, chatId: 'workflow_chat_' + Date.now() })
+                });
+                
+                if (response.ok) {
+                    document.getElementById('streamChatResult').innerHTML = '<strong>✅ 成功:</strong> SSE连接已建立，请查看控制台';
+                } else {
+                    const result = await response.json();
+                    document.getElementById('streamChatResult').innerHTML = '<strong>⚠️ 响应:</strong><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+                }
+            } catch (error) {
+                document.getElementById('streamChatResult').innerHTML = '<strong>❌ 错误:</strong> ' + error.message;
+            }
+        }
+        
+        async function testStreamRecommend() {
+            const chatRecordId = document.getElementById('streamRecommendId').value;
+            
+            try {
+                const response = await fetch('/api/workflow/stream-recommend', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chatRecordId: parseInt(chatRecordId) })
+                });
+                
+                if (response.ok) {
+                    document.getElementById('streamRecommendResult').innerHTML = '<strong>✅ 成功:</strong> SSE连接已建立，请查看控制台';
+                } else {
+                    const result = await response.json();
+                    document.getElementById('streamRecommendResult').innerHTML = '<strong>⚠️ 响应:</strong><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+                }
+            } catch (error) {
+                document.getElementById('streamRecommendResult').innerHTML = '<strong>❌ 错误:</strong> ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

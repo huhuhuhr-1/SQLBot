@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLBot 聊天测试页面</title>
+    <link rel="stylesheet" th:href="@{/static/css/chat-test.css}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 SQLBot 聊天测试页面</h1>
+            <p>体验完整的SQLBot聊天流程，支持SSE流式响应</p>
+        </header>
+        
+        <!-- 登录区域 -->
+        <section class="login-section" id="loginSection">
+            <h2>🔐 用户认证</h2>
+            <div class="login-form">
+                <div class="form-group">
+                    <label for="username">用户名:</label>
+                    <input type="text" id="username" placeholder="请输入用户名" value="test">
+                </div>
+                <div class="form-group">
+                    <label for="password">密码:</label>
+                    <input type="password" id="password" placeholder="请输入密码" value="test123">
+                </div>
+                <button type="button" id="loginBtn" class="btn btn-primary">登录</button>
+            </div>
+            <div class="token-status" id="tokenStatus">
+                <span class="status-badge status-pending">未登录</span>
+            </div>
+        </section>
+        
+        <!-- 数据源选择区域 -->
+        <section class="datasource-section" id="datasourceSection" style="display: none;">
+            <h2>📊 数据源选择</h2>
+            <div class="datasource-controls">
+                <select id="datasourceSelect" class="form-select">
+                    <option value="">请选择数据源...</option>
+                </select>
+                <button type="button" id="refreshDatasourceBtn" class="btn btn-secondary">刷新</button>
+            </div>
+            <div class="current-datasource" id="currentDatasource">
+                <p>当前数据源: <span id="datasourceName">未选择</span></p>
+                <p>描述: <span id="datasourceDesc">-</span></p>
+            </div>
+        </section>
+        
+        <!-- 聊天区域 -->
+        <section class="chat-section" id="chatSection" style="display: none;">
+            <h2>💬 AI 智能对话</h2>
+            <div class="chat-container">
+                <div class="chat-history" id="chatHistory">
+                    <div class="chat-message system">
+                        <div class="message-content">
+                            <p>👋 欢迎使用SQLBot！请选择数据源后开始提问。</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="chat-input">
+                    <input type="text" id="questionInput" placeholder="请输入您的问题..." class="form-input">
+                    <button type="button" id="sendBtn" class="btn btn-primary">发送</button>
+                </div>
+            </div>
+            <div class="chat-status" id="chatStatus">
+                <span class="status-badge status-ready">就绪</span>
+            </div>
+        </section>
+        
+        <!-- 结果展示区域 -->
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <h2>📈 聊天结果</h2>
+            <div class="results-container">
+                <div class="result-card">
+                    <h3>🔍 聊天数据</h3>
+                    <div class="data-content" id="dataContent">
+                        <p class="placeholder">聊天完成后将显示数据内容</p>
+                    </div>
+                </div>
+                <div class="result-card">
+                    <h3>💡 推荐问题</h3>
+                    <div class="recommendations" id="recommendations">
+                        <p class="placeholder">聊天完成后将显示推荐问题</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 操作区域 -->
+        <section class="actions-section" id="actionsSection" style="display: none;">
+            <h2>⚙️ 操作控制</h2>
+            <div class="action-buttons">
+                <button type="button" id="cleanCurrentBtn" class="btn btn-warning">清理当前聊天</button>
+                <button type="button" id="cleanAllBtn" class="btn btn-danger">清理所有聊天</button>
+                <button type="button" id="resetBtn" class="btn btn-secondary">重置页面</button>
+            </div>
+        </section>
+        
+        <!-- 调试信息区域 -->
+        <section class="debug-section" id="debugSection" style="display: none;">
+            <h2>🐛 调试信息</h2>
+            <div class="debug-content">
+                <div class="debug-item">
+                    <strong>Record ID:</strong> <span id="debugRecordId">-</span>
+                </div>
+                <div class="debug-item">
+                    <strong>Chat ID:</strong> <span id="debugChatId">-</span>
+                </div>
+                <div class="debug-item">
+                    <strong>当前状态:</strong> <span id="debugStatus">-</span>
+                </div>
+            </div>
+        </section>
+    </div>
+    
+    <!-- 加载提示 -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p>处理中...</p>
+    </div>
+    
+    <!-- 消息提示 -->
+    <div class="message-toast" id="messageToast"></div>
+    
+    <script th:src="@{/static/js/chat-test.js}"></script>
+</body>
+</html>

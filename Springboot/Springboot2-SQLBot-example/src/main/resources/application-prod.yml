@@ -1,0 +1,18 @@
+# 生产环境配置
+server:
+  port: 8080
+
+spring:
+  profiles:
+    active: prod
+
+sqlbot:
+  url: ${SQLBOT_URL:https://prod-sqlbot.com}
+  username: ${SQLBOT_USERNAME}
+  password: ${SQLBOT_PASSWORD}
+  debug: false
+
+logging:
+  level:
+    com.sqlbot: INFO
+    root: WARN

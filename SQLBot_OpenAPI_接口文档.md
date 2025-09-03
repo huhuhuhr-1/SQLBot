@@ -51,7 +51,7 @@ SQLBot OpenAPI 的使用遵循特定的逻辑顺序，以下是完整的业务�
 
 **6. 数据清理阶段**
 
-- 调用 `/openapi/clean` 维护聊天记录
+- 调用 `/openapi/deleteChats` 维护聊天记录
 - 支持批量清理和全部清理
 
 ### 接口调用依赖关系
@@ -59,7 +59,7 @@ SQLBot OpenAPI 的使用遵循特定的逻辑顺序，以下是完整的业务�
 ```
 登录认证 → 获取数据源 → 聊天对话 → 获取数据 → 推荐问题 → 清理记录
     ↓           ↓          ↓         ↓         ↓         ↓
-  get_token  getDataSourceList  chat    getData  getRecommend  clean
+  get_token  getDataSourceList  chat    getData  getRecommend  deleteChats
 ```
 
 **重要说明**: 必须严格按照上述顺序调用接口，每个后续接口都依赖于前面接口的执行结果。
@@ -153,7 +153,7 @@ POST /openapi/getRecommend
 **维护聊天记录**
 
 ```http
-POST /openapi/clean
+POST /openapi/deleteChats
 ```
 
 - 清理过期的聊天记录
@@ -407,7 +407,7 @@ Content-Type: application/json
 
 #### 6.1 清理聊天记录
 
-**接口地址**: `POST /openapi/clean`
+**接口地址**: `POST /openapi/deleteChats`
 
 **接口描述**: 清理当前用户的聊天记录，支持批量清理和全部清理
 
@@ -620,7 +620,7 @@ class SQLBotClient:
         Returns:
             清理操作结果
         """
-        url = f"{self.base_url}/openapi/clean"
+        url = f"{self.base_url}/openapi/deleteChats"
         request_body = {}
         if chat_ids:
             request_body["chat_ids"] = chat_ids
@@ -872,7 +872,7 @@ public class SQLBotClient {
      * @return 清理操作响应
      */
     public Response cleanChatRecords(List<Integer> chatIds) {
-        String url = baseUrl + "/openapi/clean";
+        String url = baseUrl + "/openapi/deleteChats";
         
         Map<String, Object> requestBody = Map.of("chat_ids", chatIds);
         return httpService.doPost(url, JSON.toJSONString(requestBody), headers);
@@ -884,7 +884,7 @@ public class SQLBotClient {
      * @return 清理操作响应
      */
     public Response cleanAllChatRecords() {
-        String url = baseUrl + "/openapi/clean";
+        String url = baseUrl + "/openapi/deleteChats";
         return httpService.doPost(url, "{}", headers);
     }
     
@@ -1122,7 +1122,7 @@ public class SQLBotService {
 - 🆕 新增智能对话接口 `/chat`
 - 🆕 新增数据查询接口 `/getData`
 - 🆕 新增推荐问题接口 `/getRecommend`
-- 🆕 新增数据清理接口 `/clean`
+- 🆕 新增数据清理接口 `/deleteChats`
 - ✨ 支持流式响应
 - ✨ 完整的错误处理机制
 - ✨ 事务安全保证
@@ -1161,3 +1161,1278 @@ public class SQLBotService {
 ---
 
 *本文档基于 SQLBot OpenAPI v1.0.0 版本编写，如有疑问请联系开发团队。*
+
+根据代码分析，从 [LLMService](file://D:\github\SQLBot\backend\apps\chat\task\llm.py#L49-L1180) 类中提取的所有满足 `'type':` 的类型如下：
+
+## SSE 流数据类型（用于前端接收和处理）
+
+1. `'id'` - 返回记录ID
+2. `'brief'` - 返回聊天标题
+3. `'datasource-result'` - 数据源选择结果
+4. `'datasource'` - 数据源信息
+5. `'sql-result'` - SQL生成结果
+6. `'info'` - 信息提示（如"sql generated"）
+7. `'sql'` - 最终生成的SQL语句
+8. `'sql-data'` - SQL执行数据
+9. `'chart-result'` - 图表生成结果
+10. `'chart'` - 最终生成的图表配置
+11. `'finish'` - 任务完成
+12. `'error'` - 错误信息
+13. `'recommended_question'` - 推荐问题
+14. `'recommended_question_result'` - 推荐问题生成结果
+15. `'analysis-result'` - 分析结果
+16. `'analysis_finish'` - 分析完成
+17. `'predict-result'` - 预测结果
+18. `'predict-success'` - 预测成功
+19. `'predict-failed'` - 预测失败
+20. `'predict_finish'` - 预测完成
+
+## 消息类型（用于对话历史记录）
+
+在 [init_messages](file://D:\github\SQLBot\backend\apps\chat\task\llm.py#L147-L184) 方法中，从历史消息中读取的类型：
+
+1. `'human'` - 用户消息
+2. `'ai'` - AI消息
+
+## 操作类型枚举（OperationEnum）
+
+在 [OperationEnum](file://D:\github\SQLBot\backend\apps\chat\models\chat_model.py#L32-L40) 枚举中定义的类型：
+
+1. `'0'` - GENERATE_SQL（生成SQL）
+2. `'1'` - GENERATE_CHART（生成图表）
+3. `'2'` - ANALYSIS（分析数据）
+4. `'3'` - PREDICT_DATA（预测数据）
+5. `'4'` - GENERATE_RECOMMENDED_QUESTIONS（生成推荐问题）
+6. `'5'` - GENERATE_SQL_WITH_PERMISSIONS（生成带权限的SQL）
+7. `'6'` - CHOOSE_DATASOURCE（选择数据源）
+8. `'7'` - GENERATE_DYNAMIC_SQL（生成动态SQL）
+
+这些类型在系统中用于标识不同的操作、消息和数据流，帮助前端正确处理和显示各种响应内容。
+
+
+## 返回分析
+### 列表数据结构
+`{
+    "type": "table",
+    "title": "人员列表信息",
+    "columns": [
+        {
+            "name": "用户ID",
+            "value": "user_id"
+        },
+        {
+            "name": "姓名",
+            "value": "full_name"
+        },
+        {
+            "name": "邮箱",
+            "value": "email"
+        },
+        {
+            "name": "创建时间",
+            "value": "created_at"
+        }
+    ],
+    "data": {
+        "fields": [
+            "user_id",
+            "full_name",
+            "email",
+            "created_at"
+        ],
+        "data": [
+            {
+                "user_id": 1,
+                "full_name": "User_1",
+                "email": "user1@demo.com",
+                "created_at": "2023-11-11T07:03:52.831301"
+            }
+        ]
+    }
+}`
+
+### 折
+
+`{
+    "type": "line",
+    "title": "人员注册趋势",
+    "axis": {
+        "x": {
+            "name": "注册日期",
+            "value": "register_date"
+        },
+        "y": {
+            "name": "注册人数",
+            "value": "register_count"
+
+        }
+    },
+    "data": {
+        "fields": [
+            "register_date",
+            "register_count"
+        ],
+        "data": [
+            {
+                "register_date": "2023-08-26T00:00:00",
+                "register_count": 13
+            },
+            {
+                "register_date": "2023-08-27T00:00:00",
+                "register_count": 23
+            }
+        ]
+    }
+}`
+
+### 柱状图
+
+`{
+    "type": "column",
+    "title": "人员注册趋势",
+    "axis": {
+        "x": {
+            "name": "注册日期",
+            "value": "register_date"
+        },
+        "y": {
+            "name": "注册人数",
+            "value": "register_count"
+        }
+    },
+    "data": {
+        "fields": [
+            "event_type",
+            "event_count"
+        ],
+        "data": [
+            {
+                "event_type": "page_view",
+                "event_count": 33528
+            },
+            {
+                "event_type": "login",
+                "event_count": 33352
+            }
+        ]
+    }
+}`
+
+### 条形图
+`{
+    "type": "bar",
+    "title": "人员注册趋势",
+    "axis": {
+        "x": {
+            "name": "注册日期",
+            "value": "register_date"
+        },
+        "y": {
+            "name": "注册人数",
+            "value": "register_count"
+        }
+    },
+    "data": {
+        "fields": [
+            "register_date",
+            "register_count"
+        ],
+        "data": [
+            {
+                "register_date": "2023-12-15T00:00:00",
+                "register_count": 25
+            }
+        ]
+    }
+}`
+
+### 饼图
+
+`{
+    "type": "pie",
+    "title": "用户事件类型分布",
+    "axis": {
+        "y": {
+          "name": "事件数量",
+          "value": "event_count"
+        },
+        "series": {
+          "name": "事件类型",
+          "value": "event_type"
+        }
+    },
+    "data": {
+        "fields": [
+            "register_date",
+            "register_count"
+        ],
+        "data": [
+            {
+                "register_date": "2023-12-15T00:00:00",
+                "register_count": 25
+            },
+            {
+                "register_date": "2025-05-09T00:00:00",
+                "register_count": 25
+            }
+        ]   
+    }
+}`
+
+### 列表
+data:{"type":"id","id":98}
+
+data:{"type":"brief","brief":"查看人员列表信息"}
+
+data:{"content":"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"{\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"success","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" true","reasoning_content":"","type":"sql-result"}
+
+data:{"content":",\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"sql","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"SELECT","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"user","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_id","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" AS","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"user","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_id","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\",","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"full","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_name","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" AS","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"full","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_name","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\",","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"email","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" AS","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"email","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\",","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"created","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_at","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" AS","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"created","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_at","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" FROM","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"ret","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"ail","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\".","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"users","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ORDER","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" BY","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"user","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_id","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" LIM","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"IT","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"100","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"0","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\",","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"t","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"ables","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" [\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"users","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\"],\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"chart","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"-type","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"table","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\"\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"}","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"","reasoning_content":"","type":"sql-result"}
+
+data:{"type":"info","msg":"sql generated"}
+
+data:{"content":"SELECT \"user_id\" AS \"user_id\",\n       \"full_name\" AS \"full_name\",\n       \"email\" AS \"email\",\n       \"created_at\" AS \"created_at\"\nFROM \"retail\".\"users\"\nORDER BY \"user_id\"\nLIMIT 1000","type":"sql"}
+
+data:{"content":"execute-success","type":"sql-data"}
+
+data:{"content":"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"```","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"json","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"{\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"type","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"table","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"title","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"人员","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"列表","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"信息","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"columns","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" [\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" {\"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"name","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"用户","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"ID","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"value","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"user","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"_id","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\"},\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" {\"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"name","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"姓名","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"value","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"full","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"_name","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\"},\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" {\"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"name","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"邮箱","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"value","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"email","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\"},\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" {\"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"name","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"创建","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"时间","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"value","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"created","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"_at","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\"}\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ]\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"}\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"```","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"","reasoning_content":"","type":"chart-result"}
+
+data:{"type":"info","msg":"chart generated"}
+
+data:{"content":"{\"type\":\"table\",\"title\":\"人员列表信息\",\"columns\":[{\"name\":\"用户ID\",\"value\":\"user_id\"},{\"name\":\"姓名\",\"value\":\"full_name\"},{\"name\":\"邮箱\",\"value\":\"email\"},{\"name\":\"创建时间\",\"value\":\"created_at\"}]}","type":"chart"}
+
+data:{"type":"finish"}
+
+
+## 折线图、条形图、柱状图
+data:{"type":"id","id":99}
+
+data:{"content":"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"{\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"success","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" true","reasoning_content":"","type":"sql-result"}
+
+data:{"content":",\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"sql","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"SELECT","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" DATE","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_TR","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"UNC","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"('","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"day","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"',","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"created","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_at","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\")","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" AS","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"register","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_date","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\",","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" COUNT","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"(\\","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"user","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_id","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\")","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" AS","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"register","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_count","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" FROM","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"ret","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"ail","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\".","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"users","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" GROUP","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" BY","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" DATE","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_TR","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"UNC","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"('","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"day","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"',","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"created","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_at","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\")","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ORDER","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" BY","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"register","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_date","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" LIM","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"IT","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"100","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"0","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\",","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"t","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"ables","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" [\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"users","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\"],\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"chart","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"-type","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"line","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\"\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"}","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"","reasoning_content":"","type":"sql-result"}
+
+data:{"type":"info","msg":"sql generated"}
+
+data:{"content":"SELECT DATE_TRUNC('day', \"created_at\") AS \"register_date\",\n       COUNT(\"user_id\") AS \"register_count\"\nFROM \"retail\".\"users\"\nGROUP BY DATE_TRUNC('day', \"created_at\")\nORDER BY \"register_date\"\nLIMIT 1000","type":"sql"}
+
+data:{"content":"execute-success","type":"sql-data"}
+
+data:{"content":"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"{\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"type","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"line","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"title","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"人员","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"注册","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"趋势","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"axis","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" {\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"x","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" {\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"     ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"name","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"注册","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"日期","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"     ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"value","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"register","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"_date","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\"\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" },\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"y","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" {\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"     ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"name","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"注册","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"人数","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"     ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"value","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"register","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"_count","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\"\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" }\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" }\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"}","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"","reasoning_content":"","type":"chart-result"}
+
+data:{"type":"info","msg":"chart generated"}
+
+data:{"content":"{\"type\":\"line\",\"title\":\"人员注册趋势\",\"axis\":{\"x\":{\"name\":\"注册日期\",\"value\":\"register_date\"},\"y\":{\"name\":\"注册人数\",\"value\":\"register_count\"}}}","type":"chart"}
+
+data:{"type":"finish"}
+
+### 饼图
+data:{"type":"id","id":101}
+
+data:{"content":"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"{\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"success","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" true","reasoning_content":"","type":"sql-result"}
+
+data:{"content":",","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"sql","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"SELECT","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"event","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_type","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" AS","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"event","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_type","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\",","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" COUNT","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"(\\","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"event","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_id","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\")","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" AS","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"event","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_count","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" FROM","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"ret","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"ail","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\".","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"events","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" GROUP","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" BY","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"event","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_type","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ORDER","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" BY","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"event","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"_count","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\\\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" DESC","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" LIM","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"IT","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"100","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"0","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\",\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"t","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"ables","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" [\"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"events","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\"],\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" ","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"chart","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"-type","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"sql-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"pie","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"\"\n","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"}","reasoning_content":"","type":"sql-result"}
+
+data:{"content":"","reasoning_content":"","type":"sql-result"}
+
+data:{"type":"info","msg":"sql generated"}
+
+data:{"content":"SELECT \"event_type\" AS \"event_type\",\n       COUNT(\"event_id\") AS \"event_count\"\nFROM \"retail\".\"events\"\nGROUP BY \"event_type\"\nORDER BY \"event_count\" DESC\nLIMIT 1000","type":"sql"}
+
+data:{"content":"execute-success","type":"sql-data"}
+
+data:{"content":"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"{\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"type","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"pie","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"title","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"用户","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"事件","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"类型","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"分布","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"axis","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" {\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"y","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" {\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"     ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"name","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"事件","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"数量","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"     ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"value","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"event","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"_count","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\"\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" },\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"series","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" {\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"     ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"name","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"事件","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"类型","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\",\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"     ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"value","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\":","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" \"","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"event","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"_type","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"\"\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"   ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" }\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" ","reasoning_content":"","type":"chart-result"}
+
+data:{"content":" }\n","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"}","reasoning_content":"","type":"chart-result"}
+
+data:{"content":"","reasoning_content":"","type":"chart-result"}
+
+data:{"type":"info","msg":"chart generated"}
+
+data:{"content":"{\"type\":\"pie\",\"title\":\"用户事件类型分布\",\"axis\":{\"y\":{\"name\":\"事件数量\",\"value\":\"event_count\"},\"series\":{\"name\":\"事件类型\",\"value\":\"event_type\"}}}","type":"chart"}
+
+data:{"type":"finish"}
+
+
+
+

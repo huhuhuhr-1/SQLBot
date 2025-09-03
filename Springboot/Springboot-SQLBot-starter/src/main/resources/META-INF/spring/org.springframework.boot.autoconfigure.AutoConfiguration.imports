@@ -1,0 +1,4 @@
+# SQLBot Spring Boot Starter Auto-Configuration
+# 适用于Spring Boot 3.x版本
+
+com.sqlbot.springboot.starter.SQLBotAutoConfiguration
