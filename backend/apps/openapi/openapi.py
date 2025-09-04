@@ -379,7 +379,9 @@ async def get_analysis(
             status_code=500,
             detail=f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it"
         )
-
+    tmp_question = chat_record.question
+    if tmp_question:
+        record.question = tmp_question
     request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
 
     try:

@@ -49,6 +49,7 @@ class OpenChat(BaseModel):
     用于根据聊天记录ID查询相关信息
     """
     chat_record_id: int = Body(..., description='会话聊天消息标识')
+    question: str = Body(None, description='问题内容')
 
 
 class OpenChatQuestion(AiModelQuestion):
