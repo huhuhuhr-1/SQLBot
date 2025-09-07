@@ -18,15 +18,18 @@ OpenAPI 模块
 日期: 2025/09/03
 版本: 1.0.0
 """
-
 # 标准库导入
 import asyncio
 import traceback
-from typing import Optional
+from typing import AsyncGenerator, Dict, Any, Optional
 
+import orjson
 # 第三方库导入
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from langchain.chat_models.base import BaseChatModel
+from langchain_core.messages import HumanMessage, SystemMessage
+from orjson import orjson
 from sqlalchemy import and_, select
 from sqlbot_xpack.db import Depends
 
@@ -136,6 +139,152 @@ async def get_data_source_list(session: SessionDep, user: CurrentUser):
     return get_datasource_list(session=session, user=user)
 
 
+async def merge_streaming_chunks(stream, session=None) -> AsyncGenerator[str, None]:
+    """
+    合并流式输出的数据块
+
+    规则:
+    1. 对于 'predict-result' 和 'analysis-result' 类型的数据块不进行合并
+    2. 对于其他类型，如果数据块中 reasoning_content 不为空，则不合并
+    3. 对于其他相同类型的连续数据块，且 reasoning_content 为空，合并其 content 字段
+    4. 每个数据块都是 'data:{json_data}' 格式
+    5. 当收到 'finish' 类型时，调用 get_data 获取图表数据并发送
+
+    Args:
+        stream: 输入的流式数据生成器
+        session: 数据库会话对象（可选）
+
+    Yields:
+        合并后的数据块
+    """
+    previous_chunk: Optional[Dict[str, Any]] = None
+    recorded_id: Optional[int] = None
+
+    # 判断是普通生成器还是异步生成器
+    if hasattr(stream, '__aiter__'):
+        # 异步生成器
+        stream_iter = stream
+    else:
+        # 普通生成器，需要异步包装
+        async def async_generator_wrapper():
+            for item in stream:
+                yield item
+
+        stream_iter = async_generator_wrapper()
+
+    async for chunk in stream_iter:
+        # 忽略空行和非数据行
+        if not chunk or not chunk.startswith('data:'):
+            yield chunk
+            continue
+
+        try:
+            # 解析数据块
+            json_str = chunk[5:]  # 移除 'data:' 前缀
+            current_chunk = orjson.loads(json_str)
+
+            # 检查是否是 id 类型，记录 ID 值
+            current_type = current_chunk.get('type', '')
+            if current_type == 'id':
+                recorded_id = current_chunk.get('id')
+                yield chunk
+                continue
+
+            # 检查是否是 finish 类型
+            if current_type == 'finish':
+                # 先发送之前累积的块（如果有）
+                if previous_chunk:
+                    yield f"data:{orjson.dumps(previous_chunk).decode()}\n\n"
+                    previous_chunk = None
+
+                # 如果有记录的 ID 且有 session，调用 get_data 获取图表数据并发送
+                if recorded_id is not None and session is not None:
+                    try:
+                        # 创建一个模拟的 OpenChat 对象来调用 get_data
+                        from apps.openapi.models.openapiModels import OpenChat
+                        record_chat = OpenChat(chat_record_id=recorded_id)
+
+                        # 调用内部的 _fetch_chart_data 函数
+                        chart_data = get_chat_chart_data(
+                            chart_record_id=record_chat.chat_record_id,
+                            session=session
+                        )
+
+                        chart_data_chunk = {
+                            "content": orjson.dumps(chart_data).decode(),
+                            "type": "chart-data"
+                        }
+                        yield f"data:{orjson.dumps(chart_data_chunk).decode()}\n\n"
+                    except Exception as e:
+                        # 如果获取数据失败，发送错误信息
+                        error_chunk = {
+                            "content": f"获取图表数据失败: {str(e)}",
+                            "type": "error"
+                        }
+                        yield f"data:{orjson.dumps(error_chunk).decode()}\n\n"
+                # todo 通过recorded_id调用分析 get_analysis
+
+                # 发送 finish 块
+                yield chunk
+
+                continue
+
+            # 检查是否需要特殊处理的类型
+            no_merge_types = {'predict-result', 'analysis-result'}
+
+            # 检查 reasoning_content 是否为空
+            reasoning_content = current_chunk.get('reasoning_content', '')
+            has_reasoning = bool(reasoning_content and reasoning_content.strip())
+
+            # 如果没有前一个块，保存当前块
+            if previous_chunk is None:
+                if current_type in no_merge_types or has_reasoning:
+                    # 不需要合并的类型或包含 reasoning_content 的块直接输出
+                    yield chunk
+                else:
+                    # 需要合并的类型保存起来
+                    previous_chunk = current_chunk
+                continue
+
+            # 获取前一个块的信息
+            previous_type = previous_chunk.get('type', '')
+            previous_reasoning = previous_chunk.get('reasoning_content', '')
+            previous_has_reasoning = bool(previous_reasoning and previous_reasoning.strip())
+
+            # 如果类型不同，或者当前类型是不需要合并的类型，或者任一块包含 reasoning_content
+            if (previous_type != current_type or
+                    current_type in no_merge_types or
+                    previous_type in no_merge_types or
+                    has_reasoning or
+                    previous_has_reasoning):
+                # 输出前一个块
+                yield f"data:{orjson.dumps(previous_chunk).decode()}\n\n"
+                # 更新previous_chunk
+                if current_type in no_merge_types or has_reasoning:
+                    # 不需要合并的类型或包含 reasoning_content 的块直接输出
+                    yield chunk
+                    previous_chunk = None
+                else:
+                    # 需要合并的类型保存起来
+                    previous_chunk = current_chunk
+            else:
+                # 类型相同且都不包含 reasoning_content，需要合并，合并content字段
+                previous_content = previous_chunk.get('content', '')
+                current_content = current_chunk.get('content', '')
+                previous_chunk['content'] = previous_content + current_content
+
+        except orjson.JSONDecodeError:
+            # 如果解析失败，直接输出原始数据
+            if previous_chunk:
+                yield f"data:{orjson.dumps(previous_chunk).decode()}\n\n"
+                previous_chunk = None
+            yield chunk
+
+    # 输出最后一个块
+    if previous_chunk:
+        yield f"data:{orjson.dumps(previous_chunk).decode()}\n\n"
+
+
 @router.post("/chat", summary="聊天",
              description="给定一个提示，模型将返回一条或多条预测消息",
              dependencies=[Depends(common_headers)])
@@ -202,11 +351,35 @@ async def getChat(
             detail=f"聊天处理失败: {str(e)}"
         )
 
-    # 返回流式响应
+    # 返回经过合并处理的流式响应
     return StreamingResponse(
-        llm_service.await_result(),
+        merge_streaming_chunks(llm_service.await_result(), session),
         media_type="text/event-stream"
     )
+
+
+def identify_intent(llm: BaseChatModel, question: str):
+    """
+    简单的意图识别功能
+    """
+    # 构建意图识别消息
+    intent_messages = [
+        SystemMessage(content="""你是一个意图识别助手。请根据用户的问题识别其意图类型。
+意图类型仅限以下几种：
+1. 数据查询 - 查询数据库中的具体数据
+2. 数据分析 - 对数据进行统计分析、总结
+3. 趋势预测 - 预测未来趋势或数值
+4. 其他 - 其他类型的问题
+
+请直接回答意图类型，例如：数据查询"""),
+        HumanMessage(content=f"用户问题：{question}")
+    ]
+
+    # 调用大模型进行意图识别
+    response = llm.invoke(intent_messages)
+
+    # 返回识别结果
+    return response.content
 
 
 @router.post("/getData", dependencies=[Depends(common_headers)])

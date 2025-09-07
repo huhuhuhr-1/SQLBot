@@ -40,7 +40,7 @@ public final class SQLBotConstants {
         /**
          * 清理接口路径
          */
-        public static final String CLEAN = "/openapi/clean";
+        public static final String CLEAN = "/openapi/deleteChats";
 
         private ApiPaths() {
         }
