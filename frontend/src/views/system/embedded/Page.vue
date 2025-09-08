@@ -689,14 +689,18 @@ const copyCode = (row: any, key: any = 'app_secret') => {
         .ed-icon {
           margin-left: 8px;
         }
+
+        .ed-icon + .ed-icon {
+          margin-left: 12px;
+        }
       }
       .field-comment {
         height: 24px;
+
         .ed-icon {
           position: relative;
           cursor: pointer;
           margin-top: 4px;
-          margin-right: 10px;
 
           &::after {
             content: '';
@@ -720,6 +724,9 @@ const copyCode = (row: any, key: any = 'app_secret') => {
           &.not-allow {
             cursor: not-allowed;
           }
+        }
+        .ed-icon + .ed-icon {
+          margin-left: 12px;
         }
       }
 

@@ -1,6 +1,8 @@
 import concurrent
 import json
+import os
 import traceback
+import urllib.parse
 import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
@@ -24,7 +26,8 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     finish_record, save_analysis_answer, save_predict_answer, save_predict_data, \
     save_select_datasource_answer, save_recommend_question_answer, \
     get_old_questions, save_analysis_predict_record, rename_chat, get_chart_config, \
-    get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log
+    get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
+    get_last_execute_sql_error
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
@@ -45,7 +48,7 @@ base_message_count_limit = 6
 executor = ThreadPoolExecutor(max_workers=200)
 
 dynamic_ds_types = [1, 3]
-
+dynamic_subsql_prefix = 'select * from sqlbot_dynamic_temp_table_'
 
 class LLMService:
     ds: CoreDatasource
@@ -69,6 +72,8 @@ class LLMService:
 
     chunk_list: List[str] = []
     future: Future
+
+    last_execute_sql_error: str = None
 
     def __init__(self, current_user: CurrentUser, chat_question: ChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
@@ -126,6 +131,15 @@ class LLMService:
         # Create LLM instance through factory
         llm_instance = LLMFactory.create_llm(self.config)
         self.llm = llm_instance.llm
+
+        # get last_execute_sql_error
+        last_execute_sql_error = get_last_execute_sql_error(self.session, self.chat_question.chat_id)
+        if last_execute_sql_error:
+            self.chat_question.error_msg = f'''<error-msg>
+{last_execute_sql_error}
+</error-msg>'''
+        else:
+            self.chat_question.error_msg = ''
 
         self.init_messages()
 
@@ -603,12 +617,17 @@ class LLMService:
     def generate_assistant_dynamic_sql(self, sql, tables: List):
         ds: AssistantOutDsSchema = self.ds
         sub_query = []
+        result_dict = {}
         for table in ds.tables:
             if table.name in tables and table.sql:
-                sub_query.append({"table": table.name, "query": table.sql})
+                #sub_query.append({"table": table.name, "query": table.sql})
+                result_dict[table.name] = table.sql
+                sub_query.append({"table": table.name, "query": f'{dynamic_subsql_prefix}{table.name}'})
         if not sub_query:
             return None
-        return self.generate_with_sub_sql(sql=sql, sub_mappings=sub_query)
+        temp_sql_text = self.generate_with_sub_sql(sql=sql, sub_mappings=sub_query)
+        result_dict['sqlbot_temp_sql_text'] = temp_sql_text
+        return result_dict
 
     def build_table_filter(self, sql: str, filters: list):
         filter = json.dumps(filters, ensure_ascii=False)
@@ -971,27 +990,27 @@ class LLMService:
             chart_type = self.get_chart_type_from_sql_answer(full_sql_text)
 
             use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
-
+            is_page_embedded: bool = self.current_assistant and self.current_assistant.type == 4
+            dynamic_sql_result = None
+            sqlbot_temp_sql_text = None
+            assistant_dynamic_sql = None
             # todo row permission
-            if (not self.current_assistant and is_normal_user(self.current_user)) or use_dynamic_ds:
+            if ((not self.current_assistant or is_page_embedded) and is_normal_user(self.current_user)) or use_dynamic_ds:
                 sql, tables = self.check_sql(res=full_sql_text)
                 sql_result = None
-                dynamic_sql_result = None
-                if self.current_assistant:
+                
+                if use_dynamic_ds:
                     dynamic_sql_result = self.generate_assistant_dynamic_sql(sql, tables)
-                    if dynamic_sql_result:
-                        SQLBotLogUtil.info(dynamic_sql_result)
-                        sql, *_ = self.check_sql(res=dynamic_sql_result)
-
-                    sql_result = self.generate_assistant_filter(sql, tables)
+                    sqlbot_temp_sql_text = dynamic_sql_result.get('sqlbot_temp_sql_text') if dynamic_sql_result else None
+                    #sql_result = self.generate_assistant_filter(sql, tables)
                 else:
                     sql_result = self.generate_filter(sql, tables)  # maybe no sql and tables
 
                 if sql_result:
                     SQLBotLogUtil.info(sql_result)
                     sql = self.check_save_sql(res=sql_result)
-                elif dynamic_sql_result:
-                    sql = self.check_save_sql(res=dynamic_sql_result)
+                elif dynamic_sql_result and sqlbot_temp_sql_text:
+                    assistant_dynamic_sql = self.check_save_sql(res=sqlbot_temp_sql_text)
                 else:
                     sql = self.check_save_sql(res=full_sql_text)
             else:
@@ -1005,7 +1024,14 @@ class LLMService:
                 yield f'```sql\n{format_sql}\n```\n\n'
 
             # execute sql
-            result = self.execute_sql(sql=sql)
+            real_execute_sql = sql
+            if sqlbot_temp_sql_text and assistant_dynamic_sql:
+                dynamic_sql_result.pop('sqlbot_temp_sql_text')
+                for origin_table, subsql in dynamic_sql_result.items():
+                    assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}', subsql)
+                real_execute_sql = assistant_dynamic_sql
+                
+            result = self.execute_sql(sql=real_execute_sql)
             self.save_sql_data(data_obj=result)
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
@@ -1231,8 +1257,7 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
         axis.append({'name': series.get('name'), 'value': series.get('value'), 'type': 'series'})
 
     request_obj = {
-        "path": (settings.MCP_IMAGE_PATH if settings.MCP_IMAGE_PATH[-1] == '/' else (
-                settings.MCP_IMAGE_PATH + '/')) + file_name,
+        "path": os.path.join(settings.MCP_IMAGE_PATH, file_name),
         "type": chart['type'],
         "data": orjson.dumps(data.get('data') if data.get('data') else []).decode(),
         "axis": orjson.dumps(axis).decode(),
@@ -1240,7 +1265,9 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
 
     requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj)
 
-    return f'{(settings.SERVER_IMAGE_HOST if settings.SERVER_IMAGE_HOST[-1] == "/" else (settings.SERVER_IMAGE_HOST + "/"))}{file_name}.png'
+    request_path = urllib.parse.urljoin(settings.MCP_IMAGE_HOST, f"{file_name}.png")
+
+    return request_path
 
 
 def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = {}):

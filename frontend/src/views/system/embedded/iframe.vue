@@ -1288,7 +1288,7 @@ const saveHandler = () => {
         background: #1f23291a;
       }
       .ed-button + .ed-button {
-        margin-left: 4px;
+        margin-left: 8px;
       }
     }
 

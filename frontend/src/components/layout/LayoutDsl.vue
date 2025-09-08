@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import Menu from './Menu.vue'
 import LOGOCustom from '@/assets/svg/LOGO-custom.svg'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
@@ -18,17 +18,25 @@ import { useEmitt } from '@/utils/useEmitt'
 
 const router = useRouter()
 const collapse = ref(false)
+const collapseCopy = ref(false)
 const appearanceStore = useAppearanceStoreWithOut()
-
+let time: any
+onUnmounted(() => {
+  clearTimeout(time)
+})
 const handleCollapseChange = (val: any = true) => {
-  collapse.value = val
+  collapseCopy.value = val
+  clearTimeout(time)
+  time = setTimeout(() => {
+    collapse.value = val
+  }, 100)
 }
 useEmitt({
   name: 'collapse-change',
   callback: handleCollapseChange,
 })
 const handleFoldExpand = () => {
-  collapse.value = !collapse.value
+  handleCollapseChange(!collapse.value)
 }
 
 const toWorkspace = () => {
@@ -62,7 +70,7 @@ const showSysmenu = computed(() => {
         <LOGO v-else style="margin-bottom: 6px"></LOGO>
       </template>
       <Workspace v-if="!showSysmenu" :collapse="collapse"></Workspace>
-      <Menu :collapse="collapse"></Menu>
+      <Menu :collapse="collapseCopy"></Menu>
       <div class="bottom">
         <div
           v-if="showSysmenu"
@@ -154,6 +162,17 @@ const showSysmenu = computed(() => {
         .fold {
           cursor: pointer;
           margin-left: auto;
+          border-radius: 6px;
+          width: 40px;
+          height: 40px;
+          &:hover,
+          &:focus {
+            background: #1f23291a;
+          }
+
+          &:active {
+            background: #1f232933;
+          }
         }
       }
     }

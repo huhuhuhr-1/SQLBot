@@ -159,6 +159,7 @@ class ChatInfo(BaseModel):
 
 
 class AiModelQuestion(BaseModel):
+    question: str = None
     ai_modal_id: int = None
     ai_modal_name: str = None  # Specific model name
     engine: str = ""
@@ -171,6 +172,7 @@ class AiModelQuestion(BaseModel):
     filter: str = []
     sub_query: Optional[list[dict]] = None
     terminologies: str = ""
+    error_msg: str = ""
 
     def sql_sys_question(self):
         return get_sql_template()['system'].format(engine=self.engine, schema=self.db_schema, question=self.question,
@@ -178,7 +180,7 @@ class AiModelQuestion(BaseModel):
 
     def sql_user_question(self, current_time: str):
         return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=self.question,
-                                                 rule=self.rule, current_time=current_time)
+                                                 rule=self.rule, current_time=current_time, error_msg=self.error_msg)
 
     def chart_sys_question(self):
         return get_chart_template()['system'].format(sql=self.sql, question=self.question, lang=self.lang)
@@ -226,7 +228,6 @@ class AiModelQuestion(BaseModel):
 
 
 class ChatQuestion(AiModelQuestion):
-    question: str
     chat_id: int
 
 

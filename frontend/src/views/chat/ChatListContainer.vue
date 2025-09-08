@@ -317,6 +317,9 @@ function onChatRenamed(chat: Chat) {
     .search {
       height: 32px;
       width: 100%;
+      :deep(.ed-input__wrapper) {
+        background-color: #f5f6f7;
+      }
     }
   }
 

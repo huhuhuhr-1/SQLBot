@@ -661,7 +661,6 @@ const deleteHandlerItem = (idx: number) => {
           position: relative;
           cursor: pointer;
           margin-top: 4px;
-          margin-right: 10px;
 
           &::after {
             content: '';
@@ -685,6 +684,9 @@ const deleteHandlerItem = (idx: number) => {
           &.not-allow {
             cursor: not-allowed;
           }
+        }
+        .ed-icon + .ed-icon {
+          margin-left: 12px;
         }
       }
 

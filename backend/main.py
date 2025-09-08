@@ -1,3 +1,5 @@
+import os
+
 import sqlbot_xpack
 from alembic.config import Config
 from fastapi import FastAPI
@@ -56,7 +58,9 @@ app = FastAPI(
 
 mcp_app = FastAPI()
 # mcp server, images path
-mcp_app.mount("/images", StaticFiles(directory=settings.MCP_IMAGE_PATH), name="images")
+images_path = settings.MCP_IMAGE_PATH
+os.makedirs(images_path, exist_ok=True)
+mcp_app.mount("/images", StaticFiles(directory=images_path), name="images")
 
 mcp = FastApiMCP(
     app,

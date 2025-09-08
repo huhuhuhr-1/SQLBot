@@ -1,4 +1,30 @@
 <template>
+  <el-popover
+    :width="280"
+    v-if="assistantStore.assistant && !assistantStore.pageEmbedded && assistantStore.type != 4"
+    placement="bottom-start"
+    popper-class="popover-chat_history popover-chat_history_small"
+  >
+    <template #reference>
+      <el-icon class="show-history_icon" style="" size="20" @click="showFloatPopover">
+        <icon_sidebar_outlined></icon_sidebar_outlined>
+      </el-icon>
+    </template>
+    <ChatListContainer
+      ref="floatPopoverRef"
+      v-model:chat-list="chatList"
+      v-model:current-chat-id="currentChatId"
+      v-model:current-chat="currentChat"
+      v-model:loading="loading"
+      :in-popover="!chatListSideBarShow"
+      @go-empty="goEmpty"
+      @on-chat-created="onChatCreated"
+      @on-click-history="onClickHistory"
+      @on-chat-deleted="onChatDeleted"
+      @on-chat-renamed="onChatRenamed"
+      @on-click-side-bar-btn="hideSideBar"
+    />
+  </el-popover>
   <el-container class="chat-container no-padding">
     <el-aside
       v-if="(isCompletePage || pageEmbedded) && chatListSideBarShow"
@@ -18,6 +44,7 @@
         @on-click-side-bar-btn="hideSideBar"
       />
     </el-aside>
+
     <div
       v-if="(!isCompletePage && !pageEmbedded) || !chatListSideBarShow"
       class="hidden-sidebar-btn"
@@ -1264,5 +1291,38 @@ onMounted(() => {
   box-shadow: 0px 4px 8px 0px #1f23291a !important;
   border-radius: 12px !important;
   overflow: hidden;
+}
+
+.popover-chat_history_small {
+  height: calc(100% - 54px);
+  padding: 0 !important;
+  border: 1px solid rgba(222, 224, 227, 1);
+  border-radius: 6px;
+}
+
+.show-history_icon {
+  cursor: pointer;
+  position: absolute;
+  top: 18px;
+  left: 16px;
+  z-index: 199;
+  &::after {
+    content: '';
+    background-color: #1f23291a;
+    position: absolute;
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    transform: translate(-50%, -50%);
+    top: 50%;
+    left: 50%;
+    display: none;
+  }
+
+  &:hover {
+    &::after {
+      display: block;
+    }
+  }
 }
 </style>

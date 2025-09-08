@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgif-dev \
     librsvg2-dev \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && curl -qL https://www.npmjs.com/install.sh | sh - \
     && apt-get install -y nodejs \
     && curl -L --connect-timeout 60 -m 1800 https://fit2cloud-support.oss-cn-beijing.aliyuncs.com/xpack-license/get-validator-linux | sh \
     && rm -rf /var/lib/apt/lists/* \

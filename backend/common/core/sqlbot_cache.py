@@ -68,7 +68,7 @@ def cache(
         
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            if not settings.CACHE_TYPE or settings.CACHE_TYPE.lower() == "none":
+            if not settings.CACHE_TYPE or settings.CACHE_TYPE.lower() == "none" or not is_cache_initialized():
                 return await func(*args, **kwargs)
             # 生成缓存键
             cache_key = used_key_builder(
@@ -96,7 +96,7 @@ def clear_cache(
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            if not settings.CACHE_TYPE or settings.CACHE_TYPE.lower() == "none":
+            if not settings.CACHE_TYPE or settings.CACHE_TYPE.lower() == "none" or not is_cache_initialized():
                 return await func(*args, **kwargs)
             cache_key = custom_key_builder(
                 func=func,
@@ -139,3 +139,20 @@ def init_sqlbot_cache():
     else:
         SQLBotLogUtil.warning("SQLBot 未启用缓存, 可使用多进程模式")
     
+
+def is_cache_initialized() -> bool:
+    # 检查必要的属性是否存在
+    if not hasattr(FastAPICache, "_backend") or not hasattr(FastAPICache, "_prefix"):
+        return False
+    
+    # 检查属性值是否为 None
+    if FastAPICache._backend is None or FastAPICache._prefix is None:
+        return False
+    
+    # 尝试获取后端确认
+    try:
+        backend = FastAPICache.get_backend()
+        return backend is not None
+    except (AssertionError, AttributeError, Exception) as e:
+        SQLBotLogUtil.debug(f"缓存初始化检查失败: {str(e)}")
+        return False

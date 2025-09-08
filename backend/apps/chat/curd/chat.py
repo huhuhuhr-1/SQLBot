@@ -71,6 +71,21 @@ def get_chart_config(session: SessionDep, chart_record_id: int):
     return {}
 
 
+def get_last_execute_sql_error(session: SessionDep, chart_id: int):
+    stmt = select(ChatRecord.error).where(and_(ChatRecord.chat_id == chart_id)).order_by(
+        ChatRecord.create_time.desc()).limit(1)
+    res = session.execute(stmt).scalar()
+    if res:
+        try:
+            obj = orjson.loads(res)
+            if obj.get('type') and obj.get('type') == 'exec-sql-err':
+                return obj.get('traceback')
+        except Exception:
+            pass
+
+    return None
+
+
 def get_chat_chart_data(session: SessionDep, chart_record_id: int):
     stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chart_record_id))
     res = session.execute(stmt)
@@ -701,7 +716,8 @@ def get_old_questions(session: SessionDep, datasource: int):
     if not datasource:
         return records
     stmt = select(ChatRecord.question).where(
-        and_(ChatRecord.datasource == datasource, ChatRecord.question.isnot(None), ChatRecord.error.is_(None))).order_by(
+        and_(ChatRecord.datasource == datasource, ChatRecord.question.isnot(None),
+             ChatRecord.error.is_(None))).order_by(
         ChatRecord.create_time.desc()).limit(20)
     result = session.execute(stmt)
     for r in result:

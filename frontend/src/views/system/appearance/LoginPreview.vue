@@ -41,9 +41,10 @@
             <div class="login-logo">
               <img class="login-logo-icon" :src="pageLogin" alt="" />
             </div>
-            <div class="login-welcome">
+            <div v-if="isBtnShow(showSlogan)" class="login-welcome">
               {{ pageSlogan || t('system.available_to_everyone') }}
             </div>
+            <div v-else class="login-welcome"></div>
           </div>
           <div class="form-area">
             <div class="default-login-tabs">
@@ -97,6 +98,7 @@ import logoHeader from '@/assets/blue/LOGO-head_blue.png'
 import logo from '@/assets/blue/LOGO-blue.png'
 import loginImage from '@/assets/blue/login-image_blue.png'
 import { propTypes } from '@/utils/propTypes'
+import { isBtnShow } from '@/utils/utils'
 import { useI18n } from 'vue-i18n'
 import { computed, ref, onMounted, nextTick } from 'vue'
 import elementResizeDetectorMaker from 'element-resize-detector'
@@ -111,6 +113,7 @@ const props = defineProps({
   themeColor: propTypes.string.def(''),
   customColor: propTypes.string.def(''),
   login: propTypes.string.def(''),
+  showSlogan: propTypes.string.def('0'),
   bg: propTypes.string.def(''),
   height: propTypes.number.def(425),
   foot: propTypes.string.def(''),

@@ -18,25 +18,24 @@ SQLBot 是一款基于大模型和 RAG 的智能问数系统。SQLBot 的优势�
 
 ### 安装部署
 
-准备一台 Linux 服务器，执行以下一键安装脚本。  
-在运行 SQLBot 前，请确保已安装好 [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/)。
+准备一台 Linux 服务器，安装好 [Docker](https://docs.docker.com/get-docker/)，执行以下一键安装脚本：
 
 ```bash
-# 创建目录
-mkdir -p /opt/sqlbot
-cd /opt/sqlbot
-
-# 下载 docker-compose.yaml
-curl -o docker-compose.yaml https://raw.githubusercontent.com/dataease/SQLBot/main/docker-compose.yaml
-
-# 启动服务
-docker compose up -d
+docker run -d \
+  --name sqlbot \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  -p 8001:8001 \
+  -v ./data/sqlbot/excel:/opt/sqlbot/data/excel \
+  -v ./data/sqlbot/images:/opt/sqlbot/images \
+  -v ./data/sqlbot/logs:/opt/sqlbot/logs \
+  -v ./data/postgresql:/var/lib/postgresql/data \
+  dataease/sqlbot:v1.1.1
 ```
 
 你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署 SQLBot。
 
 如果是内网环境，你可以通过 [离线安装包方式](https://community.fit2cloud.com/#/products/sqlbot/downloads) 部署 SQLBot。
-
 
 ### 访问方式
 
@@ -58,8 +57,8 @@ docker compose up -d
 
 ## Roadmap
 
-- 术语库：开发中...
 - SQL 示例库：开发中...
+- 自定义提示词：开发中...
 
 ## Star History
 

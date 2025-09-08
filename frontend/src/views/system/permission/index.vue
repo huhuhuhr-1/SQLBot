@@ -626,7 +626,7 @@ const columnRules = {
             </el-step>
           </el-steps>
         </div>
-        <el-icon style="cursor: pointer" @click="close">
+        <el-icon class="ed-dialog__headerbtn mrt" style="cursor: pointer" @click="close">
           <icon_close_outlined></icon_close_outlined>
         </el-icon>
       </template>
@@ -994,7 +994,7 @@ const columnRules = {
             .action-btn {
               margin-top: 4px;
               &:nth-child(1) {
-                margin-right: 8px;
+                margin-right: 12px;
               }
             }
           }

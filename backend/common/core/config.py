@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     POSTGRES_SERVER: str = 'localhost'
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = 'root'
-    POSTGRES_PASSWORD: str = "123456"
+    POSTGRES_PASSWORD: str = "Password123@pg"
     POSTGRES_DB: str = "sqlbot"
     SQLBOT_DB_URL: str = ''
     # SQLBOT_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/sqlbot'
@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     MCP_IMAGE_PATH: str = '/opt/sqlbot/images'
     EXCEL_PATH: str = '/opt/sqlbot/data/excel'
     MCP_IMAGE_HOST: str = 'http://localhost:3000'
-    SERVER_IMAGE_HOST: str = ''
+    SERVER_IMAGE_HOST: str = 'https://YOUR_SERVE_IP:MCP_PORT/images/'
 
     LOCAL_MODEL_PATH: str = '/opt/sqlbot/models'
     DEFAULT_EMBEDDING_MODEL: str = 'shibing624/text2vec-base-chinese'

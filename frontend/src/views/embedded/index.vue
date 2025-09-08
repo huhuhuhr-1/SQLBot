@@ -1,9 +1,7 @@
 <template>
   <div class="sqlbot-assistant-container">
     <div class="header" :style="{ color: customSet.header_font_color }">
-      <el-icon size="20" @click="openHistory">
-        <icon_sidebar_outlined></icon_sidebar_outlined>
-      </el-icon>
+      <el-icon size="20"> </el-icon>
       <el-icon v-if="!logo" class="logo" size="30">
         <LOGO></LOGO>
       </el-icon>
@@ -37,7 +35,6 @@ import { onBeforeMount, nextTick, onBeforeUnmount, ref, onMounted, reactive } fr
 import ChatComponent from '@/views/chat/index.vue'
 import { request } from '@/utils/request'
 import LOGO from '@/assets/svg/logo-custom_small.svg'
-import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined_nofill.svg'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useRoute } from 'vue-router'

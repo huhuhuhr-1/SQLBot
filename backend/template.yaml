@@ -98,7 +98,7 @@ template:
             - 柱状图或折线图：适合展示在横轴的字段优先排序，若SQL包含分类字段，则分类字段次一级排序
         </rule>
         <rule>
-          如果用户没有指定数据条数的限制，输出的查询SQL需要加上1000条的数据条数限制
+          如果用户没有指定数据条数的限制，输出的查询SQL必须加上1000条的数据条数限制
           如果用户指定的限制大于1000，则按1000处理
           <example>
           以PostgreSQL为例，查询Schema为TEST表TABLE下id字段，则生成的SQL为：
@@ -235,6 +235,7 @@ template:
         {current_time}
         </current-time>
       <background-infos>
+      {error_msg}
       <user-question>
       {question}
       </user-question>
