@@ -10,6 +10,10 @@ OpenAPI 数据模型模块
 日期: 2025/01/30
 版本: 1.0.0
 """
+from dataclasses import dataclass
+from typing import Any, Dict, Union
+import json
+import re
 
 from typing import List, Union, Optional
 
@@ -26,7 +30,7 @@ class OpenClean(BaseModel):
     用于指定要清理的聊天记录ID列表
     """
     chat_ids: Union[int, List[int]] = Body(
-        None, 
+        None,
         description='会话标识或会话标识列表，为空时清理所有记录'
     )
 
@@ -145,13 +149,13 @@ class DataSourceRequest(BaseModel):
 
 async def common_headers(
         x_sqlbot_token: Optional[str] = Header(
-            None, 
-            alias="X-Sqlbot-Token", 
+            None,
+            alias="X-Sqlbot-Token",
             description="认证 Token"
         ),
         content_type: Optional[str] = Header(
-            None, 
-            alias="Content-Type", 
+            None,
+            alias="Content-Type",
             description="返回体类型，支持 application/json 和 text/event-stream"
         ),
 ) -> dict:
@@ -168,6 +172,41 @@ async def common_headers(
         dict: 包含请求头信息的字典
     """
     return {
-        "X-Sqlbot-Token": x_sqlbot_token, 
+        "X-Sqlbot-Token": x_sqlbot_token,
         "Content-Type": content_type
     }
+
+
+@dataclass
+class IntentPayload:
+    search: str
+    analysis: str
+    predict: str = ""  # 可选，默认空字符串
+
+    @classmethod
+    def from_llm(cls, content: Union[str, Dict[str, Any]]) -> "IntentPayload":
+        """
+        将 LLM 返回的 JSON（或包含 JSON 的字符串）解析为 IntentPayload。
+        若缺失字段，search/analysis 会回退为空字符串，predict 默认为空字符串。
+        """
+        if isinstance(content, str):
+            # 提取第一段 {...} 作为 JSON（容错处理：剔除多余文本/Markdown）
+            m = re.search(r"\{.*\}", content, flags=re.S)
+            if not m:
+                raise ValueError("LLM 输出中未找到 JSON 对象")
+            data = json.loads(m.group(0))
+        else:
+            data = content
+
+        return cls(
+            search=str(data.get("search", "")).strip(),
+            analysis=str(data.get("analysis", "")).strip(),
+            predict=str(data.get("predict", "")).strip(),
+        )
+
+    def to_json(self) -> str:
+        """序列化为 JSON 字符串（始终包含三个字段）。"""
+        return json.dumps(
+            {"search": self.search, "analysis": self.analysis, "predict": self.predict},
+            ensure_ascii=False
+        )
