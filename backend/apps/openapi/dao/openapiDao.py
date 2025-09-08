@@ -10,12 +10,12 @@ OpenAPI 数据访问对象模块
 版本: 1.0.0
 """
 
-from typing import Optional
+from typing import Optional, List
 
 from sqlalchemy import and_
 from sqlmodel import select
 
-from apps.chat.models.chat_model import ChatRecord, Chat
+from apps.chat.models.chat_model import Chat, ChatRecord
 from apps.datasource.models.datasource import CoreDatasource
 from apps.openapi.models.openapiModels import DataSourceRequest, OpenChatQuestion
 from common.core.deps import SessionDep, CurrentUser
@@ -91,45 +91,29 @@ async def bind_datasource(
     session.commit()
 
 
-def get_datasource_by_name_or_id(
+def get_all_datasources(
         session: SessionDep,
-        user: CurrentUser,
-        query: DataSourceRequest
-) -> Optional[CoreDatasource]:
+        user: CurrentUser
+) -> List[CoreDatasource]:
     """
-    根据数据源名称或ID查询数据源信息
-
+    获取当前用户工作空间下的所有数据源
+    
     Args:
         session: 数据库会话依赖
         user: 当前用户信息
-        query: 数据源查询请求对象
 
     Returns:
-        Optional[CoreDatasource]: 找到的数据源对象，如果未找到则返回 None
-
-    Raises:
-        ValueError: 当查询条件验证失败时抛出异常
+        List[CoreDatasource]: 数据源列表
     """
-    # 验证查询条件
-    query.validate_query_fields()
-
     # 获取当前用户的工作空间ID，默认为1
     current_oid = user.oid if user.oid is not None else 1
 
-    # 构建查询条件列表
+    # 构建查询条件
     conditions = [CoreDatasource.oid == current_oid]
 
-    # 如果提供了名称，添加名称查询条件
-    if query.name is not None:
-        conditions.append(CoreDatasource.name == query.name)
-
-    # 如果提供了ID，添加ID查询条件
-    if query.id is not None:
-        conditions.append(CoreDatasource.id == query.id)
-
-    # 执行查询并返回第一个匹配结果
+    # 执行查询并返回所有匹配结果
     statement = select(CoreDatasource).where(and_(*conditions))
-    return session.exec(statement).first()
+    return session.exec(statement).all()
 
 
 def select_one(
