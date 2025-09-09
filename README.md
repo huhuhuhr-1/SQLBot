@@ -14,6 +14,10 @@ SQLBot 是一款基于大模型和 RAG 的智能问数系统。SQLBot 的优势�
 - **易于集成**: 支持快速嵌入到第三方业务系统，也支持被 n8n、MaxKB、Dify、Coze 等 AI 应用开发平台集成调用，让各类应用快速拥有智能问数能力；
 - **安全可控**: 提供基于工作空间的资源隔离机制，能够实现细粒度的数据权限控制。
 
+## 工作原理
+
+<img alt="image" src="https://github.com/user-attachments/assets/96c8e658-b497-4f66-8ff6-087496edd3dd" />
+
 ## 快速开始
 
 ### 安装部署
@@ -54,11 +58,6 @@ docker run -d \
   <tr>
     <img alt="q&a" src="https://github.com/user-attachments/assets/55526514-52f3-4cfe-98ec-08a986259280"   />
   </tr>
-
-## Roadmap
-
-- SQL 示例库：开发中...
-- 自定义提示词：开发中...
 
 ## Star History
 

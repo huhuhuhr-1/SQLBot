@@ -19,7 +19,7 @@ services:
       PROJECT_NAME: "SQLBot"
       DEFAULT_PWD: "SQLBot@123456"
       # MCP settings
-      SERVER_IMAGE_HOST: https://YOUR_SERVE_IP:MCP_PORT/images/
+      SERVER_IMAGE_HOST: http://YOUR_SERVE_IP:MCP_PORT/images/
       # Auth & Security
       SECRET_KEY: y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s
       # CORS settings
