@@ -180,7 +180,7 @@ class AssistantOutDs:
         if config.get('encrypt', False):
             key = config.get('aes_key', None)
             iv = config.get('aes_iv', None)
-            aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema']
+            aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema', 'schema']
             for attr in aes_attrs:
                 if attr in ds_dict and ds_dict[attr]:
                     try:

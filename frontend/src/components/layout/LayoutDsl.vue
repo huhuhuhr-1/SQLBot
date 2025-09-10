@@ -42,6 +42,10 @@ const handleFoldExpand = () => {
 const toWorkspace = () => {
   router.push('/')
 }
+
+const toChatIndex = () => {
+  router.push('/chat/index')
+}
 const route = useRoute()
 const showSysmenu = computed(() => {
   return route.path.includes('/system')
@@ -57,17 +61,37 @@ const showSysmenu = computed(() => {
           width="30"
           height="30"
           :src="logo_fold_blue"
-          style="margin: 0 0 6px 5px"
+          @click="toChatIndex"
+          style="margin: 0 0 6px 5px; cursor: pointer"
         />
-        <img v-else width="130" height="31" :src="logo_blue" style="margin-bottom: 6px" />
+        <img
+          v-else
+          @click="toChatIndex"
+          width="130"
+          height="31"
+          :src="logo_blue"
+          style="margin-bottom: 6px; cursor: pointer"
+        />
       </template>
       <template v-else-if="appearanceStore.themeColor === 'custom'">
-        <custom_small v-if="collapse" style="margin: 0 0 6px 5px"></custom_small>
-        <LOGOCustom v-else style="margin-bottom: 6px"></LOGOCustom>
+        <custom_small
+          @click="toChatIndex"
+          v-if="collapse"
+          style="margin: 0 0 6px 5px; cursor: pointer"
+        ></custom_small>
+        <LOGOCustom
+          @click="toChatIndex"
+          v-else
+          style="margin-bottom: 6px; cursor: pointer"
+        ></LOGOCustom>
       </template>
       <template v-else>
-        <LOGO_fold v-if="collapse" style="margin: 0 0 6px 5px"></LOGO_fold>
-        <LOGO v-else style="margin-bottom: 6px"></LOGO>
+        <LOGO_fold
+          @click="toChatIndex"
+          v-if="collapse"
+          style="margin: 0 0 6px 5px; cursor: pointer"
+        ></LOGO_fold>
+        <LOGO @click="toChatIndex" v-else style="margin-bottom: 6px; cursor: pointer"></LOGO>
       </template>
       <Workspace v-if="!showSysmenu" :collapse="collapse"></Workspace>
       <Menu :collapse="collapseCopy"></Menu>

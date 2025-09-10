@@ -94,5 +94,10 @@ class Settings(BaseSettings):
     EMBEDDING_SIMILARITY: float = 0.4
     EMBEDDING_TOP_COUNT: int = 5
 
+    PG_POOL_SIZE: int = 20
+    PG_MAX_OVERFLOW: int = 30
+    PG_POOL_RECYCLE: int = 3600
+    PG_POOL_PRE_PING: bool = True
+
 
 settings = Settings()  # type: ignore
