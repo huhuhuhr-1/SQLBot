@@ -65,6 +65,10 @@ class OpenChatQuestion(AiModelQuestion):
     question: str = Body(..., description='用户问题内容')
     chat_id: int = Body(..., description='聊天会话标识')
     db_id: int = Body(..., description='数据源标识')
+    intent: bool = Body(default=True, description='是否进行意图检测')
+    analysis: bool = Body(default=False, description='是否分析')
+    predict: bool = Body(default=False, description='是否预测')
+    recommend: bool = Body(default=True, description='是否推荐')
 
 
 class OpenToken(BaseModel):

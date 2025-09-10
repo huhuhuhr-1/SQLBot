@@ -8,16 +8,17 @@ from sqlmodel import select
 from starlette.responses import StreamingResponse
 
 from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, list_chats, delete_chat, create_chat
-from apps.chat.models.chat_model import Chat, ChatQuestion, CreateChat
+from apps.chat.models.chat_model import Chat, ChatQuestion, CreateChat, ChatRecord
 from apps.chat.task.llm import LLMService
 from apps.datasource.crud.datasource import get_datasource_list
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers
+    OpenChat, OpenClean, common_headers, IntentPayload
 from apps.openapi.service.openapi_service import merge_streaming_chunks, get_chat_record, \
-    create_access_token_with_expiry
+    create_access_token_with_expiry, identify_intent
 from apps.system.crud.user import authenticate
 from apps.system.schemas.system_schema import BaseUserDTO
+from common.core.db import get_session
 from common.core.deps import SessionDep, CurrentUser, CurrentAssistant, Trans
 from common.utils.utils import SQLBotLogUtil
 
@@ -124,7 +125,6 @@ async def get_data_source_by_id_or_name(
              description="给定一个提示，模型将返回一条或多条预测消息",
              dependencies=[Depends(common_headers)])
 async def getChat(
-        session: SessionDep,
         current_user: CurrentUser,
         request_question: OpenChatQuestion,
         current_assistant: CurrentAssistant
@@ -136,7 +136,6 @@ async def getChat(
     此接口遵循OpenAI Chat Completions API规范，支持流式响应。
 
     Args:
-        session: 数据库会话依赖
         current_user: 当前认证用户信息
         request_question: 包含问题内容的请求对象
         current_assistant: 当前使用的AI助手信息
@@ -147,23 +146,21 @@ async def getChat(
     Raises:
         HTTPException: 当处理过程中出现异常时抛出500错误
     """
-    # 获取数据源信息
-    datasource = get_datasource_by_name_or_id(
-        session=session,
-        user=current_user,
-        query=DataSourceRequest(id=request_question.db_id)
-    )
-
-    if not datasource:
-        raise HTTPException(
-            status_code=500,
-            detail="数据源未找到"
-        )
-
-    llm_service = None
     try:
-        # 绑定数据源到聊天会话
-        await bind_datasource(datasource, request_question, session)
+        # 获取数据源信息
+        for session in get_session():
+            datasource = get_datasource_by_name_or_id(
+                session=session,
+                user=current_user,
+                query=DataSourceRequest(id=request_question.db_id)
+            )
+            if not datasource:
+                raise HTTPException(
+                    status_code=500,
+                    detail="数据源未找到"
+                )
+            # 绑定数据源到聊天会话
+            await bind_datasource(datasource, request_question.chat_id, session)
 
         # 创建LLM服务实例
         llm_service = await LLMService.create(
@@ -171,6 +168,34 @@ async def getChat(
             request_question,
             current_assistant
         )
+
+        # 如果存在意图检测，则进行意图识别
+        payload: Optional[IntentPayload] = (
+            identify_intent(llm_service.llm, request_question.question)
+            if request_question.intent is True else None
+        )
+
+        # 记录意图识别结果
+        if payload:
+            SQLBotLogUtil.info(f"意图识别详情 - 原始输入: '{request_question.question}', "
+                               f"搜索意图: '{payload.search}', "
+                               f"分析意图: '{payload.analysis}', "
+                               f"预测意图: '{payload.predict}'")
+        else:
+            SQLBotLogUtil.info(f"意图识别失败 - 原始输入: '{request_question.question}', 未识别到有效意图")
+            if request_question.analysis or request_question.predict:
+                payload = IntentPayload(
+                    search=request_question.question,
+                    analysis=request_question.question if request_question.analysis else "",
+                    predict=request_question.question if request_question.predict else ""
+                )
+
+        # 如果存在意图，则使用意图作为问题
+        if payload is not None and payload.search != "":
+            llm_service.chat_question.question = payload.search
+        else:
+            payload = None
+
         # 初始化聊天记录
         llm_service.init_record()
 
@@ -189,8 +214,9 @@ async def getChat(
     # 返回经过合并处理的流式响应
     return StreamingResponse(
         merge_streaming_chunks(stream=llm_service.await_result(),
-                               session=session,
-                               llm_service=llm_service),
+                               llm_service=llm_service,
+                               payload=payload,
+                               request_question=request_question),
         media_type="text/event-stream"
     )
 
@@ -223,7 +249,6 @@ async def get_data(session: SessionDep, record_chat: OpenChat):
 
 @router.post("/getRecommend", dependencies=[Depends(common_headers)])
 async def get_recommend(
-        session: SessionDep,
         current_user: CurrentUser,
         chat_record: OpenChat,
         current_assistant: CurrentAssistant
@@ -234,7 +259,6 @@ async def get_recommend(
     基于指定的聊天记录，异步生成推荐问题并以流式方式返回结果。
 
     Args:
-        session: 数据库会话依赖
         current_user: 当前认证用户信息
         chat_record: 聊天对象，包含聊天记录ID
         current_assistant: 当前使用的AI助手信息
@@ -248,9 +272,11 @@ async def get_recommend(
     try:
         chat_record_id = chat_record.chat_record_id
         # 获取聊天记录
-        record = get_chat_record_by_id(session, chat_record_id)
+        record = None
+        for session in get_session():
+            record = get_chat_record_by_id(session, chat_record_id)
         # 验证聊天记录是否存在
-        if not record:
+        if record is None:
             raise HTTPException(
                 status_code=400,
                 detail=f"Chat record with id {chat_record_id} not found"
@@ -414,7 +440,6 @@ def _create_clean_response(success_count: int, failed_count: int, total_count: i
              description="对指定聊天记录进行分析",
              dependencies=[Depends(common_headers)])
 async def analysis_chat_record(
-        session: SessionDep,
         current_user: CurrentUser,
         chat_record: OpenChat,
         current_assistant: CurrentAssistant
@@ -423,7 +448,6 @@ async def analysis_chat_record(
     对指定聊天记录进行分析
 
     Args:
-        session: 数据库会话依赖
         current_user: 当前认证用户信息
         chat_record: 聊天对象，包含聊天记录ID
         current_assistant: 当前使用的AI助手信息
@@ -431,16 +455,13 @@ async def analysis_chat_record(
     Returns:
         StreamingResponse: 流式响应，包含分析结果
     """
-    return await _run_analysis_or_predict(
-        session, current_user, chat_record, current_assistant, 'analysis'
-    )
+    return await _run_analysis_or_predict(current_user, chat_record, current_assistant, 'analysis')
 
 
 @router.post("/predict", summary="预测",
              description="对指定聊天记录进行预测",
              dependencies=[Depends(common_headers)])
 async def predict_chat_record(
-        session: SessionDep,
         current_user: CurrentUser,
         chat_record: OpenChat,
         current_assistant: CurrentAssistant
@@ -449,7 +470,6 @@ async def predict_chat_record(
     对指定聊天记录进行预测
 
     Args:
-        session: 数据库会话依赖
         current_user: 当前认证用户信息
         chat_record: 聊天对象，包含聊天记录ID
         current_assistant: 当前使用的AI助手信息
@@ -457,13 +477,10 @@ async def predict_chat_record(
     Returns:
         StreamingResponse: 流式响应，包含预测结果
     """
-    return await _run_analysis_or_predict(
-        session, current_user, chat_record, current_assistant, 'predict'
-    )
+    return await _run_analysis_or_predict(current_user, chat_record, current_assistant, 'predict')
 
 
 async def _run_analysis_or_predict(
-        session: SessionDep,
         current_user: CurrentUser,
         chat_record: OpenChat,
         current_assistant: CurrentAssistant,
@@ -473,7 +490,6 @@ async def _run_analysis_or_predict(
     运行分析或预测任务的通用逻辑。
 
     Args:
-        session: 数据库会话依赖
         current_user: 当前认证用户信息
         chat_record: 聊天对象，包含聊天记录ID
         current_assistant: 当前使用的AI助手信息
@@ -483,7 +499,9 @@ async def _run_analysis_or_predict(
         StreamingResponse: 流式响应，包含生成的结果
     """
     chat_record_id = chat_record.chat_record_id
-    record = await get_chat_record(session, chat_record_id)
+    record = None
+    for session in get_session():
+        record = await get_chat_record(session, chat_record_id)
 
     if not record.chart:
         raise HTTPException(

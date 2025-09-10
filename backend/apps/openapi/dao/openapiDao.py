@@ -6,7 +6,7 @@ OpenAPI 数据访问对象模块
 - 聊天会话与数据源绑定
 
 作者: huhuhuhr
-日期: 2025/01/30
+日期: 2025/08/30
 版本: 1.0.0
 """
 
@@ -22,8 +22,8 @@ from common.core.deps import SessionDep, CurrentUser
 
 
 def get_datasource_by_name_or_id(
-        session: SessionDep, 
-        user: CurrentUser, 
+        session: SessionDep,
+        user: CurrentUser,
         query: DataSourceRequest
 ) -> Optional[CoreDatasource]:
     """
@@ -63,8 +63,8 @@ def get_datasource_by_name_or_id(
 
 
 async def bind_datasource(
-        datasource: CoreDatasource, 
-        request_question: OpenChatQuestion, 
+        datasource: CoreDatasource,
+        chat_id: int,
         session: SessionDep
 ) -> None:
     """
@@ -79,14 +79,14 @@ async def bind_datasource(
         此函数会修改聊天会话的数据源关联，并提交事务
     """
     # 获取聊天会话对象
-    chat: Chat = session.get(Chat, request_question.chat_id)
-    
+    chat: Chat = session.get(Chat, chat_id)
+
     # 设置数据源ID
     chat.datasource = datasource.id
-    
+
     # 将修改后的聊天对象添加到会话中
     session.add(chat)
-    
+
     # 提交事务
     session.commit()
 

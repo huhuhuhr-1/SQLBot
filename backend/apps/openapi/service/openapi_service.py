@@ -10,9 +10,10 @@ from sqlmodel import select
 from apps.chat.curd.chat import get_chat_chart_data
 from apps.chat.models.chat_model import ChatRecord
 from apps.chat.task.llm import LLMService
-from apps.openapi.models.openapiModels import IntentPayload
+from apps.openapi.models.openapiModels import IntentPayload, OpenChatQuestion
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.config import settings
+from common.core.db import get_session
 from common.core.deps import SessionDep
 from common.core.deps import Trans
 from common.core.security import create_access_token
@@ -52,37 +53,57 @@ def validate_user_status(user: BaseUserDTO, trans: Trans) -> None:
 
 def identify_intent(llm: BaseChatModel, question: str) -> IntentPayload:
     """
-    提取用户问题中的意图，转化为 IntentPayload 对象
+    提取用户问题中的意图，转化为 IntentPayload 对象。
+    核心原则：search 字段必须存在且贴近用户原意，仅做必要规范化，作为后续数据查询的主输入。
+    analysis 和 predict 为附加意图，可为空。
     """
-    intent_messages = [
-        SystemMessage(content="""你是一个意图识别助手。请严格按照以下要求输出：
+    system_prompt = (
+        "你是一个意图结构化助手。请将用户问题转化为标准的 JSON 格式，用于驱动数据查询与分析系统。\n\n"
+        "### 输出格式要求\n"
+        "只输出以下结构的 JSON，不要任何解释：\n"
+        "{\n"
+        '  "search": "<字符串，表示用户想要查询的具体数据内容。必须非空，且尽可能贴近用户原意，仅做必要规范化>",\n'
+        '  "analysis": "<字符串，表示是否需要进行归因、对比、总结等分析。若无则为\"\">",\n'
+        '  "predict": "<字符串，表示是否需要预测未来趋势或数值。若无则为\"\">"\n'
+        "}\n\n"
+        "### 规则说明\n"
+        "1. **search 字段（必填）**：\n"
+        "- 必须提取出用户真正想查的数据对象或指标\n"
+        "- 可对用户语言进行轻微规范化（如补全省略、去除语气词），但不得改变原意\n"
+        "- 示例：\n"
+        "  - '销售额为啥降了？' → search: '销售额下降的情况'\n"
+        "  - '最近订单多吗？' → search: '最近的订单数量'\n"
+        "  - '预测下季度增长' → search: '下季度的增长情况'\n\n"
+        "2. **analysis 字段**：\n"
+        "- 如果问题包含‘为什么’、‘原因’、‘哪个好’、‘总结’等，说明需要分析\n"
+        "- 提取分析目标，例如：'销售额下降的原因'\n\n"
+        "3. **predict 字段**：\n"
+        "- 如果明确提到‘预测’、‘估算’、‘未来’等，才填写\n"
+        "- 否则留空\n\n"
+        "### 重要提醒\n"
+        "- search 必须非空！所有问题都能转化为一个查询目标\n"
+        "- 所有字段值必须是字符串\n"
+        "- 不要添加额外字段或注释"
+    )
 
-1. 你的任务是根据用户的问题，提取出一个 JSON 数据结构：
-{
-  "search": "<字符串，表示数据查询意图，必须提取>",
-  "analysis": "<字符串，表示数据分析意图，必须提取>",
-  "predict": "<字符串，表示趋势预测意图，可为空或省略>"
-}
+    human_prompt = f"用户问题：{question}"
 
-2. 提取逻辑：
-- 如果用户的问题涉及查询数据库中的具体数据，填入 "search" 字段；如果没有查询意图，也必须给出空字符串。
-- 如果用户的问题涉及数据统计、分析、总结，填入 "analysis" 字段；如果没有分析意图，也必须给出空字符串。
-- 如果用户的问题涉及预测未来趋势或数值，填入 "predict" 字段；如果没有预测意图，可填空字符串。
-
-3. 输出要求：
-- 只输出 JSON，不要多余解释
-- 保证 JSON 可被直接解析
-"""),
-        HumanMessage(content=f"用户问题：{question}")
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=human_prompt)
     ]
 
-    resp = llm.invoke(intent_messages)
-    return IntentPayload.from_llm(resp.content)
+    try:
+        response = llm.invoke(messages)
+        return IntentPayload.from_llm(response.content.strip())
+    except Exception as e:
+        raise RuntimeError(f"意图识别失败：{str(e)}")
 
 
-async def merge_streaming_chunks(stream, session=None,
-                                 llm_service: LLMService = None) -> \
-        AsyncGenerator[str, None]:
+async def merge_streaming_chunks(stream,
+                                 llm_service: LLMService = None,
+                                 payload: IntentPayload = None,
+                                 request_question: OpenChatQuestion = None) -> AsyncGenerator[str, None]:
     """
     合并流式输出的数据块
 
@@ -94,8 +115,9 @@ async def merge_streaming_chunks(stream, session=None,
     5. 当收到 'finish' 类型时，调用 get_data 获取图表数据并发送
 
     Args:
+        request_question: 用户问题
+        payload: 意图识别
         stream: 输入的流式数据生成器
-        session: 数据库会话对象（可选）
         llm_service: LLM服务实例（可选）
 
     Yields:
@@ -134,13 +156,15 @@ async def merge_streaming_chunks(stream, session=None,
                         previous_chunk = None
 
                     # 如果有记录的 ID 且有 session，调用 get_data 获取图表数据并发送
-                    if recorded_id is not None and session is not None:
+                    if recorded_id is not None:
                         try:
-                            # 调用内部的 _fetch_chart_data 函数
-                            chart_data = get_chat_chart_data(
-                                chart_record_id=recorded_id,
-                                session=session
-                            )
+                            chart_data = None
+                            for session in get_session():
+                                # 调用内部的 _fetch_chart_data 函数
+                                chart_data = get_chat_chart_data(
+                                    chart_record_id=recorded_id,
+                                    session=session
+                                )
 
                             chart_data_chunk = {
                                 "content": orjson.dumps(chart_data).decode(),
@@ -148,31 +172,57 @@ async def merge_streaming_chunks(stream, session=None,
                             }
                             yield f"data:{orjson.dumps(chart_data_chunk).decode()}\n\n"
 
+                            data_finish_chunk = {
+                                "content": recorded_id,
+                                "type": "data-finish"
+                            }
+
+                            yield f"data:{orjson.dumps(data_finish_chunk).decode()}\n\n"
+
                             # 替换原有的分析处理代码
+                            # 示例：从某个地方获取 payload
                             if llm_service is not None:
                                 # 从数据库获取完整的聊天记录
                                 stmt = select(ChatRecord).where(and_(ChatRecord.id == recorded_id))
-                                result = session.execute(stmt)
-                                record = result.scalar_one_or_none()
-
+                                record = None
+                                question = None
+                                for session in get_session():
+                                    result = session.execute(stmt)
+                                    record = result.scalar_one_or_none()
+                                    question = record.question
                                 # 执行分析
                                 if record and record.chart:
-                                    # 执行分析任务
-                                    llm_service.run_analysis_or_predict_task_async('analysis', record)
-                                    # 获取分析结果流
-                                    analysis_stream = llm_service.await_result()
-
-                                    # 处理分析流
-                                    async for analysis_chunk in _stream_generator(analysis_stream):
-                                        yield analysis_chunk
-
-                                    llm_service.run_recommend_questions_task_async()
-                                    llm_service.set_record(record)
-                                    recommend_questions_stream = llm_service.await_result()
-
-                                    # 处理推荐问题流
-                                    async for record_chunk in _stream_generator(recommend_questions_stream):
-                                        yield record_chunk
+                                    # 分析
+                                    if request_question.analysis and hasattr(payload,
+                                                                             'analysis') and payload.analysis != "":
+                                        record.question = payload.analysis
+                                        # 执行分析任务
+                                        llm_service.run_analysis_or_predict_task_async('analysis', record)
+                                        # 获取分析结果流
+                                        analysis_stream = llm_service.await_result()
+                                        # 处理分析流
+                                        async for analysis_chunk in _stream_generator(analysis_stream):
+                                            yield analysis_chunk
+                                    # 执行预测任务
+                                    if request_question.predict and hasattr(payload,
+                                                                            'predict') and payload.predict != "":
+                                        record.question = payload.predict
+                                        # 执行分析任务
+                                        llm_service.run_analysis_or_predict_task_async('predict', record)
+                                        # 获取分析结果流
+                                        predict_stream = llm_service.await_result()
+                                        # 处理分析流
+                                        async for predict_chunk in _stream_generator(predict_stream):
+                                            yield predict_chunk
+                                    if request_question.recommend:
+                                        #  推荐
+                                        llm_service.run_recommend_questions_task_async()
+                                        record.question = question
+                                        llm_service.set_record(record)
+                                        recommend_questions_stream = llm_service.await_result()
+                                        # 处理推荐问题流
+                                        async for record_chunk in _stream_generator(recommend_questions_stream):
+                                            yield record_chunk
                         except Exception as e:
                             # 如果获取数据失败，发送错误信息
                             error_chunk = {
