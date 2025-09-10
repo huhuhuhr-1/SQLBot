@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     PG_MAX_OVERFLOW: int = 30
     PG_POOL_RECYCLE: int = 3600
     PG_POOL_PRE_PING: bool = True
+    MAX_TOKEN_CHUNK: int = 100000
 
 
 settings = Settings()  # type: ignore

@@ -1146,12 +1146,23 @@ class LLMService:
 
             if action_type == 'analysis':
                 # generate analysis
-                analysis_res = self.generate_analysis()
+                analysis_res = self.big_generate_analysis()
                 for chunk in analysis_res:
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                          'type': 'analysis-result'}).decode() + '\n\n'
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
+
+                yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
+
+            elif action_type == 'big_analysis':
+                # generate analysis with big data handling
+                analysis_res = self.generate_analysis()
+                for chunk in analysis_res:
+                    yield 'data:' + orjson.dumps(
+                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                         'type': 'analysis-result'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'big analysis generated'}).decode() + '\n\n'
 
                 yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
 
@@ -1206,6 +1217,152 @@ class LLMService:
                     raise SingleMessageError(msg)
             except Exception as e:
                 raise SingleMessageError(f"ds is invalid [{str(e)}]")
+
+    def big_generate_analysis(self):
+        fields = self.get_fields_from_chart()
+        self.chat_question.fields = orjson.dumps(fields).decode()
+        data = get_chat_chart_data(self.session, self.record.id)
+
+        # 按照字符数量阈值处理数据，而不是按行数
+        raw_data = data.get('data')
+        max_token_chars = settings.MAX_TOKEN_CHUNK  # 设置字符阈值，可根据需要调整
+
+        if raw_data:
+            # 将数据转换为JSON字符串以估算字符数
+            data_str = orjson.dumps(raw_data).decode()
+
+            if len(data_str) <= max_token_chars:
+                # 数据量较小，直接使用原数据
+                self.chat_question.data = data_str
+            else:
+                # 数据量大，需要进行分段摘要处理
+                # 按照字符阈值将数据分块
+                chunks = self._chunk_data_by_chars(raw_data, max_token_chars)
+
+                # 对每个数据块生成摘要
+                summaries = []
+                for i, chunk in enumerate(chunks):
+                    chunk_str = orjson.dumps(chunk).decode()
+                    summary = self._summarize_data_chunk(chunk_str, i + 1, len(chunks))
+                    summaries.append(summary)
+
+                # 将所有摘要合并
+                combined_summary = {
+                    "summary": "数据因大小限制已被分段摘要处理",
+                    "chunk_count": len(chunks),
+                    "summaries": summaries
+                }
+                self.chat_question.data = orjson.dumps(combined_summary).decode()
+        else:
+            self.chat_question.data = orjson.dumps([]).decode()
+
+        analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
+
+        self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
+                                                                    self.current_user.oid)
+
+        analysis_msg.append(SystemMessage(content=self.chat_question.analysis_sys_question()))
+        analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
+
+        self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
+                                                              ai_modal_id=self.chat_question.ai_modal_id,
+                                                              ai_modal_name=self.chat_question.ai_modal_name,
+                                                              operate=OperationEnum.ANALYSIS,
+                                                              record_id=self.record.id,
+                                                              full_message=[
+                                                                  {'type': msg.type,
+                                                                   'content': msg.content} for
+                                                                  msg
+                                                                  in analysis_msg])
+        full_thinking_text = ''
+        full_analysis_text = ''
+        res = self.llm.stream(analysis_msg)
+        token_usage = {}
+        for chunk in res:
+            SQLBotLogUtil.info(chunk)
+            reasoning_content_chunk = ''
+            if 'reasoning_content' in chunk.additional_kwargs:
+                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+            # else:
+            #     reasoning_content_chunk = chunk.get('reasoning_content')
+            if reasoning_content_chunk is None:
+                reasoning_content_chunk = ''
+            full_thinking_text += reasoning_content_chunk
+
+            full_analysis_text += chunk.content
+            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+            get_token_usage(chunk, token_usage)
+
+        analysis_msg.append(AIMessage(full_analysis_text))
+
+        self.current_logs[OperationEnum.ANALYSIS] = end_log(session=self.session,
+                                                            log=self.current_logs[
+                                                                OperationEnum.ANALYSIS],
+                                                            full_message=[
+                                                                {'type': msg.type,
+                                                                 'content': msg.content}
+                                                                for msg in analysis_msg],
+                                                            reasoning_content=full_thinking_text,
+                                                            token_usage=token_usage)
+        self.record = save_analysis_answer(session=self.session, record_id=self.record.id,
+                                           answer=orjson.dumps({'content': full_analysis_text}).decode())
+
+    def _chunk_data_by_chars(self, data, max_chars):
+        """
+        根据字符数量将数据分块
+        """
+        chunks = []
+        current_chunk = []
+        current_chars = 0
+
+        for item in data:
+            item_str = orjson.dumps(item).decode()
+            item_chars = len(item_str)
+
+            # 如果添加当前项会超出字符限制，且当前块不为空，则保存当前块并开始新块
+            if current_chars + item_chars > max_chars and current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = [item]
+                current_chars = item_chars
+            else:
+                # 否则将当前项添加到当前块
+                current_chunk.append(item)
+                current_chars += item_chars
+
+        # 添加最后一个块
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        return chunks
+
+    def _summarize_data_chunk(self, chunk_data_str, chunk_index, total_chunks):
+        """
+        使用LLM对数据块进行摘要，明确要求使用中文回答
+        """
+        try:
+            # 构建摘要提示，明确要求使用中文
+            summary_prompt = [
+                SystemMessage(
+                    content="你是一个数据分析师。你的任务是对给定的数据块提供简洁的中文摘要。重点关注关键模式、趋势、统计信息和重要观察。保持摘要信息丰富但简洁，必须使用中文回复。"),
+                HumanMessage(
+                    content=f"数据块 {chunk_index}/{total_chunks}:\n{chunk_data_str}\n\n请用中文提供此数据块的简洁摘要。")
+            ]
+
+            # 生成摘要
+            summary_response = self.llm.invoke(summary_prompt)
+            return {
+                "chunk_index": chunk_index,
+                "total_chunks": total_chunks,
+                "summary": summary_response.content if hasattr(summary_response, 'content') else str(summary_response)
+            }
+        except Exception as e:
+            # 如果摘要生成失败，返回错误信息
+            return {
+                "chunk_index": chunk_index,
+                "total_chunks": total_chunks,
+                "summary": f"生成数据块 {chunk_index} 的摘要时出错: {str(e)}",
+                "error": True
+            }
 
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
@@ -1284,3 +1441,5 @@ def get_lang_name(lang: str):
     if lang and lang == 'en':
         return '英文'
     return '简体中文'
+
+
