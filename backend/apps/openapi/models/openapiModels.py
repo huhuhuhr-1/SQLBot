@@ -54,6 +54,7 @@ class OpenChat(BaseModel):
     """
     chat_record_id: int = Body(..., description='会话聊天消息标识')
     question: str = Body(None, description='问题内容')
+    chat_data_object: Any = Body(None, description='分析问题')
 
 
 class OpenChatQuestion(AiModelQuestion):
@@ -179,6 +180,41 @@ async def common_headers(
         "X-Sqlbot-Token": x_sqlbot_token,
         "Content-Type": content_type
     }
+
+
+@dataclass
+class AnalysisIntentPayload:
+    role: str
+    task: str
+    intent: str = ""  # 可选，默认空字符串
+
+    @classmethod
+    def from_llm(cls, content: Union[str, Dict[str, Any]]) -> "AnalysisIntentPayload":
+        """
+        将 LLM 返回的 JSON（或包含 JSON 的字符串）解析为 AnalysisIntentPayload。
+        若缺失字段，role/task 会回退为空字符串，intent 默认为空字符串。
+        """
+        if isinstance(content, str):
+            # 提取第一段 {...} 作为 JSON（容错处理：剔除多余文本/Markdown）
+            m = re.search(r"\{.*\}", content, flags=re.S)
+            if not m:
+                raise ValueError("LLM 输出中未找到 JSON 对象")
+            data = json.loads(m.group(0))
+        else:
+            data = content
+
+        return cls(
+            role=str(data.get("role", "")).strip(),
+            task=str(data.get("task", "")).strip(),
+            intent=str(data.get("intent", "")).strip(),
+        )
+
+    def to_json(self) -> str:
+        """序列化为 JSON 字符串（始终包含三个字段）。"""
+        return json.dumps(
+            {"role": self.role, "task": self.task, "intent": self.intent},
+            ensure_ascii=False
+        )
 
 
 @dataclass

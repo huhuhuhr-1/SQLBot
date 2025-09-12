@@ -1,5 +1,7 @@
+import json
+import traceback
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any, AsyncGenerator, Tuple
+from typing import Optional, Dict, Any, AsyncGenerator, Tuple, List
 from langchain.chat_models.base import BaseChatModel
 import orjson
 from fastapi import HTTPException
@@ -7,16 +9,20 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from sqlalchemy import and_
 from sqlmodel import select
 
-from apps.chat.curd.chat import get_chat_chart_data
-from apps.chat.models.chat_model import ChatRecord
-from apps.chat.task.llm import LLMService
-from apps.openapi.models.openapiModels import IntentPayload, OpenChatQuestion
+from apps.chat.curd.chat import get_chat_chart_data, delete_chat, list_chats
+from apps.chat.models.chat_model import ChatRecord, Chat, ChatQuestion
+from apps.openapi.models.openapiModels import IntentPayload, OpenChatQuestion, OpenClean, OpenChat, \
+    AnalysisIntentPayload
+from apps.openapi.service.openapi_llm import LLMService
+from apps.openapi.service.openapi_prompt import chat_sys_intention, analysis_intention_question, analysis_question
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.config import settings
 from common.core.db import get_session
-from common.core.deps import SessionDep
+from common.core.deps import SessionDep, CurrentUser, CurrentAssistant
 from common.core.deps import Trans
 from common.core.security import create_access_token
+from common.utils.utils import SQLBotLogUtil
+from starlette.responses import StreamingResponse
 
 
 def validate_user_status(user: BaseUserDTO, trans: Trans) -> None:
@@ -51,40 +57,13 @@ def validate_user_status(user: BaseUserDTO, trans: Trans) -> None:
         )
 
 
-def identify_intent(llm: BaseChatModel, question: str) -> IntentPayload:
+def chat_identify_intent(llm: BaseChatModel, question: str) -> IntentPayload:
     """
     提取用户问题中的意图，转化为 IntentPayload 对象。
     核心原则：search 字段必须存在且贴近用户原意，仅做必要规范化，作为后续数据查询的主输入。
     analysis 和 predict 为附加意图，可为空。
     """
-    system_prompt = (
-        "你是一个意图结构化助手。请将用户问题转化为标准的 JSON 格式，用于驱动数据查询与分析系统。\n\n"
-        "### 输出格式要求\n"
-        "只输出以下结构的 JSON，不要任何解释：\n"
-        "{\n"
-        '  "search": "<字符串，表示用户想要查询的具体数据内容。必须非空，且尽可能贴近用户原意，仅做必要规范化>",\n'
-        '  "analysis": "<字符串，表示是否需要进行归因、对比、总结等分析。若无则为\"\">",\n'
-        '  "predict": "<字符串，表示是否需要预测未来趋势或数值。若无则为\"\">"\n'
-        "}\n\n"
-        "### 规则说明\n"
-        "1. **search 字段（必填）**：\n"
-        "- 必须提取出用户真正想查的数据对象或指标\n"
-        "- 可对用户语言进行轻微规范化（如补全省略、去除语气词），但不得改变原意\n"
-        "- 示例：\n"
-        "  - '销售额为啥降了？' → search: '查询销售额下降的情况'\n"
-        "  - '最近订单多吗？' → search: '查询最近的订单数量'\n"
-        "  - '预测下季度增长' → search: '查询下季度的增长情况'\n\n"
-        "2. **analysis 字段**：\n"
-        "- 如果问题包含‘为什么’、‘原因’、‘哪个好’、‘总结’等，说明需要分析\n"
-        "- 提取分析目标，例如：'销售额下降的原因'\n\n"
-        "3. **predict 字段**：\n"
-        "- 如果明确提到‘预测’、‘估算’、‘未来’等，才填写\n"
-        "- 否则留空\n\n"
-        "### 重要提醒\n"
-        "- search 必须非空！所有问题都能转化为一个查询目标\n"
-        "- 所有字段值必须是字符串\n"
-        "- 不要添加额外字段或注释"
-    )
+    system_prompt = chat_sys_intention()
 
     human_prompt = f"用户问题：{question}"
 
@@ -96,6 +75,23 @@ def identify_intent(llm: BaseChatModel, question: str) -> IntentPayload:
     try:
         response = llm.invoke(messages)
         return IntentPayload.from_llm(response.content.strip())
+    except Exception as e:
+        raise RuntimeError(f"意图识别失败：{str(e)}")
+
+
+def analysis_identify_intent(llm: BaseChatModel, question: str) -> AnalysisIntentPayload:
+    system_prompt = analysis_intention_question()
+
+    human_prompt = f"用户问题：{question}"
+
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=human_prompt)
+    ]
+
+    try:
+        response = llm.invoke(messages)
+        return AnalysisIntentPayload.from_llm(response.content.strip())
     except Exception as e:
         raise RuntimeError(f"意图识别失败：{str(e)}")
 
@@ -352,3 +348,149 @@ def create_access_token_with_expiry(user_dict: dict) -> Tuple[str, str]:
     access_token = create_access_token(user_dict, expires_delta=access_token_expires)
     expire_time = (datetime.now(timezone.utc) + access_token_expires).strftime("%Y-%m-%d %H:%M:%S")
     return access_token, expire_time
+
+
+def _get_chats_to_clean(
+        session: SessionDep,
+        current_user: CurrentUser,
+        clean: OpenClean
+) -> List[Chat]:
+    """
+    获取要清理的聊天记录列表
+
+    Args:
+        session: 数据库会话依赖
+        current_user: 当前认证用户信息
+        clean: 清理对象
+
+    Returns:
+        List[Chat]: 要清理的聊天记录列表
+    """
+    if clean.chat_ids:
+        # 如果指定了特定的聊天ID，则只清理这些聊天记录
+        stmt = select(Chat).where(
+            and_(
+                Chat.id.in_(clean.chat_ids),
+                Chat.create_by == current_user.id
+            )
+        )
+        return list(session.exec(stmt))
+    else:
+        # 否则清理当前用户的所有聊天记录
+        return list_chats(session, current_user)
+
+
+def _execute_cleanup(
+        session: SessionDep,
+        chat_list: List[Chat]
+) -> tuple[int, int, list]:
+    """
+    执行聊天记录清理操作
+
+    Args:
+        session: 数据库会话依赖
+        chat_list: 要清理的聊天记录列表
+
+    Returns:
+        tuple[int, int, list]: (成功数, 失败数, 失败记录列表)
+    """
+    success_count = 0
+    failed_count = 0
+    failed_records = []
+
+    for chat in chat_list:
+        try:
+            # 删除聊天记录相关的所有数据
+            delete_chat(session, chat.id)
+            success_count += 1
+        except Exception as e:
+            failed_count += 1
+            failed_records.append({
+                "chat_id": chat.id,
+                "error": str(e)
+            })
+            SQLBotLogUtil.error(f"删除聊天记录 {chat.id} 失败: {str(e)}")
+
+    return success_count, failed_count, failed_records
+
+
+def _create_clean_response(success_count: int, failed_count: int, total_count: int) -> Dict[str, Any]:
+    """
+    创建清理操作的响应结果
+
+    Args:
+        success_count: 成功清理的记录数
+        failed_count: 失败的记录数
+        total_count: 总记录数
+
+    Returns:
+        Dict[str, Any]: 响应结果字典
+    """
+    return {
+        "message": f"清理完成，总共 {total_count} 条记录，成功 {success_count} 条，失败 {failed_count} 条",
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "total_count": total_count
+    }
+
+
+async def _run_analysis_or_predict(
+        current_user: CurrentUser,
+        chat_record: OpenChat,
+        current_assistant: CurrentAssistant,
+        task_type: str
+):
+    """
+    运行分析或预测任务的通用逻辑。
+
+    Args:
+        current_user: 当前认证用户信息
+        chat_record: 聊天对象，包含聊天记录ID
+        current_assistant: 当前使用的AI助手信息
+        task_type: 任务类型 ('analysis' 或 'predict')
+
+    Returns:
+        StreamingResponse: 流式响应，包含生成的结果
+    """
+    chat_record_id = chat_record.chat_record_id
+    record = None
+    for session in get_session():
+        record = await get_chat_record(session, chat_record_id)
+
+    if not record.chart:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it"
+        )
+
+    # 更新问题内容（如果提供）
+    if chat_record.question:
+        record.question = chat_record.question
+
+    request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
+
+    try:
+        payload = None
+        llm_service = await LLMService.create(current_user, request_question, current_assistant)
+        if task_type == 'analysis':
+            payload: Optional[AnalysisIntentPayload] = (
+                analysis_identify_intent(llm_service.llm, request_question.question)
+            )
+            # 记录意图识别结果
+            if payload:
+                SQLBotLogUtil.info(f"意图识别详情 - 原始输入: '{request_question.question}', "
+                                   f"意图: '{payload.intent}', "
+                                   f"角色: '{payload.role}', "
+                                   f"任务: '{payload.task}'")
+        data_str = None
+        if chat_record.chat_data_object is not None:
+            data_str = json.dumps(chat_record.chat_data_object, ensure_ascii=False)
+        llm_service.run_analysis_or_predict_task_async(task_type, record, data_str, payload)
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+    return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")

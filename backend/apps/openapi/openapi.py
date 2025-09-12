@@ -1,21 +1,22 @@
 import asyncio
+import json
 import traceback
-from typing import List, Optional, Dict, Any
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import and_
-from sqlmodel import select
 from starlette.responses import StreamingResponse
 
-from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, list_chats, delete_chat, create_chat
-from apps.chat.models.chat_model import Chat, ChatQuestion, CreateChat, ChatRecord
-from apps.chat.task.llm import LLMService
+from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat
+from apps.chat.models.chat_model import ChatQuestion, CreateChat
 from apps.datasource.crud.datasource import get_datasource_list
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
     OpenChat, OpenClean, common_headers, IntentPayload
 from apps.openapi.service.openapi_service import merge_streaming_chunks, get_chat_record, \
-    create_access_token_with_expiry, identify_intent
+    create_access_token_with_expiry, chat_identify_intent, _get_chats_to_clean, _create_clean_response, \
+    _execute_cleanup, \
+    _run_analysis_or_predict
+from apps.openapi.service.openapi_llm import LLMService
 from apps.system.crud.user import authenticate
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.db import get_session
@@ -171,7 +172,7 @@ async def getChat(
 
         # 如果存在意图检测，则进行意图识别
         payload: Optional[IntentPayload] = (
-            identify_intent(llm_service.llm, request_question.question)
+            chat_identify_intent(llm_service.llm, request_question.question)
             if request_question.intent is True else None
         )
 
@@ -352,90 +353,6 @@ async def clean_all_chat_record(
         )
 
 
-def _get_chats_to_clean(
-        session: SessionDep,
-        current_user: CurrentUser,
-        clean: OpenClean
-) -> List[Chat]:
-    """
-    获取要清理的聊天记录列表
-
-    Args:
-        session: 数据库会话依赖
-        current_user: 当前认证用户信息
-        clean: 清理对象
-
-    Returns:
-        List[Chat]: 要清理的聊天记录列表
-    """
-    if clean.chat_ids:
-        # 如果指定了特定的聊天ID，则只清理这些聊天记录
-        stmt = select(Chat).where(
-            and_(
-                Chat.id.in_(clean.chat_ids),
-                Chat.create_by == current_user.id
-            )
-        )
-        return list(session.exec(stmt))
-    else:
-        # 否则清理当前用户的所有聊天记录
-        return list_chats(session, current_user)
-
-
-def _execute_cleanup(
-        session: SessionDep,
-        chat_list: List[Chat]
-) -> tuple[int, int, list]:
-    """
-    执行聊天记录清理操作
-
-    Args:
-        session: 数据库会话依赖
-        chat_list: 要清理的聊天记录列表
-
-    Returns:
-        tuple[int, int, list]: (成功数, 失败数, 失败记录列表)
-    """
-    success_count = 0
-    failed_count = 0
-    failed_records = []
-
-    for chat in chat_list:
-        try:
-            # 删除聊天记录相关的所有数据
-            delete_chat(session, chat.id)
-            success_count += 1
-        except Exception as e:
-            failed_count += 1
-            failed_records.append({
-                "chat_id": chat.id,
-                "error": str(e)
-            })
-            SQLBotLogUtil.error(f"删除聊天记录 {chat.id} 失败: {str(e)}")
-
-    return success_count, failed_count, failed_records
-
-
-def _create_clean_response(success_count: int, failed_count: int, total_count: int) -> Dict[str, Any]:
-    """
-    创建清理操作的响应结果
-
-    Args:
-        success_count: 成功清理的记录数
-        failed_count: 失败的记录数
-        total_count: 总记录数
-
-    Returns:
-        Dict[str, Any]: 响应结果字典
-    """
-    return {
-        "message": f"清理完成，总共 {total_count} 条记录，成功 {success_count} 条，失败 {failed_count} 条",
-        "success_count": success_count,
-        "failed_count": failed_count,
-        "total_count": total_count
-    }
-
-
 @router.post("/analysis", summary="分析",
              description="对指定聊天记录进行分析",
              dependencies=[Depends(common_headers)])
@@ -478,51 +395,3 @@ async def predict_chat_record(
         StreamingResponse: 流式响应，包含预测结果
     """
     return await _run_analysis_or_predict(current_user, chat_record, current_assistant, 'predict')
-
-
-async def _run_analysis_or_predict(
-        current_user: CurrentUser,
-        chat_record: OpenChat,
-        current_assistant: CurrentAssistant,
-        task_type: str
-):
-    """
-    运行分析或预测任务的通用逻辑。
-
-    Args:
-        current_user: 当前认证用户信息
-        chat_record: 聊天对象，包含聊天记录ID
-        current_assistant: 当前使用的AI助手信息
-        task_type: 任务类型 ('analysis' 或 'predict')
-
-    Returns:
-        StreamingResponse: 流式响应，包含生成的结果
-    """
-    chat_record_id = chat_record.chat_record_id
-    record = None
-    for session in get_session():
-        record = await get_chat_record(session, chat_record_id)
-
-    if not record.chart:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it"
-        )
-
-    # 更新问题内容（如果提供）
-    if chat_record.question:
-        record.question = chat_record.question
-
-    request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
-
-    try:
-        llm_service = await LLMService.create(current_user, request_question, current_assistant)
-        llm_service.run_analysis_or_predict_task_async(task_type, record)
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
-
-    return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
