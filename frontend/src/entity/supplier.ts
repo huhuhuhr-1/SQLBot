@@ -43,6 +43,8 @@ export const supplierList: Array<{
           { key: 'extra_body', val: '{"enable_thinking": false}', type: 'json' },
         ],
         model_options: [
+          { name: 'qwen3-coder-plus' },
+          { name: 'qwen3-coder-flash' },
           { name: 'qwen-plus' },
           /* { name: 'qwen-plus-latest' }, */
           { name: 'qwen-max' },

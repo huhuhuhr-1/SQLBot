@@ -150,7 +150,7 @@ defineExpose({
             </template>
           </el-input>
         </div>
-        <el-icon style="cursor: pointer" @click="close">
+        <el-icon class="ed-dialog__headerbtn mrt" style="cursor: pointer" @click="close">
           <icon_close_outlined></icon_close_outlined>
         </el-icon>
       </template>

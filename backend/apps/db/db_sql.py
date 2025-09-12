@@ -32,7 +32,7 @@ def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
         return ''
 
 
-def get_table_sql(ds: CoreDatasource, conf: DatasourceConf):
+def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''):
     if ds.type == "mysql" or ds.type == "doris":
         return f"""
                 SELECT 
@@ -95,13 +95,23 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf):
                 ORDER BY t.TABLE_NAME
                 """
     elif ds.type == "ck":
-        return f"""
-                SELECT name, comment
-                FROM system.tables
-                WHERE database = '{conf.database}'
-                  AND engine NOT IN ('Dictionary')
-                ORDER BY name
-                """
+        version = int(db_version.split('.')[0])
+        if version < 22:
+            return f"""
+                    SELECT name, null as comment
+                    FROM system.tables
+                    WHERE database = '{conf.database}'
+                      AND engine NOT IN ('Dictionary')
+                    ORDER BY name
+                    """
+        else:
+            return f"""
+                    SELECT name, comment
+                    FROM system.tables
+                    WHERE database = '{conf.database}'
+                      AND engine NOT IN ('Dictionary')
+                    ORDER BY name
+                    """
     elif ds.type == 'dm':
         return f"""
                 select table_name, comments 

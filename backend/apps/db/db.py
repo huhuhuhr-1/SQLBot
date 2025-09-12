@@ -254,7 +254,7 @@ def get_schema(ds: CoreDatasource):
 def get_tables(ds: CoreDatasource):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     db = DB.get_db(ds.type)
-    sql = get_table_sql(ds, conf)
+    sql = get_table_sql(ds, conf, get_version(ds))
     if db.connect_type == ConnectType.sqlalchemy:
         with get_session(ds) as session:
             with session.execute(text(sql)) as result:
