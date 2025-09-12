@@ -137,12 +137,16 @@ onBeforeMount(async () => {
   const online = route.query.online
   setFormatOnline(online)
 
+  let userFlag = route.query.userFlag
+  if (userFlag && userFlag === '1') {
+    userFlag = '100001'
+  }
   const now = Date.now()
   assistantStore.setFlag(now)
   assistantStore.setId(assistantId?.toString() || '')
   const param = {
     id: assistantId,
-    virtual: assistantStore.getFlag,
+    virtual: userFlag || assistantStore.getFlag,
     online,
   }
   validator.value = await assistantApi.validate(param)

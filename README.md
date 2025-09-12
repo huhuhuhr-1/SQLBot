@@ -34,7 +34,7 @@ docker run -d \
   -v ./data/sqlbot/images:/opt/sqlbot/images \
   -v ./data/sqlbot/logs:/opt/sqlbot/logs \
   -v ./data/postgresql:/var/lib/postgresql/data \
-  dataease/sqlbot:v1.1.1
+  dataease/sqlbot
 ```
 
 你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署 SQLBot。

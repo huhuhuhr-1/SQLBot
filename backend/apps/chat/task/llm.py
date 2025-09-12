@@ -18,7 +18,7 @@ from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import create_engine, Session
+from sqlmodel import Session
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
 from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
@@ -37,6 +37,7 @@ from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, ge
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
+from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
 from common.error import SingleMessageError, SQLBotDBError, ParseSQLResultError, SQLBotDBConnectionError
 from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_orjson
@@ -50,6 +51,9 @@ executor = ThreadPoolExecutor(max_workers=200)
 dynamic_ds_types = [1, 3]
 dynamic_subsql_prefix = 'select * from sqlbot_dynamic_temp_table_'
 
+session_maker = sessionmaker(bind=engine)
+db_session = session_maker()
+
 
 class LLMService:
     ds: CoreDatasource
@@ -60,7 +64,7 @@ class LLMService:
     sql_message: List[Union[BaseMessage, dict[str, Any]]] = []
     chart_message: List[Union[BaseMessage, dict[str, Any]]] = []
 
-    session: Session
+    session: Session = db_session
     current_user: CurrentUser
     current_assistant: Optional[CurrentAssistant] = None
     out_ds_instance: Optional[AssistantOutDs] = None
@@ -80,9 +84,9 @@ class LLMService:
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
                  config: LLMConfig = None):
         self.chunk_list = []
-        engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
-        session_maker = sessionmaker(bind=engine)
-        self.session = session_maker()
+        # engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+        # session_maker = sessionmaker(bind=engine)
+        # self.session = session_maker()
         self.session.exec = self.session.exec if hasattr(self.session, "exec") else self.session.execute
         self.current_user = current_user
         self.current_assistant = current_assistant
@@ -621,7 +625,7 @@ class LLMService:
         result_dict = {}
         for table in ds.tables:
             if table.name in tables and table.sql:
-                # sub_query.append({"table": table.name, "query": table.sql})
+                #sub_query.append({"table": table.name, "query": table.sql})
                 result_dict[table.name] = table.sql
                 sub_query.append({"table": table.name, "query": f'{dynamic_subsql_prefix}{table.name}'})
         if not sub_query:
@@ -996,16 +1000,14 @@ class LLMService:
             sqlbot_temp_sql_text = None
             assistant_dynamic_sql = None
             # todo row permission
-            if ((not self.current_assistant or is_page_embedded) and is_normal_user(
-                    self.current_user)) or use_dynamic_ds:
+            if ((not self.current_assistant or is_page_embedded) and is_normal_user(self.current_user)) or use_dynamic_ds:
                 sql, tables = self.check_sql(res=full_sql_text)
                 sql_result = None
-
+                
                 if use_dynamic_ds:
                     dynamic_sql_result = self.generate_assistant_dynamic_sql(sql, tables)
-                    sqlbot_temp_sql_text = dynamic_sql_result.get(
-                        'sqlbot_temp_sql_text') if dynamic_sql_result else None
-                    # sql_result = self.generate_assistant_filter(sql, tables)
+                    sqlbot_temp_sql_text = dynamic_sql_result.get('sqlbot_temp_sql_text') if dynamic_sql_result else None
+                    #sql_result = self.generate_assistant_filter(sql, tables)
                 else:
                     sql_result = self.generate_filter(sql, tables)  # maybe no sql and tables
 
@@ -1031,10 +1033,9 @@ class LLMService:
             if sqlbot_temp_sql_text and assistant_dynamic_sql:
                 dynamic_sql_result.pop('sqlbot_temp_sql_text')
                 for origin_table, subsql in dynamic_sql_result.items():
-                    assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}',
-                                                                          subsql)
+                    assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}', subsql)
                 real_execute_sql = assistant_dynamic_sql
-
+                
             result = self.execute_sql(sql=real_execute_sql)
             self.save_sql_data(data_obj=result)
             if in_chat:

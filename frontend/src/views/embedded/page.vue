@@ -122,6 +122,10 @@ onBeforeMount(async () => {
   if (name) {
     assistantName.value = decodeURIComponent(name.toString())
   }
+  let userFlag = route.query.userFlag
+  if (userFlag && userFlag === '1') {
+    userFlag = '100001'
+  }
   const now = Date.now()
   assistantStore.setFlag(now)
   assistantStore.setId(assistantId?.toString() || '')
@@ -132,7 +136,7 @@ onBeforeMount(async () => {
   }
   const param = {
     id: assistantId,
-    virtual: assistantStore.getFlag,
+    virtual: userFlag || assistantStore.getFlag,
     online,
   }
   validator.value = await assistantApi.validate(param)
