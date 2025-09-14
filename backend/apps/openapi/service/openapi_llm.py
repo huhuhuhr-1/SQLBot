@@ -1,7 +1,6 @@
 import concurrent
 import json
 import os
-import re
 import traceback
 import urllib.parse
 import warnings
@@ -14,6 +13,7 @@ import orjson
 import pandas as pd
 import requests
 import sqlparse
+import tiktoken
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
@@ -82,6 +82,7 @@ class LLMService:
     def __init__(self, current_user: CurrentUser, chat_question: ChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
                  config: LLMConfig = None):
+        self._encoder = tiktoken.get_encoding("o200k_base")
         self.chunk_list = []
         engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
         session_maker = sessionmaker(bind=engine)
@@ -146,6 +147,7 @@ class LLMService:
             self.chat_question.error_msg = ''
 
         self.init_messages()
+        # 架在tiktoken计数器
 
     @classmethod
     async def create(cls, *args, **kwargs):
@@ -1228,13 +1230,27 @@ class LLMService:
             except Exception as e:
                 raise SingleMessageError(f"ds is invalid [{str(e)}]")
 
+    def count_tokens(self, text) -> int:
+        """返回文本的 token 数量（int），失败时返回字符长度作为估算"""
+        if not isinstance(text, str) or text == "":
+            return max(0, len(str(text)) if str(text) != "None" else 0)
+
+        try:
+            if self._encoder is not None:
+                return len(self._encoder.encode(text))
+            else:
+                # 备用：临时加载（仅在全局失败时）
+                return len(tiktoken.get_encoding("o200k_base").encode(text))
+        except Exception:
+            return len(text)
+
     def big_generate_analysis(self, dataStr: str = None,
                               payload: AnalysisIntentPayload = None):
         fields = self.get_fields_from_chart()
         self.chat_question.fields = orjson.dumps(fields).decode()
         # 按照字符数量阈值处理数据，而不是按行数
         if dataStr is not None:
-            raw_data = dataStr
+            raw_data = json.loads(dataStr)
         else:
             data = get_chat_chart_data(self.session, self.record.id)
             raw_data = data.get('data')
@@ -1243,20 +1259,19 @@ class LLMService:
         if raw_data:
             # 将数据转换为JSON字符串以估算字符数
             data_str = orjson.dumps(raw_data).decode()
+            # 计算数据量
+            total_prompt_tokens = self.count_tokens(data_str)
 
-            # total_prompt_tokens = self.get_total_prompt_tokens(self.chat_question, data_str, self.llm.)
+            SQLBotLogUtil.info(f'Estimated total prompt tokens: {total_prompt_tokens}')
 
-            # SQLBotLogUtil.info(f'Estimated total prompt tokens: {total_prompt_tokens}')
-
-            if len(data_str) <= max_token_chars:
+            if total_prompt_tokens <= max_token_chars:
                 # 数据量较小，直接使用原数据
                 self.chat_question.data = data_str
             else:
                 SQLBotLogUtil.info(
-                    f'data is too large, chunking data,current length:{len(data_str)} > {max_token_chars}')
+                    f'data is too large, chunking data :{len(data_str)} ,current length {total_prompt_tokens}> {max_token_chars}')
                 # 数据量大，需要进行分段摘要处理
-                # 按照字符阈值将数据分块
-                chunks = self._chunk_data_by_chars(raw_data, max_token_chars)
+                chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
                 # 数据量大，需要进行逐条分析处理
                 remark = f"数据集过大，正在进行分段分析...请耐心等待。分段数:{len(chunks)}\n"
                 yield {'content': "", 'reasoning_content': remark}
@@ -1290,21 +1305,24 @@ class LLMService:
                     "summaries": summaries
                 }
                 self.chat_question.data = orjson.dumps(combined_summary).decode()
+                concurrent_token = self.count_tokens(self.chat_question.data)
                 SQLBotLogUtil.info(
-                    f'chunking data,current length{len(self.chat_question.data)},chunk count{len(chunks)}')
+                    f'chunking data,current length:{len(self.chat_question.data)},chunk count:{len(chunks)},token:{concurrent_token}')
         else:
             self.chat_question.data = orjson.dumps([]).decode()
 
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
-
+        # 术语
         self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
                                                                     self.current_user.oid)
+        # 系统提示词
         if payload is not None:
             sys_prompt = analysis_question(role=payload.role, task=payload.task, intent=payload.intent,
                                            terminologies=self.chat_question.terminologies)
         else:
             sys_prompt = self.chat_question.analysis_sys_question()
         analysis_msg.append(SystemMessage(content=sys_prompt))
+        # 输入 field + data
         analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
 
         self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
@@ -1350,71 +1368,45 @@ class LLMService:
         self.record = save_analysis_answer(session=self.session, record_id=self.record.id,
                                            answer=orjson.dumps({'content': full_analysis_text}).decode())
 
-    # def estimate_tokens(text: str, tokenizer) -> int:
-    #     """使用分词器估算文本的 token 数量"""
-    #     if not text:
-    #         return 0
-    #     # 注意：根据分词器的不同，可能需要传入 return_tensors=None 或其他参数
-    #     try:
-    #         # 对于 Qwen 等模型，通常可以直接对字符串编码
-    #         return len(tokenizer.encode(text, add_special_tokens=False))
-    #     except Exception as e:
-    #         # 处理潜在的编码错误，返回一个较大的估算值或记录日志
-    #         print(f"Tokenization error: {e}")
-    #         # 可以 fallback 到字符数估算，但乘以一个较小的因子
-    #         return len(text) // 2  # 粗略估算，英文约 2 字符/Token
-    #
-    # def get_total_prompt_tokens(self, chat_question, data_str: str, tokenizer) -> int:
-    #     """计算发送给 LLM 的完整 Prompt 的总 Token 数"""
-    #     # 1. 获取系统消息内容
-    #     sys_msg_content = chat_question.analysis_sys_question()  # 假设这个方法返回系统消息的字符串内容
-    #     # 2. 获取用户消息内容 (包含数据)
-    #     user_msg_content = chat_question.analysis_user_question(
-    #         data_placeholder=data_str)  # 修改此方法，使其能将 data_str 插入到用户消息模板中
-    #     # 或者更直接地拼接，取决于你的 prompt 构造逻辑
-    #     # full_user_content = f"{chat_question.question}\n\nData:\n{data_str}\n\nFields:\n{fields_str}"
-    #
-    #     # 3. 计算各部分 Token
-    #     sys_tokens = self.estimate_tokens(sys_msg_content, tokenizer)
-    #     user_tokens = self.estimate_tokens(user_msg_content, tokenizer)
-    #     # 如果有其他固定的 Prompt 部分也需要计算
-    #
-    #     # 4. 返回总 Token 数
-    #     total_prompt_tokens = sys_tokens + user_tokens  # + 其他部分的 tokens
-    #     return total_prompt_tokens
-    #
-    # def _extract_chinese(self, text: str) -> str:
-    #     """提取字符串中的所有中文字符"""
-    #     # 使用正则表达式匹配中文字符 (CJK Unicode 范围)
-    #     # 这个范围比较宽泛，包含了中日韩常用字符
-    #     chinese_chars = re.findall(r'[\u4e00-\u9fff]+', text)
-    #     return ''.join(chinese_chars)
-
-    def _chunk_data_by_chars(self, data, max_chars):
+    def _chunk_data_by_tokens(self, data: List[Any], max_tokens: int) -> List[List[Any]]:
         """
-        根据字符数量将数据分块
+        根据 token 数量将数据分块，每块不超过 max_tokens。
+
+        Args:
+            data: 数据列表，每个 item 可被 orjson 序列化
+            max_tokens: 每块最大 token 数
+
+        Returns:
+            分块后的数据列表
         """
         chunks = []
         current_chunk = []
-        current_chars = 0
+        current_tokens = 0
 
         for item in data:
-            item_str = orjson.dumps(item).decode()
-            item_chars = len(item_str)
+            item_str = orjson.dumps(item).decode('utf-8')
+            item_token_count = self.count_tokens(item_str)
 
-            if item_chars > max_chars:
-                SQLBotLogUtil.error(f"但是条数据项 {item} 超出字符限制，请检查数据项长度进行过滤")
+            # 单个 item 超长？至少让它单独成块（避免丢失）
+            if item_token_count > max_tokens:
+                SQLBotLogUtil.warning(
+                    f"单条数据项 token 数 ({item_token_count}) 超过限制 ({max_tokens})，将单独成块: {str(item)[:100]}..."
+                )
+                if current_chunk:
+                    chunks.append(current_chunk)
+                    current_chunk = []
+                    current_tokens = 0
+                chunks.append([item])  # 单独成块
                 continue
 
-            # 如果添加当前项会超出字符限制，且当前块不为空，则保存当前块并开始新块
-            if current_chars + item_chars > max_chars and current_chunk:
+            # 如果加进去会超限，且当前块非空，则保存当前块
+            if current_tokens + item_token_count > max_tokens and current_chunk:
                 chunks.append(current_chunk)
                 current_chunk = [item]
-                current_chars = item_chars
+                current_tokens = item_token_count
             else:
-                # 否则将当前项添加到当前块
                 current_chunk.append(item)
-                current_chars += item_chars
+                current_tokens += item_token_count
 
         # 添加最后一个块
         if current_chunk:
