@@ -82,6 +82,8 @@ class LLMService:
     def __init__(self, current_user: CurrentUser, chat_question: ChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
                  config: LLMConfig = None):
+        # ✅ 确保是字符串，并设置环境变量
+        os.environ["TIKTOKEN_CACHE_DIR"] = str(settings.TIKTOKEN_CACHE_DIR)
         self._encoder = tiktoken.get_encoding("o200k_base")
         self.chunk_list = []
         engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))

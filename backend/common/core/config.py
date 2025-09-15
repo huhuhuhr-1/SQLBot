@@ -100,6 +100,7 @@ class Settings(BaseSettings):
     PG_POOL_PRE_PING: bool = True
     # qian wen 32k
     MAX_TOKEN_CHUNK: int = 30000
+    TIKTOKEN_CACHE_DIR: str = str(pathlib.Path(__file__).resolve().parent.parent.parent / "tiktoken_cache")
 
 
 settings = Settings()  # type: ignore
