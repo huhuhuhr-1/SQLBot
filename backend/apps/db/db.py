@@ -420,15 +420,18 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif ds.type == 'es':
-            if table_name and table_name[0]:
-                res, columns = get_es_data(conf, sql, table_name[0])
-                columns = [field[0] for field in columns] if origin_column else [field[0].lower() for
-                                                                                 field in
-                                                                                 columns]
-                result_list = [
-                    {str(columns[i]): float(value) if isinstance(value, Decimal) else value for i, value in
-                     enumerate(tuple_item)}
-                    for tuple_item in res
-                ]
-                return {"fields": columns, "data": result_list,
-                        "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+            try:
+                if table_name and table_name[0]:
+                    res, columns = get_es_data(conf, sql, table_name[0])
+                    columns = [field[0] for field in columns] if origin_column else [field[0].lower() for
+                                                                                     field in
+                                                                                     columns]
+                    result_list = [
+                        {str(columns[i]): float(value) if isinstance(value, Decimal) else value for i, value in
+                         enumerate(tuple_item)}
+                        for tuple_item in res
+                    ]
+                    return {"fields": columns, "data": result_list,
+                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+            except Exception as ex:
+                raise Exception(str(ex))

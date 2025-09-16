@@ -297,7 +297,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{data.table.table_name}" 
             {where} 
             LIMIT 100"""
-    return exec_sql(ds, sql, True)
+    return exec_sql(ds, sql, True, [data.table.table_name])
 
 
 def fieldEnum(session: SessionDep, id: int):
@@ -313,7 +313,7 @@ def fieldEnum(session: SessionDep, id: int):
 
     db = DB.get_db(ds.type)
     sql = f"""SELECT DISTINCT {db.prefix}{field.field_name}{db.suffix} FROM {db.prefix}{table.table_name}{db.suffix}"""
-    res = exec_sql(ds, sql, True)
+    res = exec_sql(ds, sql, True, [table.table_name])
     return [item.get(res.get('fields')[0]) for item in res.get('data')]
 
 
@@ -353,7 +353,7 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
     db_name = table_objs[0].schema
     schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
     for obj in table_objs:
-        schema_str += f"# Table: {db_name}.{obj.table.table_name}" if ds.type != "mysql" else f"# Table: {obj.table.table_name}"
+        schema_str += f"# Table: {db_name}.{obj.table.table_name}" if ds.type != "mysql" and ds.type != "es" else f"# Table: {obj.table.table_name}"
         table_comment = ''
         if obj.table.custom_comment:
             table_comment = obj.table.custom_comment.strip()

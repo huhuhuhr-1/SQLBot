@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from apps.openapi import openapi
 from apps.terminology.api import terminology
+from apps.data_training.api import data_training
 from apps.chat.api import chat
 from apps.dashboard.api import dashboard_api
 from apps.datasource.api import datasource
@@ -15,6 +16,7 @@ api_router.include_router(workspace.router)
 api_router.include_router(assistant.router)
 api_router.include_router(aimodel.router)
 api_router.include_router(terminology.router)
+api_router.include_router(data_training.router)
 api_router.include_router(datasource.router)
 api_router.include_router(chat.router)
 api_router.include_router(dashboard_api.router)

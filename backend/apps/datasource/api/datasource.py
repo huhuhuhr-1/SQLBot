@@ -135,6 +135,7 @@ class TestObj(BaseModel):
     sql: str = None
 
 
+# not used, just do test
 @router.post("/execSql/{id}")
 async def exec_sql(session: SessionDep, id: int, obj: TestObj):
     def inner():
