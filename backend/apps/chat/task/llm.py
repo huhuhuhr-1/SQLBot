@@ -625,7 +625,7 @@ class LLMService:
         result_dict = {}
         for table in ds.tables:
             if table.name in tables and table.sql:
-                #sub_query.append({"table": table.name, "query": table.sql})
+                # sub_query.append({"table": table.name, "query": table.sql})
                 result_dict[table.name] = table.sql
                 sub_query.append({"table": table.name, "query": f'{dynamic_subsql_prefix}{table.name}'})
         if not sub_query:
@@ -881,7 +881,7 @@ class LLMService:
     def finish(self):
         return finish_record(session=self.session, record_id=self.record.id)
 
-    def execute_sql(self, sql: str):
+    def execute_sql(self, sql: str, tables):
         """Execute SQL query
 
         Args:
@@ -893,7 +893,7 @@ class LLMService:
         """
         SQLBotLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
-            return exec_sql(self.ds, sql)
+            return exec_sql(ds=self.ds, sql=sql, origin_column=False, table_name=tables)
         except Exception as e:
             if isinstance(e, ParseSQLResultError):
                 raise e
@@ -1000,14 +1000,16 @@ class LLMService:
             sqlbot_temp_sql_text = None
             assistant_dynamic_sql = None
             # todo row permission
-            if ((not self.current_assistant or is_page_embedded) and is_normal_user(self.current_user)) or use_dynamic_ds:
+            if ((not self.current_assistant or is_page_embedded) and is_normal_user(
+                    self.current_user)) or use_dynamic_ds:
                 sql, tables = self.check_sql(res=full_sql_text)
                 sql_result = None
-                
+
                 if use_dynamic_ds:
                     dynamic_sql_result = self.generate_assistant_dynamic_sql(sql, tables)
-                    sqlbot_temp_sql_text = dynamic_sql_result.get('sqlbot_temp_sql_text') if dynamic_sql_result else None
-                    #sql_result = self.generate_assistant_filter(sql, tables)
+                    sqlbot_temp_sql_text = dynamic_sql_result.get(
+                        'sqlbot_temp_sql_text') if dynamic_sql_result else None
+                    # sql_result = self.generate_assistant_filter(sql, tables)
                 else:
                     sql_result = self.generate_filter(sql, tables)  # maybe no sql and tables
 
@@ -1020,6 +1022,7 @@ class LLMService:
                     sql = self.check_save_sql(res=full_sql_text)
             else:
                 sql = self.check_save_sql(res=full_sql_text)
+                tables = []
 
             SQLBotLogUtil.info(sql)
             format_sql = sqlparse.format(sql, reindent=True)
@@ -1033,10 +1036,11 @@ class LLMService:
             if sqlbot_temp_sql_text and assistant_dynamic_sql:
                 dynamic_sql_result.pop('sqlbot_temp_sql_text')
                 for origin_table, subsql in dynamic_sql_result.items():
-                    assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}', subsql)
+                    assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}',
+                                                                          subsql)
                 real_execute_sql = assistant_dynamic_sql
-                
-            result = self.execute_sql(sql=real_execute_sql)
+
+            result = self.execute_sql(sql=real_execute_sql, tables=tables)
             self.save_sql_data(data_obj=result)
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
@@ -1270,7 +1274,7 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
 
     requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj)
 
-    request_path = urllib.parse.urljoin(settings.MCP_IMAGE_HOST, f"{file_name}.png")
+    request_path = urllib.parse.urljoin(settings.SERVER_IMAGE_HOST, f"{file_name}.png")
 
     return request_path
 

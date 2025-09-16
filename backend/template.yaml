@@ -70,7 +70,7 @@ template:
           生成SQL时，必须避免与数据库关键字冲突
         </rule>
         <rule>
-          如数据库引擎是 PostgreSQL、Oracle、ClickHouse、达梦（DM）、AWS Redshift，则在schema、表名、字段名、别名外层加双引号；
+          如数据库引擎是 PostgreSQL、Oracle、ClickHouse、达梦（DM）、AWS Redshift、Elasticsearch，则在schema、表名、字段名、别名外层加双引号；
           如数据库引擎是 MySQL、Doris，则在表名、字段名、别名外层加反引号；
           如数据库引擎是 Microsoft SQL Server，则在schema、表名、字段名、别名外层加方括号。
           <example>
@@ -448,7 +448,7 @@ template:
       - 如果存在冗余的过滤条件则进行去重后再生成新SQL。
       - 给过滤条件中的字段前加上表别名（如果没有表别名则加表名），如：table.field。
       - 生成SQL时，必须避免关键字冲突:
-      - 如数据库引擎是 PostgreSQL、Oracle、ClickHouse、达梦（DM）、AWS Redshift，则在schema、表名、字段名、别名外层加双引号；
+      - 如数据库引擎是 PostgreSQL、Oracle、ClickHouse、达梦（DM）、AWS Redshift、Elasticsearch，则在schema、表名、字段名、别名外层加双引号；
       - 如数据库引擎是 MySQL、Doris，则在表名、字段名、别名外层加反引号；
       - 如数据库引擎是 Microsoft SQL Server，则在schema、表名、字段名、别名外层加方括号。
       - 生成的SQL使用JSON格式返回：

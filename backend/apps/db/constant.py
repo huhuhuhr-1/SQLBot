@@ -22,6 +22,7 @@ class DB(Enum):
     dm = ('dm', '"', '"', ConnectType.py_driver)
     doris = ('doris', '`', '`', ConnectType.py_driver)
     redshift = ('redshift', '"', '"', ConnectType.py_driver)
+    es = ('es', '"', '"', ConnectType.py_driver)
 
     def __init__(self, type, prefix, suffix, connect_type: ConnectType):
         self.type = type

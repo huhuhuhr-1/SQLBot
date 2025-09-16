@@ -513,6 +513,7 @@ defineExpose({
         <span v-else-if="form.type === 'oracle'">12+</span>
         <span v-else-if="form.type === 'mysql'">5.6+</span>
         <span v-else-if="form.type === 'pg'">9.6+</span>
+        <span v-else-if="form.type === 'es'">7+</span>
       </span>
     </div>
     <div class="form-content">
@@ -594,14 +595,21 @@ defineExpose({
           />
         </el-form-item>
         <div v-if="form.type !== 'excel'" style="margin-top: 16px">
-          <el-form-item :label="t('ds.form.host')" prop="host">
+          <el-form-item
+            :label="form.type !== 'es' ? t('ds.form.host') : t('ds.form.address')"
+            prop="host"
+          >
             <el-input
               v-model="form.host"
               clearable
-              :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.host')"
+              :placeholder="
+                $t('datasource.please_enter') +
+                $t('common.empty') +
+                (form.type !== 'es' ? t('ds.form.host') : t('ds.form.address'))
+              "
             />
           </el-form-item>
-          <el-form-item :label="t('ds.form.port')" prop="port">
+          <el-form-item v-if="form.type !== 'es'" :label="t('ds.form.port')" prop="port">
             <el-input
               v-model="form.port"
               clearable
@@ -628,7 +636,11 @@ defineExpose({
               show-password
             />
           </el-form-item>
-          <el-form-item v-if="form.type !== 'dm'" :label="t('ds.form.database')" prop="database">
+          <el-form-item
+            v-if="form.type !== 'dm' && form.type !== 'es'"
+            :label="t('ds.form.database')"
+            prop="database"
+          >
             <el-input
               v-model="form.database"
               clearable
@@ -647,7 +659,7 @@ defineExpose({
               <el-radio value="sid">{{ t('ds.form.mode.sid') }}</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item :label="t('ds.form.extra_jdbc')">
+          <el-form-item v-if="form.type !== 'es'" :label="t('ds.form.extra_jdbc')">
             <el-input
               v-model="form.extraJdbc"
               clearable
@@ -681,7 +693,7 @@ defineExpose({
               />
             </el-select>
           </el-form-item>
-          <el-form-item :label="t('ds.form.timeout')" prop="timeout">
+          <el-form-item v-if="form.type !== 'es'" :label="t('ds.form.timeout')" prop="timeout">
             <el-input-number
               v-model="form.timeout"
               clearable

@@ -24,6 +24,7 @@ from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import Trans
 from common.utils.utils import SQLBotLogUtil
 from fastapi import HTTPException
+from apps.db.es_engine import get_es_connect, get_es_index, get_es_fields, get_es_data
 
 
 def get_uri(ds: CoreDatasource) -> str:
@@ -144,7 +145,8 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
                             raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                         return False
             elif ds.type == 'redshift':
-                with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
+                with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database,
+                                                user=conf.username,
                                                 password=conf.password,
                                                 timeout=10) as conn, conn.cursor() as cursor:
                     try:
@@ -156,6 +158,14 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
                         if is_raise:
                             raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                         return False
+            elif ds.type == 'es':
+                es_conn = get_es_connect(conf)
+                if es_conn.ping():
+                    SQLBotLogUtil.info("success")
+                    return True
+                else:
+                    SQLBotLogUtil.info("failed")
+                    return False
     else:
         conn = get_ds_engine(ds)
         try:
@@ -208,7 +218,7 @@ def get_version(ds: CoreDatasource | AssistantOutDsSchema):
                     cursor.execute(sql)
                     res = cursor.fetchall()
                     version = res[0][0]
-            elif ds.type == 'redshift':
+            elif ds.type == 'redshift' or ds.type == 'es':
                 version = ''
     except Exception as e:
         print(e)
@@ -285,6 +295,10 @@ def get_tables(ds: CoreDatasource):
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
+        elif ds.type == 'es':
+            res = get_es_index(conf)
+            res_list = [TableSchema(*item) for item in res]
+            return res_list
 
 
 def get_fields(ds: CoreDatasource, table_name: str = None):
@@ -321,9 +335,13 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
+        elif ds.type == 'es':
+            res = get_es_fields(conf, table_name)
+            res_list = [ColumnSchema(*item) for item in res]
+            return res_list
 
 
-def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
+def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False, table_name=None):
     while sql.endswith(';'):
         sql = sql[:-1]
 
@@ -401,3 +419,16 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                             "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
+        elif ds.type == 'es':
+            if table_name and table_name[0]:
+                res, columns = get_es_data(conf, sql, table_name[0])
+                columns = [field[0] for field in columns] if origin_column else [field[0].lower() for
+                                                                                 field in
+                                                                                 columns]
+                result_list = [
+                    {str(columns[i]): float(value) if isinstance(value, Decimal) else value for i, value in
+                     enumerate(tuple_item)}
+                    for tuple_item in res
+                ]
+                return {"fields": columns, "data": result_list,
+                        "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}

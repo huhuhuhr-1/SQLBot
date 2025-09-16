@@ -256,7 +256,8 @@
         "success": "Connect success",
         "failed": "Connect failed"
       },
-      "timeout": "Timeout(second)"
+      "timeout": "Timeout(second)",
+      "address": "Address"
     }
   },
   "datasource": {
