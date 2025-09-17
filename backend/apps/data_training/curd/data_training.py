@@ -94,7 +94,8 @@ def create_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans
 
     exists = session.query(
         session.query(DataTraining).filter(
-            and_(DataTraining.question == info.question, DataTraining.oid == oid)).exists()).scalar()
+            and_(DataTraining.question == info.question, DataTraining.oid == oid,
+                 DataTraining.datasource == info.datasource)).exists()).scalar()
     if exists:
         raise Exception(trans("i18n_data_training.exists_in_db"))
 
@@ -114,8 +115,10 @@ def create_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans
 
 
 def update_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans: Trans):
+    if info.datasource is None:
+        raise Exception(trans("i18n_data_training.datasource_cannot_be_none"))
+
     count = session.query(DataTraining).filter(
-        DataTraining.oid == oid,
         DataTraining.id == info.id
     ).count()
     if count == 0:
@@ -124,6 +127,7 @@ def update_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans
     exists = session.query(
         session.query(DataTraining).filter(
             and_(DataTraining.question == info.question, DataTraining.oid == oid,
+                 DataTraining.datasource == info.datasource,
                  DataTraining.id != info.id)).exists()).scalar()
     if exists:
         raise Exception(trans("i18n_data_training.exists_in_db"))
@@ -131,6 +135,7 @@ def update_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans
     stmt = update(DataTraining).where(and_(DataTraining.id == info.id)).values(
         question=info.question,
         description=info.description,
+        datasource=info.datasource,
     )
     session.execute(stmt)
     session.commit()
@@ -198,13 +203,13 @@ FROM
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM data_training AS child
 ) TEMP
-WHERE similarity > {settings.EMBEDDING_SIMILARITY} and oid = :oid and datasource = :datasource
+WHERE similarity > {settings.EMBEDDING_DATA_TRAINING_SIMILARITY} and oid = :oid and datasource = :datasource
 ORDER BY similarity DESC
 LIMIT {settings.EMBEDDING_DATA_TRAINING_TOP_COUNT}
 """
 
 
-def select_terminology_by_question(session: SessionDep, question: str, oid: int, datasource: int):
+def select_training_by_question(session: SessionDep, question: str, oid: int, datasource: int):
     if question.strip() == "":
         return []
 
@@ -303,7 +308,7 @@ def get_training_template(session: SessionDep, question: str, datasource: int, o
         oid = 1
     if not datasource:
         return ''
-    _results = select_terminology_by_question(session, question, oid, datasource)
+    _results = select_training_by_question(session, question, oid, datasource)
     if _results and len(_results) > 0:
         data_training = to_xml_string(_results)
         template = get_base_data_training_template().format(data_training=data_training)

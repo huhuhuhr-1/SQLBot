@@ -300,7 +300,7 @@ FROM
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM terminology AS child
 ) TEMP
-WHERE similarity > {settings.EMBEDDING_SIMILARITY} and oid = :oid
+WHERE similarity > {settings.EMBEDDING_TERMINOLOGY_SIMILARITY} and oid = :oid
 ORDER BY similarity DESC
 LIMIT {settings.EMBEDDING_TERMINOLOGY_TOP_COUNT}
 """

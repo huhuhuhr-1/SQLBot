@@ -297,7 +297,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{data.table.table_name}" 
             {where} 
             LIMIT 100"""
-    return exec_sql(ds, sql, True, [data.table.table_name])
+    return exec_sql(ds, sql, True)
 
 
 def fieldEnum(session: SessionDep, id: int):
@@ -313,7 +313,7 @@ def fieldEnum(session: SessionDep, id: int):
 
     db = DB.get_db(ds.type)
     sql = f"""SELECT DISTINCT {db.prefix}{field.field_name}{db.suffix} FROM {db.prefix}{table.table_name}{db.suffix}"""
-    res = exec_sql(ds, sql, True, [table.table_name])
+    res = exec_sql(ds, sql, True)
     return [item.get(res.get('fields')[0]) for item in res.get('data')]
 
 

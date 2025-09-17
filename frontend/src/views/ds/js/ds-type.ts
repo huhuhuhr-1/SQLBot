@@ -7,7 +7,7 @@ import ck from '@/assets/datasource/icon_ck.png'
 import dm from '@/assets/datasource/icon_dm.png'
 import doris from '@/assets/datasource/icon_doris.png'
 import redshift from '@/assets/datasource/icon_redshift.png'
-// import es from '@/assets/datasource/icon_es.png'
+import es from '@/assets/datasource/icon_es.png'
 import { i18n } from '@/i18n'
 
 const t = i18n.global.t
@@ -21,7 +21,7 @@ export const dsType = [
   { label: '达梦', value: 'dm' },
   { label: 'Apache Doris', value: 'doris' },
   { label: 'AWS Redshift', value: 'redshift' },
-  // { label: 'Elasticsearch', value: 'es' },
+  { label: 'Elasticsearch', value: 'es' },
 ]
 
 export const dsTypeWithImg = [
@@ -34,7 +34,7 @@ export const dsTypeWithImg = [
   { name: '达梦', type: 'dm', img: dm },
   { name: 'Apache Doris', type: 'doris', img: doris },
   { name: 'AWS Redshift', type: 'redshift', img: redshift },
-  // { name: 'Elasticsearch', type: 'es', img: es },
+  { name: 'Elasticsearch', type: 'es', img: es },
 ]
 
 export const haveSchema = ['sqlServer', 'pg', 'oracle', 'dm', 'redshift']

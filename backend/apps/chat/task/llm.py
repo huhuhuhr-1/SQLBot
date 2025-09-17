@@ -29,6 +29,7 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum
+from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
 from apps.datasource.models.datasource import CoreDatasource
@@ -881,7 +882,7 @@ class LLMService:
     def finish(self):
         return finish_record(session=self.session, record_id=self.record.id)
 
-    def execute_sql(self, sql: str, tables):
+    def execute_sql(self, sql: str):
         """Execute SQL query
 
         Args:
@@ -893,7 +894,7 @@ class LLMService:
         """
         SQLBotLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
-            return exec_sql(ds=self.ds, sql=sql, origin_column=False, table_name=tables)
+            return exec_sql(ds=self.ds, sql=sql, origin_column=False)
         except Exception as e:
             if isinstance(e, ParseSQLResultError):
                 raise e
@@ -935,6 +936,9 @@ class LLMService:
                 self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
                                                                             self.ds.oid if isinstance(self.ds,
                                                                                                       CoreDatasource) else 1)
+            self.chat_question.data_training = get_training_template(self.session, self.chat_question.question,
+                                                                     self.ds.id, self.ds.oid)
+
             self.init_messages()
 
             # return id
@@ -1022,7 +1026,6 @@ class LLMService:
                     sql = self.check_save_sql(res=full_sql_text)
             else:
                 sql = self.check_save_sql(res=full_sql_text)
-                tables = []
 
             SQLBotLogUtil.info(sql)
             format_sql = sqlparse.format(sql, reindent=True)
@@ -1040,7 +1043,7 @@ class LLMService:
                                                                           subsql)
                 real_execute_sql = assistant_dynamic_sql
 
-            result = self.execute_sql(sql=real_execute_sql, tables=tables)
+            result = self.execute_sql(sql=real_execute_sql)
             self.save_sql_data(data_obj=result)
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
