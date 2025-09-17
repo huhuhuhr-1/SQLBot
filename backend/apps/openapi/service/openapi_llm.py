@@ -7,7 +7,8 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
 from typing import Any, List, Optional, Union, Dict
-
+from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
+    OpenChat, OpenClean, common_headers, IntentPayload
 import numpy as np
 import orjson
 import pandas as pd
@@ -19,7 +20,7 @@ from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import create_engine, Session
+from sqlmodel import Session
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
 from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
@@ -30,6 +31,7 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum
+from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
 from apps.datasource.models.datasource import CoreDatasource
@@ -40,6 +42,7 @@ from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, ge
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
+from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
 from common.error import SingleMessageError, SQLBotDBError, ParseSQLResultError, SQLBotDBConnectionError
 from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_orjson
@@ -53,17 +56,20 @@ executor = ThreadPoolExecutor(max_workers=200)
 dynamic_ds_types = [1, 3]
 dynamic_subsql_prefix = 'select * from sqlbot_dynamic_temp_table_'
 
+session_maker = sessionmaker(bind=engine)
+db_session = session_maker()
+
 
 class LLMService:
     ds: CoreDatasource
-    chat_question: ChatQuestion
+    chat_question: OpenChatQuestion
     record: ChatRecord
     config: LLMConfig
     llm: BaseChatModel
     sql_message: List[Union[BaseMessage, dict[str, Any]]] = []
     chart_message: List[Union[BaseMessage, dict[str, Any]]] = []
 
-    session: Session
+    session: Session = db_session
     current_user: CurrentUser
     current_assistant: Optional[CurrentAssistant] = None
     out_ds_instance: Optional[AssistantOutDs] = None
@@ -79,16 +85,15 @@ class LLMService:
 
     last_execute_sql_error: str = None
 
-    def __init__(self, current_user: CurrentUser, chat_question: ChatQuestion,
-                 current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
+    def __init__(self, current_user: CurrentUser, chat_question: OpenChatQuestion,
+                 current_assistant: Optional[CurrentAssistant] = None,
+                 no_reasoning: bool = False,
                  config: LLMConfig = None):
-        # ✅ 确保是字符串，并设置环境变量
-        os.environ["TIKTOKEN_CACHE_DIR"] = str(settings.TIKTOKEN_CACHE_DIR)
         self._encoder = tiktoken.get_encoding("o200k_base")
         self.chunk_list = []
-        engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
-        session_maker = sessionmaker(bind=engine)
-        self.session = session_maker()
+        # engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+        # session_maker = sessionmaker(bind=engine)
+        # self.session = session_maker()
         self.session.exec = self.session.exec if hasattr(self.session, "exec") else self.session.execute
         self.current_user = current_user
         self.current_assistant = current_assistant
@@ -149,7 +154,6 @@ class LLMService:
             self.chat_question.error_msg = ''
 
         self.init_messages()
-        # 架在tiktoken计数器
 
     @classmethod
     async def create(cls, *args, **kwargs):
@@ -175,8 +179,15 @@ class LLMService:
         count_limit = 0 - base_message_count_limit
 
         self.sql_message = []
-        # add sys prompt
-        self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question()))
+        # modify by huhuhuhr 自定义提示词
+        if self.chat_question.my_promote is not None:
+            self.sql_message.append(SystemMessage(content=self.chat_question.my_promote))
+        else:
+            if self.chat_question.my_schema is not None:
+                self.sql_message.append(SystemMessage(
+                    content=self.chat_question.sql_sys_question_with_schema(self.chat_question.my_schema)))
+            else:
+                self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question()))
         if last_sql_messages is not None and len(last_sql_messages) > 0:
             # limit count
             for last_sql_message in last_sql_messages[count_limit:]:
@@ -574,6 +585,55 @@ class LLMService:
         self.record = save_sql_answer(session=self.session, record_id=self.record.id,
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
 
+    def generate_sql_with_sql(self):
+        # append current question
+        self.sql_message.append(HumanMessage(
+            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))))
+        # 硬设置提示词
+        content = orjson.dumps({
+            "question": self.chat_question.question,
+            "sql": self.chat_question.my_sql
+        }).decode()
+        self.sql_message.append(HumanMessage(content=content))
+
+        self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=self.session,
+                                                                  ai_modal_id=self.chat_question.ai_modal_id,
+                                                                  ai_modal_name=self.chat_question.ai_modal_name,
+                                                                  operate=OperationEnum.GENERATE_SQL,
+                                                                  record_id=self.record.id,
+                                                                  full_message=[
+                                                                      {'type': msg.type, 'content': msg.content} for msg
+                                                                      in self.sql_message])
+        full_thinking_text = ''
+        full_sql_text = ''
+        token_usage = {}
+        res = self.llm.stream(self.sql_message)
+        for chunk in res:
+            SQLBotLogUtil.info(chunk)
+            reasoning_content_chunk = ''
+            if 'reasoning_content' in chunk.additional_kwargs:
+                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+            # else:
+            #     reasoning_content_chunk = chunk.get('reasoning_content')
+            if reasoning_content_chunk is None:
+                reasoning_content_chunk = ''
+            full_thinking_text += reasoning_content_chunk
+
+            full_sql_text += chunk.content
+            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+            get_token_usage(chunk, token_usage)
+
+        self.sql_message.append(AIMessage(full_sql_text))
+
+        self.current_logs[OperationEnum.GENERATE_SQL] = end_log(session=self.session,
+                                                                log=self.current_logs[OperationEnum.GENERATE_SQL],
+                                                                full_message=[{'type': msg.type, 'content': msg.content}
+                                                                              for msg in self.sql_message],
+                                                                reasoning_content=full_thinking_text,
+                                                                token_usage=token_usage)
+        self.record = save_sql_answer(session=self.session, record_id=self.record.id,
+                                      answer=orjson.dumps({'content': full_sql_text}).decode())
+
     def generate_with_sub_sql(self, sql, sub_mappings: list):
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
         self.chat_question.sql = sql
@@ -896,7 +956,7 @@ class LLMService:
         """
         SQLBotLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
-            return exec_sql(self.ds, sql)
+            return exec_sql(ds=self.ds, sql=sql, origin_column=False)
         except Exception as e:
             if isinstance(e, ParseSQLResultError):
                 raise e
@@ -938,6 +998,9 @@ class LLMService:
                 self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
                                                                             self.ds.oid if isinstance(self.ds,
                                                                                                       CoreDatasource) else 1)
+            self.chat_question.data_training = get_training_template(self.session, self.chat_question.question,
+                                                                     self.ds.id, self.ds.oid)
+
             self.init_messages()
 
             # return id
@@ -980,9 +1043,13 @@ class LLMService:
             if not connected:
                 raise SQLBotDBConnectionError('Connect DB failed')
 
-            # generate sql
-            sql_res = self.generate_sql()
+            # modify by huhuhuhr
             full_sql_text = ''
+            if self.chat_question.my_sql is not None:
+                sql_res = self.generate_sql_with_sql()
+            else:
+                sql_res = self.generate_sql()
+
             for chunk in sql_res:
                 full_sql_text += chunk.get('content')
                 if in_chat:
@@ -1321,6 +1388,8 @@ class LLMService:
         if payload is not None:
             sys_prompt = analysis_question(role=payload.role, task=payload.task, intent=payload.intent,
                                            terminologies=self.chat_question.terminologies)
+        elif self.chat_question.my_promote is not None:
+            sys_prompt = self.chat_question.my_promote
         else:
             sys_prompt = self.chat_question.analysis_sys_question()
         analysis_msg.append(SystemMessage(content=sys_prompt))
@@ -1515,7 +1584,7 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
 
     requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj)
 
-    request_path = urllib.parse.urljoin(settings.MCP_IMAGE_HOST, f"{file_name}.png")
+    request_path = urllib.parse.urljoin(settings.SERVER_IMAGE_HOST, f"{file_name}.png")
 
     return request_path
 

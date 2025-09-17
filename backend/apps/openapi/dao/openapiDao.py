@@ -41,7 +41,7 @@ def get_datasource_by_name_or_id(
         ValueError: 当查询条件验证失败时抛出异常
     """
     # 验证查询条件
-    query.validate_query_fields()
+    query.validate_query_fields_manual()
 
     # 获取当前用户的工作空间ID，默认为1
     current_oid = user.oid if user.oid is not None else 1

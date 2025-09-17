@@ -55,6 +55,7 @@ class OpenChat(BaseModel):
     chat_record_id: int = Body(..., description='会话聊天消息标识')
     question: str = Body(None, description='问题内容')
     chat_data_object: Any = Body(None, description='分析问题')
+    my_promote: str = Body(None, description='自定义提示词')
 
 
 class OpenChatQuestion(AiModelQuestion):
@@ -65,14 +66,14 @@ class OpenChatQuestion(AiModelQuestion):
     """
     question: str = Body(..., description='用户问题内容')
     chat_id: int = Body(..., description='聊天会话标识')
-    db_id: int = Body(..., description='数据源标识')
-    sql: str = Body(None, description='自定义sql')
-    promote: str = Body(None, description='自定义提示词')
-    schema: str = Body(None, description='自定义schema')
-    intent: bool = Body(default=True, description='是否进行意图检测')
-    analysis: bool = Body(default=False, description='是否分析')
-    predict: bool = Body(default=False, description='是否预测')
-    recommend: bool = Body(default=True, description='是否推荐')
+    db_id: Optional[int] = Body(None, description='数据源标识')
+    my_sql: Optional[str] = Body(None, description='自定义sql')
+    my_promote: Optional[str] = Body(None, description='自定义提示词')
+    my_schema: Optional[str] = Body(None, description='自定义schema')
+    intent: Optional[bool] = Body(default=False, description='是否进行意图检测')
+    analysis: Optional[bool] = Body(default=False, description='是否分析')
+    predict: Optional[bool] = Body(default=False, description='是否预测')
+    recommend: Optional[bool] = Body(default=True, description='是否推荐')
 
 
 class OpenToken(BaseModel):
@@ -140,7 +141,7 @@ class DataSourceRequest(BaseModel):
                 raise ValueError("name 和 id 不能同时为空")
         return v
 
-    def validate_query_fields(self) -> 'DataSourceRequest':
+    def validate_query_fields_manual(self) -> 'DataSourceRequest':
         """
         验证查询字段（兼容性方法）
         

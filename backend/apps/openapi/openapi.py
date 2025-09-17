@@ -1,5 +1,4 @@
 import asyncio
-import json
 import traceback
 from typing import Optional
 
@@ -12,11 +11,11 @@ from apps.datasource.crud.datasource import get_datasource_list
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
     OpenChat, OpenClean, common_headers, IntentPayload
-from apps.openapi.service.openapi_service import merge_streaming_chunks, get_chat_record, \
-    create_access_token_with_expiry, chat_identify_intent, _get_chats_to_clean, _create_clean_response, \
+from apps.openapi.service.openapi_llm import LLMService
+from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
+    chat_identify_intent, _get_chats_to_clean, _create_clean_response, \
     _execute_cleanup, \
     _run_analysis_or_predict
-from apps.openapi.service.openapi_llm import LLMService
 from apps.system.crud.user import authenticate
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.db import get_session
@@ -127,7 +126,7 @@ async def get_data_source_by_id_or_name(
              dependencies=[Depends(common_headers)])
 async def getChat(
         current_user: CurrentUser,
-        request_question: OpenChatQuestion,
+        chat_question: OpenChatQuestion,
         current_assistant: CurrentAssistant
 ):
     """
@@ -138,7 +137,7 @@ async def getChat(
 
     Args:
         current_user: 当前认证用户信息
-        request_question: 包含问题内容的请求对象
+        chat_question: 包含问题内容的请求对象
         current_assistant: 当前使用的AI助手信息
 
     Returns:
@@ -153,7 +152,7 @@ async def getChat(
             datasource = get_datasource_by_name_or_id(
                 session=session,
                 user=current_user,
-                query=DataSourceRequest(id=request_question.db_id)
+                query=DataSourceRequest(id=chat_question.db_id)
             )
             if not datasource:
                 raise HTTPException(
@@ -161,34 +160,34 @@ async def getChat(
                     detail="数据源未找到"
                 )
             # 绑定数据源到聊天会话
-            await bind_datasource(datasource, request_question.chat_id, session)
+            await bind_datasource(datasource, chat_question.chat_id, session)
 
         # 创建LLM服务实例
         llm_service = await LLMService.create(
             current_user,
-            request_question,
+            chat_question,
             current_assistant
         )
-
         # 如果存在意图检测，则进行意图识别
         payload: Optional[IntentPayload] = (
-            chat_identify_intent(llm_service.llm, request_question.question)
-            if request_question.intent is True else None
+            chat_identify_intent(llm_service.llm, chat_question.question)
+            if chat_question.intent is True else None
         )
 
         # 记录意图识别结果
         if payload:
-            SQLBotLogUtil.info(f"意图识别详情 - 原始输入: '{request_question.question}', "
+            SQLBotLogUtil.info(f"意图识别详情 - 原始输入: '{chat_question.question}', "
                                f"搜索意图: '{payload.search}', "
                                f"分析意图: '{payload.analysis}', "
                                f"预测意图: '{payload.predict}'")
         else:
-            SQLBotLogUtil.info(f"意图识别失败 - 原始输入: '{request_question.question}', 未识别到有效意图")
-            if request_question.analysis or request_question.predict:
+            SQLBotLogUtil.info(
+                f"未识别到意图 - 输入: '{chat_question.question}', 未识别到有效意图")
+            if chat_question.analysis or chat_question.predict:
                 payload = IntentPayload(
-                    search=request_question.question,
-                    analysis=request_question.question if request_question.analysis else "",
-                    predict=request_question.question if request_question.predict else ""
+                    search=chat_question.question,
+                    analysis=chat_question.question if chat_question.analysis else "",
+                    predict=chat_question.question if chat_question.predict else ""
                 )
 
         # 如果存在意图，则使用意图作为问题
@@ -217,7 +216,7 @@ async def getChat(
         merge_streaming_chunks(stream=llm_service.await_result(),
                                llm_service=llm_service,
                                payload=payload,
-                               request_question=request_question),
+                               chat_question=chat_question),
         media_type="text/event-stream"
     )
 
@@ -284,13 +283,13 @@ async def get_recommend(
             )
 
         # 创建问题请求对象
-        request_question = ChatQuestion(
+        chat_question = OpenChatQuestion(
             chat_id=record.chat_id,
             question=record.question if record.question else ''
         )
 
         # 创建LLM服务实例并设置推荐问题模式
-        llm_service = await LLMService.create(current_user, request_question, current_assistant, True)
+        llm_service = await LLMService.create(current_user, chat_question, current_assistant, True)
 
         # 设置聊天记录
         llm_service.set_record(record)

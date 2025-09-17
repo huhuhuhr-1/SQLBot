@@ -82,7 +82,7 @@ def chat_identify_intent(llm: BaseChatModel, question: str) -> IntentPayload:
 def analysis_identify_intent(llm: BaseChatModel, question: str) -> AnalysisIntentPayload:
     system_prompt = analysis_intention_question()
 
-    human_prompt = f"用户问题：{question}"
+    human_prompt = f"用户分析诉求：{question}"
 
     messages = [
         SystemMessage(content=system_prompt),
@@ -99,7 +99,7 @@ def analysis_identify_intent(llm: BaseChatModel, question: str) -> AnalysisInten
 async def merge_streaming_chunks(stream,
                                  llm_service: LLMService = None,
                                  payload: IntentPayload = None,
-                                 request_question: OpenChatQuestion = None) -> AsyncGenerator[str, None]:
+                                 chat_question: OpenChatQuestion = None) -> AsyncGenerator[str, None]:
     """
     合并流式输出的数据块
 
@@ -111,7 +111,7 @@ async def merge_streaming_chunks(stream,
     5. 当收到 'finish' 类型时，调用 get_data 获取图表数据并发送
 
     Args:
-        request_question: 用户问题
+        chat_question: 用户问题
         payload: 意图识别
         stream: 输入的流式数据生成器
         llm_service: LLM服务实例（可选）
@@ -189,8 +189,8 @@ async def merge_streaming_chunks(stream,
                                 # 执行分析
                                 if record and record.chart:
                                     # 分析
-                                    if request_question.analysis and hasattr(payload,
-                                                                             'analysis') and payload.analysis != "":
+                                    if chat_question.analysis and hasattr(payload,
+                                                                          'analysis') and payload.analysis != "":
                                         record.question = payload.analysis
                                         # 执行分析任务
                                         llm_service.run_analysis_or_predict_task_async('analysis', record)
@@ -200,8 +200,8 @@ async def merge_streaming_chunks(stream,
                                         async for analysis_chunk in _stream_generator(analysis_stream):
                                             yield analysis_chunk
                                     # 执行预测任务
-                                    if request_question.predict and hasattr(payload,
-                                                                            'predict') and payload.predict != "":
+                                    if chat_question.predict and hasattr(payload,
+                                                                         'predict') and payload.predict != "":
                                         record.question = payload.predict
                                         # 执行分析任务
                                         llm_service.run_analysis_or_predict_task_async('predict', record)
@@ -210,7 +210,7 @@ async def merge_streaming_chunks(stream,
                                         # 处理分析流
                                         async for predict_chunk in _stream_generator(predict_stream):
                                             yield predict_chunk
-                                    if request_question.recommend:
+                                    if chat_question.recommend:
                                         #  推荐
                                         llm_service.run_recommend_questions_task_async()
                                         record.question = question
@@ -467,21 +467,29 @@ async def _run_analysis_or_predict(
     if chat_record.question:
         record.question = chat_record.question
 
-    request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
+    request_question = OpenChatQuestion(
+        chat_id=record.chat_id,
+        question=record.question,
+        my_promote=chat_record.my_promote
+    )
 
     try:
         payload = None
-        llm_service = await LLMService.create(current_user, request_question, current_assistant)
+        llm_service = await LLMService.create(
+            current_user,
+            request_question,
+            current_assistant)
         if task_type == 'analysis':
-            payload: Optional[AnalysisIntentPayload] = (
-                analysis_identify_intent(llm_service.llm, request_question.question)
-            )
-            # 记录意图识别结果
-            if payload:
-                SQLBotLogUtil.info(f"意图识别详情 - 原始输入: '{request_question.question}', "
-                                   f"意图: '{payload.intent}', "
-                                   f"角色: '{payload.role}', "
-                                   f"任务: '{payload.task}'")
+            if chat_record.my_promote is None:
+                payload: Optional[AnalysisIntentPayload] = (
+                    analysis_identify_intent(llm_service.llm, request_question.question)
+                )
+                # 记录意图识别结果
+                if payload:
+                    SQLBotLogUtil.info(f"意图识别详情 - 原始输入: '{request_question.question}', "
+                                       f"意图: '{payload.intent}', "
+                                       f"角色: '{payload.role}', "
+                                       f"任务: '{payload.task}'")
         data_str = None
         if chat_record.chat_data_object is not None:
             data_str = json.dumps(chat_record.chat_data_object, ensure_ascii=False)
