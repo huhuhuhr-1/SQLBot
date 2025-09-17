@@ -5,27 +5,27 @@ from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
 
 def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
     if ds.type == "mysql" or ds.type == "doris":
-        return f"""
+        return """
                 SELECT VERSION()
                 """
     elif ds.type == "sqlServer":
-        return f"""
+        return """
                 select SERVERPROPERTY('ProductVersion')
                 """
     elif ds.type == "pg" or ds.type == "excel":
-        return f"""
+        return """
               SELECT current_setting('server_version')
               """
     elif ds.type == "oracle":
-        return f"""
+        return """
                 SELECT version FROM v$instance
                 """
     elif ds.type == "ck":
-        return f"""
+        return """
                 select  version()
                 """
     elif ds.type == 'dm':
-        return f"""
+        return """
                 SELECT * FROM v$version
                 """
     elif ds.type == 'redshift':
@@ -33,7 +33,7 @@ def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
 
 
 def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''):
-    if ds.type == "mysql" or ds.type == "doris":
+    if ds.type == "mysql":
         return """
                 SELECT 
                     TABLE_NAME, 
@@ -128,12 +128,22 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
                   pg_class 
                 WHERE 
                   relkind in  ('r','p', 'f') 
-                  AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = :param)
+                  AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = %s)
                 """, conf.dbSchema
+    elif ds.type == "doris":
+        return """
+                SELECT 
+                    TABLE_NAME, 
+                    TABLE_COMMENT
+                FROM 
+                    information_schema.TABLES
+                WHERE 
+                    TABLE_SCHEMA = %s
+                """, conf.database
 
 
 def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = None):
-    if ds.type == "mysql" or ds.type == "doris":
+    if ds.type == "mysql":
         sql1 = """
                 SELECT 
                     COLUMN_NAME,
@@ -164,7 +174,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                 """
         sql2 = " AND C.TABLE_NAME = :param2" if table_name is not None and table_name != "" else ""
         return sql1 + sql2, conf.dbSchema, table_name
-    elif ds.type == "pg" or ds.type == "excel" or ds.type == "redshift":
+    elif ds.type == "pg" or ds.type == "excel":
         sql1 = """
                SELECT a.attname                                       AS COLUMN_NAME,
                       pg_catalog.format_type(a.atttypid, a.atttypmod) AS DATA_TYPE,
@@ -179,6 +189,22 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                  AND NOT a.attisdropped \
                """
         sql2 = " AND c.relname = :param2" if table_name is not None and table_name != "" else ""
+        return sql1 + sql2, conf.dbSchema, table_name
+    elif ds.type == "redshift":
+        sql1 = """
+               SELECT a.attname                                       AS COLUMN_NAME,
+                      pg_catalog.format_type(a.atttypid, a.atttypmod) AS DATA_TYPE,
+                      col_description(c.oid, a.attnum)                AS COLUMN_COMMENT
+               FROM pg_catalog.pg_attribute a
+                        JOIN
+                    pg_catalog.pg_class c ON a.attrelid = c.oid
+                        JOIN
+                    pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = %s
+                 AND a.attnum > 0
+                 AND NOT a.attisdropped \
+               """
+        sql2 = " AND c.relname = %s" if table_name is not None and table_name != "" else ""
         return sql1 + sql2, conf.dbSchema, table_name
     elif ds.type == "oracle":
         sql1 = """
@@ -234,3 +260,16 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                 """
         sql2 = " AND c.TABLE_NAME = :param2" if table_name is not None and table_name != "" else ""
         return sql1 + sql2, conf.dbSchema, table_name
+    elif ds.type == "doris":
+        sql1 = """
+                SELECT 
+                    COLUMN_NAME,
+                    DATA_TYPE,
+                    COLUMN_COMMENT
+                FROM 
+                    INFORMATION_SCHEMA.COLUMNS
+                WHERE 
+                    TABLE_SCHEMA = %s
+                """
+        sql2 = " AND TABLE_NAME = %s" if table_name is not None and table_name != "" else ""
+        return sql1 + sql2, conf.database, table_name
