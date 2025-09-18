@@ -228,14 +228,13 @@ const rules = {
   description: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('training.sql_statement'),
+      message: t('datasource.please_enter') + t('common.empty') + t('training.sample_sql'),
     },
   ],
 }
 
 const list = () => {
   datasourceApi.list().then((res: any) => {
-    console.log(res)
     options.value = res || []
   })
 }
@@ -361,15 +360,15 @@ const onRowFormClose = () => {
           <el-table-column prop="question" :label="$t('training.problem_description')" width="280">
           </el-table-column>
           <el-table-column prop="description" :label="$t('training.sample_sql')" min-width="240">
-          </el-table-column>
-          <el-table-column prop="datasource_name" :label="$t('ds.title')" min-width="240"
-            ><template #default="scope">
+            <template #default="scope">
               <div class="field-comment_d">
-                <span :title="scope.row.datasource_name" class="notes-in_table">{{
-                  scope.row.datasource_name
+                <span :title="scope.row.description" class="notes-in_table">{{
+                  scope.row.description
                 }}</span>
               </div>
             </template>
+          </el-table-column>
+          <el-table-column prop="datasource_name" :label="$t('ds.title')" min-width="240">
           </el-table-column>
           <el-table-column
             prop="create_time"
@@ -488,7 +487,7 @@ const onRowFormClose = () => {
           clearable
         />
       </el-form-item>
-      <el-form-item prop="description" :label="t('training.sql_statement')">
+      <el-form-item prop="description" :label="t('training.sample_sql')">
         <el-input
           v-model="pageForm.description"
           :placeholder="$t('datasource.please_enter')"
@@ -531,8 +530,8 @@ const onRowFormClose = () => {
           {{ pageForm.question }}
         </div>
       </el-form-item>
-      <el-form-item :label="t('training.sql_statement')">
-        <div class="content">
+      <el-form-item :label="t('training.sample_sql')">
+        <div style="white-space: pre-wrap" class="content">
           {{ pageForm.description }}
         </div>
         <div class="copy-icon">
@@ -610,6 +609,7 @@ const onRowFormClose = () => {
         overflow: hidden;
         text-overflow: ellipsis;
         word-break: break-word;
+        white-space: pre-wrap;
       }
       .ed-icon {
         color: #646a73;
