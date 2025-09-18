@@ -155,8 +155,6 @@ class LLMService:
         else:
             self.chat_question.error_msg = ''
 
-        self.init_messages()
-
     @classmethod
     async def create(cls, *args, **kwargs):
         config: LLMConfig = await get_default_config()
@@ -455,7 +453,8 @@ class LLMService:
                                                                            operate=OperationEnum.CHOOSE_DATASOURCE,
                                                                            record_id=self.record.id,
                                                                            full_message=[{'type': msg.type,
-                                                                                          'content': msg.content} for
+                                                                                          'content': msg.content}
+                                                                                         for
                                                                                          msg in datasource_msg])
 
             token_usage = {}
@@ -480,7 +479,8 @@ class LLMService:
                                                                          log=self.current_logs[
                                                                              OperationEnum.CHOOSE_DATASOURCE],
                                                                          full_message=[
-                                                                             {'type': msg.type, 'content': msg.content}
+                                                                             {'type': msg.type,
+                                                                              'content': msg.content}
                                                                              for msg in datasource_msg],
                                                                          reasoning_content=full_thinking_text,
                                                                          token_usage=token_usage)
@@ -539,6 +539,9 @@ class LLMService:
         self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
                                                                     self.ds.oid if isinstance(self.ds,
                                                                                               CoreDatasource) else 1)
+        self.chat_question.data_training = get_training_template(self.session, self.chat_question.question,
+                                                                 self.ds.id, self.ds.oid)
+
         self.init_messages()
 
         if _error:
@@ -1000,8 +1003,8 @@ class LLMService:
                 self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
                                                                             self.ds.oid if isinstance(self.ds,
                                                                                                       CoreDatasource) else 1)
-            self.chat_question.data_training = get_training_template(self.session, self.chat_question.question,
-                                                                     self.ds.id, self.ds.oid)
+                self.chat_question.data_training = get_training_template(self.session, self.chat_question.question,
+                                                                         self.ds.id, self.ds.oid)
 
             self.init_messages()
 
