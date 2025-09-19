@@ -481,16 +481,21 @@ async def _run_analysis_or_predict(
             request_question,
             current_assistant)
         if task_type == 'analysis':
-            if chat_record.my_promote is None:
+            if chat_record.my_promote is None and chat_record.intent:
                 payload: Optional[AnalysisIntentPayload] = (
                     analysis_identify_intent(llm_service.llm, request_question.question)
                 )
-                # 记录意图识别结果
-                if payload:
-                    SQLBotLogUtil.info(f"意图识别详情 - 原始输入: '{request_question.question}', "
-                                       f"意图: '{payload.intent}', "
-                                       f"角色: '{payload.role}', "
-                                       f"任务: '{payload.task}'")
+            # 记录意图识别结果
+            if payload is None:
+                payload = AnalysisIntentPayload(
+                    intent="分析",
+                    role="数据分析师",
+                    task=request_question.question,
+                )
+            SQLBotLogUtil.info(f"意图识别详情 - 原始输入: '{request_question.question}', "
+                               f"意图: '{payload.intent}', "
+                               f"角色: '{payload.role}', "
+                               f"任务: '{payload.task}'")
         data_str = None
         if chat_record.chat_data_object is not None:
             data_str = json.dumps(chat_record.chat_data_object, ensure_ascii=False)

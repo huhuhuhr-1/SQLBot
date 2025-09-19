@@ -1406,11 +1406,11 @@ class LLMService:
         self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
                                                                     self.current_user.oid)
         # 系统提示词
-        if payload is not None:
+        if self.chat_question.my_promote is not None:
+            sys_prompt = self.chat_question.my_promote
+        elif payload is not None:
             sys_prompt = analysis_question(role=payload.role, task=payload.task, intent=payload.intent,
                                            terminologies=self.chat_question.terminologies)
-        elif self.chat_question.my_promote is not None:
-            sys_prompt = self.chat_question.my_promote
         else:
             sys_prompt = self.chat_question.analysis_sys_question()
         analysis_msg.append(SystemMessage(content=sys_prompt))

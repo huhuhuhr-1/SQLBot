@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Union
 import json
 import re
-
+from pydantic import BaseModel, field_validator
 from typing import List, Union, Optional
 
 from fastapi import Body, Header
@@ -57,6 +57,15 @@ class OpenChat(BaseModel):
     chat_data_object: Any = Body(None, description='分析问题')
     my_promote: str = Body(None, description='自定义提示词')
     my_schema: Optional[str] = Body(None, description='自定义schema')
+    intent: Optional[bool] = Body(default=False, description='是否进行意图检测')
+
+    @field_validator('my_promote', 'my_schema', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        """将空字符串转换为 None"""
+        if v == '':
+            return None
+        return v
 
 
 class OpenChatQuestion(AiModelQuestion):
@@ -75,6 +84,14 @@ class OpenChatQuestion(AiModelQuestion):
     analysis: Optional[bool] = Body(default=False, description='是否分析')
     predict: Optional[bool] = Body(default=False, description='是否预测')
     recommend: Optional[bool] = Body(default=False, description='是否推荐')
+
+    @field_validator('my_promote', 'my_schema', 'my_sql', mode='before')
+    @classmethod
+    def empty_str_to_none(cls, v):
+        """将空字符串转换为 None"""
+        if v == '':
+            return None
+        return v
 
 
 class OpenToken(BaseModel):
