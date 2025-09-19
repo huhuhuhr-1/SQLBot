@@ -5,8 +5,10 @@ import math
 import traceback
 
 from apps.ai_model.embedding import EmbeddingModelCache
-from apps.datasource.crud.datasource import get_table_schema, get_ds
+from apps.datasource.crud.datasource import get_table_schema
+from apps.datasource.models.datasource import CoreDatasource
 from common.core.deps import SessionDep, CurrentUser
+from common.utils.utils import SQLBotLogUtil
 
 
 def cosine_similarity(vec_a, vec_b):
@@ -28,7 +30,7 @@ def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, q
     _list = []
     for _ds in _ds_list:
         if _ds.get('id'):
-            ds = get_ds(session, _ds.get('id'))
+            ds = session.get(CoreDatasource, _ds.get('id'))
 
             table_schema = get_table_schema(session, current_user, ds)
             ds_info = f"{ds.name}, {ds.description}\n"
@@ -49,7 +51,10 @@ def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, q
                 _list[index]['cosine_similarity'] = cosine_similarity(q_embedding, item)
 
             _list.sort(key=lambda x: x['cosine_similarity'], reverse=True)
-            print(json.dumps(_list))
+            # print(len(_list))
+            SQLBotLogUtil.info(json.dumps(
+                [{"id": ele.get("id"), "name": ele.get("ds").name, "cosine_similarity": ele.get("cosine_similarity")}
+                 for ele in _list]))
             ds = _list[0].get('ds')
             return {"id": ds.id, "name": ds.name, "description": ds.description}
         except Exception:

@@ -195,6 +195,7 @@
                   :first-chat="message.first_chat"
                   @click-question="quickAsk"
                   @stop="onChatStop"
+                  @loadingOver="loadingOver"
                 />
                 <UserChat v-if="message.role === 'user'" :message="message" />
                 <template v-if="message.role === 'assistant' && !message.first_chat">
@@ -286,6 +287,7 @@
                         :first-chat="message.first_chat"
                         :disabled="isTyping"
                         @click-question="quickAsk"
+                        @loadingOver="loadingOver"
                         @stop="onChatStop"
                       />
                     </template>
@@ -501,7 +503,7 @@ let scrollTopVal = 0
 let scrolling = false
 const scrollBottom = () => {
   if (scrolling) return
-  if (!isTyping.value) {
+  if (!isTyping.value && !getRecommendQuestionsLoading.value) {
     clearInterval(scrollTime)
   }
   chatListRef.value!.setScrollTop(innerRef.value!.clientHeight)
@@ -671,11 +673,16 @@ function quickAsk(question: string) {
 }
 
 const chartAnswerRef = ref()
-
+const getRecommendQuestionsLoading = ref(false)
 async function onChartAnswerFinish(id: number) {
+  getRecommendQuestionsLoading.value = true
   loading.value = false
   isTyping.value = false
   getRecommendQuestions(id)
+}
+
+const loadingOver = () => {
+  getRecommendQuestionsLoading.value = false
 }
 
 function onChartAnswerError() {
