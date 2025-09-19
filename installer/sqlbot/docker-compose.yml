@@ -3,6 +3,7 @@ services:
     image: registry.cn-qingdao.aliyuncs.com/dataease/sqlbot:SQLBOT_TAG
     container_name: sqlbot
     restart: always
+    privileged: true
     networks:
       - sqlbot-network
     ports:

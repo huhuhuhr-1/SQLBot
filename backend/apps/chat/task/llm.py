@@ -16,7 +16,7 @@ import sqlparse
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import Session
 
@@ -32,6 +32,7 @@ from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameCh
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
+from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
@@ -404,9 +405,8 @@ class LLMService:
         if self.current_assistant and self.current_assistant.type != 4:
             _ds_list = get_assistant_ds(session=self.session, llm_service=self)
         else:
-            oid: str = self.current_user.oid
             stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(
-                CoreDatasource.oid == oid)
+                and_(CoreDatasource.oid == self.current_user.oid))
             _ds_list = [
                 {
                     "id": ds.id,
@@ -424,59 +424,65 @@ class LLMService:
 
         full_thinking_text = ''
         full_text = ''
-
         if not ignore_auto_select:
-            _ds_list_dict = []
-            for _ds in _ds_list:
-                _ds_list_dict.append(_ds)
-            datasource_msg.append(
-                HumanMessage(self.chat_question.datasource_user_question(orjson.dumps(_ds_list_dict).decode())))
+            if settings.EMBEDDING_ENABLED:
+                ds = get_ds_embedding(self.session, self.current_user, _ds_list, self.chat_question.question)
+                yield {'content': '{"id":' + str(ds.get('id')) + '}'}
+            else:
+                _ds_list_dict = []
+                for _ds in _ds_list:
+                    _ds_list_dict.append(_ds)
+                datasource_msg.append(
+                    HumanMessage(self.chat_question.datasource_user_question(orjson.dumps(_ds_list_dict).decode())))
 
-            self.current_logs[OperationEnum.CHOOSE_DATASOURCE] = start_log(session=self.session,
-                                                                           ai_modal_id=self.chat_question.ai_modal_id,
-                                                                           ai_modal_name=self.chat_question.ai_modal_name,
-                                                                           operate=OperationEnum.CHOOSE_DATASOURCE,
-                                                                           record_id=self.record.id,
-                                                                           full_message=[{'type': msg.type,
-                                                                                          'content': msg.content}
-                                                                                         for
-                                                                                         msg in datasource_msg])
+                self.current_logs[OperationEnum.CHOOSE_DATASOURCE] = start_log(session=self.session,
+                                                                               ai_modal_id=self.chat_question.ai_modal_id,
+                                                                               ai_modal_name=self.chat_question.ai_modal_name,
+                                                                               operate=OperationEnum.CHOOSE_DATASOURCE,
+                                                                               record_id=self.record.id,
+                                                                               full_message=[{'type': msg.type,
+                                                                                              'content': msg.content}
+                                                                                             for
+                                                                                             msg in datasource_msg])
 
-            token_usage = {}
-            res = self.llm.stream(datasource_msg)
-            for chunk in res:
-                SQLBotLogUtil.info(chunk)
-                reasoning_content_chunk = ''
-                if 'reasoning_content' in chunk.additional_kwargs:
-                    reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-                # else:
-                #     reasoning_content_chunk = chunk.get('reasoning_content')
-                if reasoning_content_chunk is None:
+                token_usage = {}
+                res = self.llm.stream(datasource_msg)
+                for chunk in res:
+                    SQLBotLogUtil.info(chunk)
                     reasoning_content_chunk = ''
-                full_thinking_text += reasoning_content_chunk
+                    if 'reasoning_content' in chunk.additional_kwargs:
+                        reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+                    # else:
+                    #     reasoning_content_chunk = chunk.get('reasoning_content')
+                    if reasoning_content_chunk is None:
+                        reasoning_content_chunk = ''
+                    full_thinking_text += reasoning_content_chunk
 
-                full_text += chunk.content
-                yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-                get_token_usage(chunk, token_usage)
-            datasource_msg.append(AIMessage(full_text))
+                    full_text += chunk.content
+                    yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+                    get_token_usage(chunk, token_usage)
+                datasource_msg.append(AIMessage(full_text))
 
-            self.current_logs[OperationEnum.CHOOSE_DATASOURCE] = end_log(session=self.session,
-                                                                         log=self.current_logs[
-                                                                             OperationEnum.CHOOSE_DATASOURCE],
-                                                                         full_message=[
-                                                                             {'type': msg.type,
-                                                                              'content': msg.content}
-                                                                             for msg in datasource_msg],
-                                                                         reasoning_content=full_thinking_text,
-                                                                         token_usage=token_usage)
+                self.current_logs[OperationEnum.CHOOSE_DATASOURCE] = end_log(session=self.session,
+                                                                             log=self.current_logs[
+                                                                                 OperationEnum.CHOOSE_DATASOURCE],
+                                                                             full_message=[
+                                                                                 {'type': msg.type,
+                                                                                  'content': msg.content}
+                                                                                 for msg in datasource_msg],
+                                                                             reasoning_content=full_thinking_text,
+                                                                             token_usage=token_usage)
 
-            json_str = extract_nested_json(full_text)
+                json_str = extract_nested_json(full_text)
+                if json_str is None:
+                    raise SingleMessageError(f'Cannot parse datasource from answer: {full_text}')
+                ds = orjson.loads(json_str)
 
         _error: Exception | None = None
         _datasource: int | None = None
         _engine_type: str | None = None
         try:
-            data: dict = _ds_list[0] if ignore_auto_select else orjson.loads(json_str)
+            data: dict = _ds_list[0] if ignore_auto_select else ds
 
             if data.get('id') and data.get('id') != 0:
                 _datasource = data['id']
@@ -515,17 +521,18 @@ class LLMService:
         except Exception as e:
             _error = e
 
-        if not ignore_auto_select:
+        if not ignore_auto_select and not settings.EMBEDDING_ENABLED:
             self.record = save_select_datasource_answer(session=self.session, record_id=self.record.id,
                                                         answer=orjson.dumps({'content': full_text}).decode(),
                                                         datasource=_datasource,
                                                         engine_type=_engine_type)
         if self.ds:
-            self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
-                                                                        self.ds.oid if isinstance(self.ds,
-                                                                                                  CoreDatasource) else 1)
-            self.chat_question.data_training = get_training_template(self.session, self.chat_question.question,
-                                                                     self.ds.id, self.ds.oid)
+            oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
+            ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+
+            self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question, oid)
+            self.chat_question.data_training = get_training_template(self.session, self.chat_question.question, ds_id,
+                                                                     oid)
 
             self.init_messages()
 
@@ -936,11 +943,12 @@ class LLMService:
     def run_task(self, in_chat: bool = True):
         try:
             if self.ds:
+                oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
+                ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
                 self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
-                                                                            self.ds.oid if isinstance(self.ds,
-                                                                                                      CoreDatasource) else 1)
+                                                                            oid)
                 self.chat_question.data_training = get_training_template(self.session, self.chat_question.question,
-                                                                         self.ds.id, self.ds.oid)
+                                                                         ds_id, oid)
 
             self.init_messages()
 
@@ -1095,11 +1103,14 @@ class LLMService:
                             _fields_list.append(field if not _fields.get(field) else _fields.get(field))
                     data.append(_row)
                     _fields_skip = True
-                df = pd.DataFrame(np.array(data), columns=_fields_list)
-                markdown_table = df.to_markdown(index=False)
-                yield markdown_table + '\n\n'
 
-            record = self.finish()
+                if not data or not _fields_list:
+                    yield 'The SQL execution result is empty.\n\n'
+                else:
+                    df = pd.DataFrame(np.array(data), columns=_fields_list)
+                    markdown_table = df.to_markdown(index=False)
+                    yield markdown_table + '\n\n'
+
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
             else:
@@ -1127,6 +1138,8 @@ class LLMService:
                 yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
             else:
                 yield f'> &#x274c; **ERROR**\n\n> \n\n> {error_msg}。'
+        finally:
+            self.finish()
 
     def run_recommend_questions_task_async(self):
         self.future = executor.submit(self.run_recommend_questions_task_cache)
