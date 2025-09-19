@@ -56,6 +56,7 @@ class OpenChat(BaseModel):
     question: str = Body(None, description='问题内容')
     chat_data_object: Any = Body(None, description='分析问题')
     my_promote: str = Body(None, description='自定义提示词')
+    my_schema: Optional[str] = Body(None, description='自定义schema')
 
 
 class OpenChatQuestion(AiModelQuestion):
@@ -73,7 +74,7 @@ class OpenChatQuestion(AiModelQuestion):
     intent: Optional[bool] = Body(default=False, description='是否进行意图检测')
     analysis: Optional[bool] = Body(default=False, description='是否分析')
     predict: Optional[bool] = Body(default=False, description='是否预测')
-    recommend: Optional[bool] = Body(default=True, description='是否推荐')
+    recommend: Optional[bool] = Body(default=False, description='是否推荐')
 
 
 class OpenToken(BaseModel):

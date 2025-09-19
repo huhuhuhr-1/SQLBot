@@ -470,7 +470,8 @@ async def _run_analysis_or_predict(
     request_question = OpenChatQuestion(
         chat_id=record.chat_id,
         question=record.question,
-        my_promote=chat_record.my_promote
+        my_promote=chat_record.my_promote,
+        my_schema=chat_record.my_schema
     )
 
     try:

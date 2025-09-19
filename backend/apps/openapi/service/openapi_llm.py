@@ -552,6 +552,9 @@ class LLMService:
         self.sql_message.append(HumanMessage(
             self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))))
 
+        # add at 20250619
+        self.print_Message(self.sql_message)
+
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=self.session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
                                                                   ai_modal_name=self.chat_question.ai_modal_name,
@@ -600,6 +603,8 @@ class LLMService:
             "sql": self.chat_question.my_sql
         }).decode()
         self.sql_message.append(HumanMessage(content=content))
+        # add at 20250619
+        self.print_Message(self.sql_message)
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=self.session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -638,6 +643,17 @@ class LLMService:
                                                                 token_usage=token_usage)
         self.record = save_sql_answer(session=self.session, record_id=self.record.id,
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
+
+    def print_Message(self, messages=None):
+        if messages is None:
+            messages = self.sql_message
+        for i, msg in enumerate(messages):
+            if isinstance(msg, SystemMessage):
+                SQLBotLogUtil.info(f"\n\nSystem prompt [{i}]:\n {msg.content}\n")
+            elif isinstance(msg, HumanMessage):
+                SQLBotLogUtil.info(f"\nHuman prompt [{i}]:\n {msg.content}\n")
+            elif isinstance(msg, AIMessage):
+                SQLBotLogUtil.info(f"\nAI prompt [{i}]:\n {msg.content}\n\n")
 
     def generate_with_sub_sql(self, sql, sub_mappings: list):
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
@@ -1398,8 +1414,12 @@ class LLMService:
         else:
             sys_prompt = self.chat_question.analysis_sys_question()
         analysis_msg.append(SystemMessage(content=sys_prompt))
-        # 输入 field + data
-        analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
+        # 输入 field + data modify by huhuhuhr
+        if self.chat_question.my_schema is not None:
+            analysis_msg.append(HumanMessage(
+                content=self.chat_question.analysis_user_question_with_schema(self.chat_question.my_schema)))
+        else:
+            analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
 
         self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
                                                               ai_modal_id=self.chat_question.ai_modal_id,
@@ -1413,6 +1433,8 @@ class LLMService:
                                                                   in analysis_msg])
         full_thinking_text = ''
         full_analysis_text = ''
+        # modify by huhuhuhr 打印分析
+        self.print_Message(analysis_msg)
         res = self.llm.stream(analysis_msg)
         token_usage = {}
         for chunk in res:
