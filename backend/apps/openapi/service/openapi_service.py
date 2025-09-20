@@ -472,7 +472,12 @@ async def _run_analysis_or_predict(
         question=record.question,
         my_promote=chat_record.my_promote,
         my_schema=chat_record.my_schema,
-        every=chat_record.every
+        every=chat_record.every,
+        history_open=chat_record.history_open,
+        intent=chat_record.intent,
+        my_sql=chat_record.my_sql,
+        predict=chat_record.predict,
+        recommend=chat_record.recommend
     )
 
     try:

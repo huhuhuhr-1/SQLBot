@@ -1371,21 +1371,22 @@ class LLMService:
 
             SQLBotLogUtil.info(f'Estimated total prompt tokens: {total_prompt_tokens}')
 
-            if self.chat_question.every is not False and total_prompt_tokens <= max_token_chars:
+            if self.chat_question.every is not True and total_prompt_tokens <= max_token_chars:
                 # 数据量较小，直接使用原数据
                 self.chat_question.data = data_str
             else:
-                SQLBotLogUtil.info(
-                    f'chunking data :{len(data_str)} ,current length {total_prompt_tokens}> {max_token_chars}')
                 # 数据量大，需要进行分段摘要处理
                 if self.chat_question.every is True:
                     # 当 every 为 True 时，不进行分片处理，直接使用全部数据
-                    chunks = raw_data
+                    chunks = self._chunk_data_every(raw_data)
+                    # 超过30条逐条分析，则进行分片处理
+                    if len(chunks) > 30:
+                        chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
                 else:
                     # 否则进行分片处理
                     chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
                 # 数据量大，需要进行逐条分析处理
-                remark = f"正在进行分析...请耐心等待。数量:{len(chunks)}\n"
+                remark = f"正在进行分析...请耐心等待。分片数量:{len(chunks)}\n\n"
                 yield {'content': "", 'reasoning_content': remark}
                 every_chunk_max_token_chars = max_token_chars / len(chunks)
                 # 对每条数据生成摘要
@@ -1394,11 +1395,11 @@ class LLMService:
                     chunk_str = orjson.dumps(chunk).decode()
                     # 流式处理摘要生成
                     final_summary = None
-                    remark = f"\n第{i + 1}个数据段,归纳内容(生成中...)\n"
+                    remark = f"\n第{i + 1}个数据段,归纳内容(生成中...)\n\n"
                     yield {'content': "", 'reasoning_content': remark}
                     for summary in self._summarize_data_chunk(chunk_str,
                                                               i + 1,
-                                                              len(raw_data),
+                                                              len(chunks),
                                                               every_chunk_max_token_chars,
                                                               self.chat_question.question):
                         if summary.get("partial"):
@@ -1443,16 +1444,18 @@ class LLMService:
         else:
             analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
 
-        self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
-                                                              ai_modal_id=self.chat_question.ai_modal_id,
-                                                              ai_modal_name=self.chat_question.ai_modal_name,
-                                                              operate=OperationEnum.ANALYSIS,
-                                                              record_id=self.record.id,
-                                                              full_message=[
-                                                                  {'type': msg.type,
-                                                                   'content': msg.content} for
-                                                                  msg
-                                                                  in analysis_msg])
+        # modify by huhuhuhr
+        if self.chat_question.history_open is True:
+            self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
+                                                                  ai_modal_id=self.chat_question.ai_modal_id,
+                                                                  ai_modal_name=self.chat_question.ai_modal_name,
+                                                                  operate=OperationEnum.ANALYSIS,
+                                                                  record_id=self.record.id,
+                                                                  full_message=[
+                                                                      {'type': msg.type,
+                                                                       'content': msg.content} for
+                                                                      msg
+                                                                      in analysis_msg])
         full_thinking_text = ''
         full_analysis_text = ''
         # modify by huhuhuhr 打印分析
@@ -1548,6 +1551,22 @@ class LLMService:
         # 添加最后一个块
         if current_chunk:
             chunks.append(current_chunk)
+
+        return chunks
+
+    def _chunk_data_every(self, data: List[Any]) -> List[List[Any]]:
+        """
+        根据 token 数量将数据分块，每块不超过 max_tokens。
+
+        Args:
+            data: 数据列表，每个 item 可被 orjson 序列化
+
+        Returns:
+            分块后的数据列表
+        """
+        chunks = []
+        for item in data:
+            chunks.append([item])
 
         return chunks
 
