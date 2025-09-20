@@ -6,6 +6,7 @@ import urllib.parse
 import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
+from string import Template
 from typing import Any, List, Optional, Union, Dict
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
     OpenChat, OpenClean, common_headers, IntentPayload
@@ -90,7 +91,7 @@ class LLMService:
                  current_assistant: Optional[CurrentAssistant] = None,
                  no_reasoning: bool = False,
                  config: LLMConfig = None):
-        # ✅ 确保是字符串，并设置环境变量
+        # ✅ 确保是字符串，并设置环境变量 modify huhuhuhr
         os.environ["TIKTOKEN_CACHE_DIR"] = str(settings.TIKTOKEN_CACHE_DIR)
         self._encoder = tiktoken.get_encoding("o200k_base")
         self.chunk_list = []
@@ -181,8 +182,10 @@ class LLMService:
 
         self.sql_message = []
         # modify by huhuhuhr 自定义提示词
-        if self.chat_question.my_promote is not None:
-            self.sql_message.append(SystemMessage(content=self.chat_question.my_promote))
+        if self.chat_question.my_promote is not None and self.chat_question.my_promote.strip() != '':
+            self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question()))
+            sys_promote = self.get_my_sys_prompt(payload=None)
+            self.sql_message.append(SystemMessage(content=sys_promote))
         else:
             if self.chat_question.my_schema is not None:
                 self.sql_message.append(SystemMessage(
@@ -559,9 +562,6 @@ class LLMService:
         self.sql_message.append(HumanMessage(
             self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))))
 
-        # add at 20250619
-        self.print_Message(self.sql_message)
-
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=self.session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
                                                                   ai_modal_name=self.chat_question.ai_modal_name,
@@ -573,6 +573,8 @@ class LLMService:
         full_thinking_text = ''
         full_sql_text = ''
         token_usage = {}
+        # add at 20250619 huhuhuhr
+        self.print_Message(self.sql_message)
         res = self.llm.stream(self.sql_message)
         for chunk in res:
             SQLBotLogUtil.info(chunk)
@@ -610,7 +612,7 @@ class LLMService:
             "sql": self.chat_question.my_sql
         }).decode()
         self.sql_message.append(HumanMessage(content=content))
-        # add at 20250619
+        # add at 20250619 huhuhuhr
         self.print_Message(self.sql_message)
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=self.session,
@@ -1074,11 +1076,12 @@ class LLMService:
 
             # modify by huhuhuhr
             full_sql_text = ''
-            if self.chat_question.my_sql is not None:
+            if self.chat_question.my_sql is not None and self.chat_question.my_sql.strip() != '':
                 sql_res = self.generate_sql_with_sql()
             else:
                 sql_res = self.generate_sql()
 
+            full_sql_text = ''
             for chunk in sql_res:
                 full_sql_text += chunk.get('content')
                 if in_chat:
@@ -1368,16 +1371,21 @@ class LLMService:
 
             SQLBotLogUtil.info(f'Estimated total prompt tokens: {total_prompt_tokens}')
 
-            if total_prompt_tokens <= max_token_chars:
+            if self.chat_question.every is not False and total_prompt_tokens <= max_token_chars:
                 # 数据量较小，直接使用原数据
                 self.chat_question.data = data_str
             else:
                 SQLBotLogUtil.info(
-                    f'data is too large, chunking data :{len(data_str)} ,current length {total_prompt_tokens}> {max_token_chars}')
+                    f'chunking data :{len(data_str)} ,current length {total_prompt_tokens}> {max_token_chars}')
                 # 数据量大，需要进行分段摘要处理
-                chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
+                if self.chat_question.every is True:
+                    # 当 every 为 True 时，不进行分片处理，直接使用全部数据
+                    chunks = raw_data
+                else:
+                    # 否则进行分片处理
+                    chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
                 # 数据量大，需要进行逐条分析处理
-                remark = f"数据集过大，正在进行分段分析...请耐心等待。分段数:{len(chunks)}\n"
+                remark = f"正在进行分析...请耐心等待。数量:{len(chunks)}\n"
                 yield {'content': "", 'reasoning_content': remark}
                 every_chunk_max_token_chars = max_token_chars / len(chunks)
                 # 对每条数据生成摘要
@@ -1404,7 +1412,7 @@ class LLMService:
                     summaries.append(final_summary)
                 # 将所有摘要合并
                 combined_summary = {
-                    "summary": "数据因大小限制已被分段摘要处理",
+                    "summary": "分段处理片段信息",
                     "chunk_count": len(raw_data),
                     "summaries": summaries
                 }
@@ -1419,9 +1427,9 @@ class LLMService:
         # 术语
         self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
                                                                     self.current_user.oid)
-        # 系统提示词
+        # 系统提示词 modify by huhuhuhr
         if self.chat_question.my_promote is not None:
-            sys_prompt = self.chat_question.my_promote
+            sys_prompt = self.get_my_sys_prompt(payload)
         elif payload is not None:
             sys_prompt = analysis_question(role=payload.role, task=payload.task, intent=payload.intent,
                                            terminologies=self.chat_question.terminologies)
@@ -1479,6 +1487,23 @@ class LLMService:
                                                             token_usage=token_usage)
         self.record = save_analysis_answer(session=self.session, record_id=self.record.id,
                                            answer=orjson.dumps({'content': full_analysis_text}).decode())
+
+    def get_my_sys_prompt(self, payload):
+        # 术语 modify by huhuhuhr
+        if self.chat_question is not None and self.chat_question.terminologies is not None and self.chat_question.terminologies != '':
+            self.chat_question.terminologies = get_terminology_template(self.session,
+                                                                        self.chat_question.question,
+                                                                        self.current_user.oid)
+        template_vars = {
+            "role": getattr(payload, 'role', '') if payload else '',
+            "task": getattr(payload, 'task', '') if payload else '',
+            "intent": getattr(payload, 'intent', '') if payload else '',
+            "terminologies": getattr(self.chat_question, 'terminologies', '')
+        }
+        # 使用 Template 安全替换
+        template = Template(self.chat_question.my_promote)
+        sys_prompt = template.safe_substitute(**template_vars)
+        return sys_prompt
 
     def _chunk_data_by_tokens(self, data: List[Any], max_tokens: int) -> List[List[Any]]:
         """

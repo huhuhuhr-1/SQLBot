@@ -471,7 +471,8 @@ async def _run_analysis_or_predict(
         chat_id=record.chat_id,
         question=record.question,
         my_promote=chat_record.my_promote,
-        my_schema=chat_record.my_schema
+        my_schema=chat_record.my_schema,
+        every=chat_record.every
     )
 
     try:
