@@ -201,7 +201,15 @@ async def getChat(
 
         # 异步运行任务
         llm_service.run_task_async()
-
+        stream = llm_service.await_result()
+        # 返回经过合并处理的流式响应
+        return StreamingResponse(
+            merge_streaming_chunks(stream=stream,
+                                   llm_service=llm_service,
+                                   payload=payload,
+                                   chat_question=chat_question),
+            media_type="text/event-stream"
+        )
     except Exception as e:
         # 记录异常信息用于调试
         SQLBotLogUtil.error(f"聊天接口异常: {str(e)}")
@@ -211,14 +219,10 @@ async def getChat(
             detail=f"聊天处理失败: {str(e)}"
         )
 
-    # 返回经过合并处理的流式响应
-    return StreamingResponse(
-        merge_streaming_chunks(stream=llm_service.await_result(),
-                               llm_service=llm_service,
-                               payload=payload,
-                               chat_question=chat_question),
-        media_type="text/event-stream"
-    )
+
+async def to_async(gen):
+    for item in gen:
+        yield item
 
 
 @router.post("/getData", dependencies=[Depends(common_headers)])

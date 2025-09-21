@@ -7,9 +7,8 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
 from string import Template
-from typing import Any, List, Optional, Union, Dict
-from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, IntentPayload
+from typing import Any, List, Optional, Union, Dict, Iterator
+
 import numpy as np
 import orjson
 import pandas as pd
@@ -31,7 +30,7 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_old_questions, save_analysis_predict_record, rename_chat, get_chart_config, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error
-from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum
+from apps.chat.models.chat_model import ChatRecord, Chat, RenameChat, ChatLog, OperationEnum
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
@@ -39,6 +38,7 @@ from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection
 from apps.openapi.models.openapiModels import AnalysisIntentPayload
+from apps.openapi.models.openapiModels import OpenChatQuestion
 from apps.openapi.service.openapi_prompt import analysis_question
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.schemas.system_schema import AssistantOutDsSchema
@@ -275,7 +275,7 @@ class LLMService:
                                                                   in analysis_msg])
         full_thinking_text = ''
         full_analysis_text = ''
-        res = self.llm.stream(analysis_msg)
+        res = self.stream_with_think(self.llm.stream(analysis_msg))
         token_usage = {}
         for chunk in res:
             SQLBotLogUtil.info(chunk)
@@ -327,7 +327,7 @@ class LLMService:
                                                                       in predict_msg])
         full_thinking_text = ''
         full_predict_text = ''
-        res = self.llm.stream(predict_msg)
+        res = self.stream_with_think(self.llm.stream(predict_msg))
         token_usage = {}
         for chunk in res:
             SQLBotLogUtil.info(chunk)
@@ -385,7 +385,7 @@ class LLMService:
         full_thinking_text = ''
         full_guess_text = ''
         token_usage = {}
-        res = self.llm.stream(guess_msg)
+        res = self.stream_with_think(self.llm.stream(guess_msg))
         for chunk in res:
             SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
@@ -464,7 +464,7 @@ class LLMService:
                                                                                              msg in datasource_msg])
 
                 token_usage = {}
-                res = self.llm.stream(datasource_msg)
+                res = self.stream_with_think(self.llm.stream(datasource_msg))
                 for chunk in res:
                     SQLBotLogUtil.info(chunk)
                     reasoning_content_chunk = ''
@@ -575,7 +575,7 @@ class LLMService:
         token_usage = {}
         # add at 20250619 huhuhuhr
         self.print_Message(self.sql_message)
-        res = self.llm.stream(self.sql_message)
+        res = self.stream_with_think(self.llm.stream(self.sql_message))
         for chunk in res:
             SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
@@ -626,7 +626,7 @@ class LLMService:
         full_thinking_text = ''
         full_sql_text = ''
         token_usage = {}
-        res = self.llm.stream(self.sql_message)
+        res = self.stream_with_think(self.llm.stream(self.sql_message))
         for chunk in res:
             SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
@@ -684,8 +684,10 @@ class LLMService:
 
         full_thinking_text = ''
         full_dynamic_text = ''
-        res = self.llm.stream(dynamic_sql_msg)
+        # modify by huhuhuhr 20250921
+        res = self.stream_with_think(self.llm.stream(dynamic_sql_msg))
         token_usage = {}
+        # modify by huhuhuhr 20250921
         for chunk in res:
             SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
@@ -747,8 +749,9 @@ class LLMService:
                                                                                        in permission_sql_msg])
         full_thinking_text = ''
         full_filter_text = ''
-        res = self.llm.stream(permission_sql_msg)
+        res = self.stream_with_think(self.llm.stream(permission_sql_msg))
         token_usage = {}
+        # modify by huhuhuhr 20250921
         for chunk in res:
             SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
@@ -812,7 +815,8 @@ class LLMService:
         full_thinking_text = ''
         full_chart_text = ''
         token_usage = {}
-        res = self.llm.stream(self.chart_message)
+        res = self.stream_with_think(self.llm.stream(self.chart_message))
+        # modify by huhuhuhr 20250921
         for chunk in res:
             SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
@@ -1460,7 +1464,8 @@ class LLMService:
         full_analysis_text = ''
         # modify by huhuhuhr 打印分析
         self.print_Message(analysis_msg)
-        res = self.llm.stream(analysis_msg)
+        res = self.stream_with_think(self.llm.stream(analysis_msg))
+        # res = self.llm.stream(analysis_msg)
         token_usage = {}
         for chunk in res:
             SQLBotLogUtil.info(chunk)
@@ -1570,6 +1575,63 @@ class LLMService:
 
         return chunks
 
+    def model_think_parse(self, chunks: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
+        THINK_BEGIN_TAG = "<think>"
+        THINK_END_TAG = "</think>"
+        response_content = ""
+        force_think_begin = False
+        tag_begin = False
+        think_begin = True if force_think_begin else False
+        think_end = False
+
+        for chunk in chunks:
+            token = chunk.content
+            # 分次处理输入字符，以缓冲的为准，防止连续的 < 符号判断导致丢失 tag 的前部分，导致出错，如 <\n</|th|in|k>
+            if "<" in token:
+                tag_begin = True
+                response_content = ""
+
+            if tag_begin:
+                response_content += token
+                if not force_think_begin and not think_begin and THINK_BEGIN_TAG in response_content:
+                    think_begin = True
+                    tag_begin = False
+                elif not think_end and THINK_END_TAG in response_content:
+                    # 返回 think 结束之前的内容
+                    end_index = response_content.index(THINK_END_TAG) + len(THINK_END_TAG)
+                    chunk.reason_content = response_content[:end_index]
+                    yield chunk
+                    think_end = True
+                    tag_begin = False
+                    # 返回 think 结束之后的内容（如果有）
+                    response_content = response_content[end_index:]
+                    if response_content == "":
+                        continue
+                # 去除 < 符号之前的字符，防止 < 符号之前有其他字符导致判断出错
+                elif (response_content[response_content.index("<"):] not in THINK_BEGIN_TAG
+                      and response_content[response_content.index("<"):] not in THINK_END_TAG):
+                    tag_begin = False
+
+            if tag_begin:
+                continue
+
+            if response_content == "":
+                response_content = token
+            if response_content == "\n":
+                continue
+
+            if think_begin and not think_end:
+                chunk.reason_content = response_content
+                yield chunk
+            else:
+                chunk.content = response_content
+                yield chunk
+            response_content = ""
+
+    def stream_with_think(self, raw_stream: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
+        for chunk in self.model_think_parse(raw_stream):
+            yield chunk
+
     def _summarize_data_chunk(self, chunk_data_str, chunk_index, total_chunks, limits_token_usage, question):
         """
         使用LLM对数据块进行摘要，明确要求使用中文回答
@@ -1585,7 +1647,9 @@ class LLMService:
 
             # 生成摘要（流式）
             full_summary = ""
-            for chunk in self.llm.stream(summary_prompt):
+            res = self.stream_with_think(self.llm.stream(summary_prompt))
+            for chunk in res:
+                SQLBotLogUtil.info(chunk)
                 full_summary += chunk.content
                 # 流式返回当前生成的部分摘要
                 yield {
