@@ -1385,7 +1385,7 @@ class LLMService:
                     # 当 every 为 True 时，不进行分片处理，直接使用全部数据
                     chunks = self._chunk_data_every(raw_data)
                     # 超过30条逐条分析，则进行分片处理
-                    if len(chunks) > 30:
+                    if len(chunks) > 10:
                         chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
                 else:
                     # 否则进行分片处理
@@ -1648,14 +1648,14 @@ class LLMService:
                 SystemMessage(
                     content=f"你是一个数据分析师。你的任务是对给定的数据块提供简洁的中文摘要。重点关注关键模式、趋势、统计信息和重要观察。保持摘要信息丰富但简洁，必须使用中文回复。总结字数不要超过{int(limits_token_usage)}个字。内容总结需要符合用户的预期，用户问题：{question}。"),
                 HumanMessage(
-                    content=f"数据块 {chunk_index}/{total_chunks}:\n{chunk_data_str}\n\n请用中文提供此数据块的简洁摘要。")
+                    content=f"{chunk_data_str}\n\n请用中文提供此数据块的简洁摘要。")
             ]
 
             # 生成摘要（流式）
             full_summary = ""
             res = self.stream_with_think(self.llm.stream(summary_prompt))
             for chunk in res:
-                SQLBotLogUtil.info(chunk)
+                SQLBotLogUtil.info(f"_summarize_data_chunk:{chunk}")
                 full_summary += chunk.content
                 # 流式返回当前生成的部分摘要
                 yield {
