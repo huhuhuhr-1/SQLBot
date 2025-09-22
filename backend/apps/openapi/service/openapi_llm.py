@@ -577,7 +577,7 @@ class LLMService:
         self.print_Message(self.sql_message)
         res = self.stream_with_think(self.llm.stream(self.sql_message))
         for chunk in res:
-            SQLBotLogUtil.info(chunk)
+            # SQLBotLogUtil.info(f"output:{chunk}")
             reasoning_content_chunk = ''
             if 'reasoning_content' in chunk.additional_kwargs:
                 reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
@@ -1079,7 +1079,6 @@ class LLMService:
                 raise SQLBotDBConnectionError('Connect DB failed')
 
             # modify by huhuhuhr
-            full_sql_text = ''
             if self.chat_question.my_sql is not None and self.chat_question.my_sql.strip() != '':
                 sql_res = self.generate_sql_with_sql()
             else:
@@ -1087,6 +1086,7 @@ class LLMService:
 
             full_sql_text = ''
             for chunk in sql_res:
+                # SQLBotLogUtil.info(f"sql:{chunk}")
                 full_sql_text += chunk.get('content')
                 if in_chat:
                     yield 'data:' + orjson.dumps(
@@ -1127,6 +1127,7 @@ class LLMService:
                 else:
                     sql = self.check_save_sql(res=full_sql_text)
             else:
+                SQLBotLogUtil.info(full_sql_text)
                 sql = self.check_save_sql(res=full_sql_text)
 
             SQLBotLogUtil.info(sql)
@@ -1450,6 +1451,7 @@ class LLMService:
 
         # modify by huhuhuhr
         if self.chat_question.history_open is True:
+            SQLBotLogUtil.info("由于数据分析不需要历史记录")
             self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
                                                                   ai_modal_name=self.chat_question.ai_modal_name,
@@ -1585,6 +1587,7 @@ class LLMService:
         think_end = False
 
         for chunk in chunks:
+            # SQLBotLogUtil.info(f"original chunk:{chunk}")
             token = chunk.content
             # 分次处理输入字符，以缓冲的为准，防止连续的 < 符号判断导致丢失 tag 的前部分，导致出错，如 <\n</|th|in|k>
             if "<" in token:
@@ -1599,7 +1602,8 @@ class LLMService:
                 elif not think_end and THINK_END_TAG in response_content:
                     # 返回 think 结束之前的内容
                     end_index = response_content.index(THINK_END_TAG) + len(THINK_END_TAG)
-                    chunk.reason_content = response_content[:end_index]
+                    chunk.additional_kwargs["reasoning_content"] = response_content[:end_index]
+                    chunk.content = ''
                     yield chunk
                     think_end = True
                     tag_begin = False
@@ -1617,11 +1621,12 @@ class LLMService:
 
             if response_content == "":
                 response_content = token
-            if response_content == "\n":
+            if response_content == "":
                 continue
 
             if think_begin and not think_end:
-                chunk.reason_content = response_content
+                chunk.additional_kwargs["reasoning_content"] = response_content
+                chunk.content = ''
                 yield chunk
             else:
                 chunk.content = response_content
@@ -1630,6 +1635,7 @@ class LLMService:
 
     def stream_with_think(self, raw_stream: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
         for chunk in self.model_think_parse(raw_stream):
+            # SQLBotLogUtil.info(f"stream_with_think-chunk:{chunk}")
             yield chunk
 
     def _summarize_data_chunk(self, chunk_data_str, chunk_index, total_chunks, limits_token_usage, question):
