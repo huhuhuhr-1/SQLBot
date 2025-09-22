@@ -1367,7 +1367,13 @@ class LLMService:
             data = get_chat_chart_data(self.session, self.record.id)
             raw_data = data.get('data')
         max_token_chars = settings.MAX_TOKEN_CHUNK  # 设置字符阈值，可根据需要调整
-
+        # 术语
+        self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
+                                                                    self.current_user.oid)
+        analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
+        # 系统提示词 modify by huhuhuhr
+        sys_prompt = self.get_analysis_sys_prompt(payload)
+        analysis_msg.append(SystemMessage(content=sys_prompt))
         if raw_data:
             # 将数据转换为JSON字符串以估算字符数
             data_str = orjson.dumps(raw_data).decode()
@@ -1376,15 +1382,18 @@ class LLMService:
 
             SQLBotLogUtil.info(f'Estimated total prompt tokens: {total_prompt_tokens}')
 
-            if self.chat_question.every is not True and total_prompt_tokens <= max_token_chars:
+            if (self.chat_question.every is not True and total_prompt_tokens <= max_token_chars) or len(raw_data) == 1:
                 # 数据量较小，直接使用原数据
                 self.chat_question.data = data_str
+                human_prompt = self.get_analysis_human_prompt()
+                # 输入 field + data modify by huhuhuhr
+                analysis_msg.append(HumanMessage(content=human_prompt))
             else:
                 # 数据量大，需要进行分段摘要处理
                 if self.chat_question.every is True:
                     # 当 every 为 True 时，不进行分片处理，直接使用全部数据
                     chunks = self._chunk_data_every(raw_data)
-                    # 超过30条逐条分析，则进行分片处理
+                    # 超过10条逐条分析，则进行分片处理
                     if len(chunks) > 10:
                         chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
                 else:
@@ -1394,13 +1403,10 @@ class LLMService:
                 remark = f"正在进行分析...请耐心等待。分片数量:{len(chunks)}\n\n"
                 yield {'content': "", 'reasoning_content': remark}
                 every_chunk_max_token_chars = max_token_chars / len(chunks)
-                # 对每条数据生成摘要
-                summaries = []
                 for i, chunk in enumerate(chunks):
                     chunk_str = orjson.dumps(chunk).decode()
                     # 流式处理摘要生成
-                    final_summary = None
-                    remark = f"\n第{i + 1}个数据段,归纳内容(生成中...)\n\n"
+                    remark = f"\n第{i + 1}段数据,归纳内容(生成中...)\n\n"
                     yield {'content': "", 'reasoning_content': remark}
                     for summary in self._summarize_data_chunk(chunk_str,
                                                               i + 1,
@@ -1414,54 +1420,24 @@ class LLMService:
                             yield {'content': "", 'reasoning_content': summary.get('summary')}
                         else:
                             final_summary = summary.get('summary')
+                            analysis_msg.append(HumanMessage(content=f"第{i + 1}段数据分析结果:{final_summary}"))
                             yield {'content': "", 'reasoning_content': "\n"}
-                    summaries.append(final_summary)
-                # 将所有摘要合并
-                combined_summary = {
-                    "summary": "分段处理片段信息",
-                    "chunk_count": len(raw_data),
-                    "summaries": summaries
-                }
-                self.chat_question.data = orjson.dumps(combined_summary).decode()
-                concurrent_token = self.count_tokens(self.chat_question.data)
-                SQLBotLogUtil.info(
-                    f'chunking data,current length:{len(self.chat_question.data)},chunk count:{len(chunks)},token:{concurrent_token}')
         else:
             self.chat_question.data = orjson.dumps([]).decode()
+            human_prompt = self.get_analysis_human_prompt()
+            # 输入 field + data modify by huhuhuhr
+            analysis_msg.append(HumanMessage(content=human_prompt))
 
-        analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
-        # 术语
-        self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
-                                                                    self.current_user.oid)
-        # 系统提示词 modify by huhuhuhr
-        if self.chat_question.my_promote is not None:
-            sys_prompt = self.get_my_sys_prompt(payload)
-        elif payload is not None:
-            sys_prompt = analysis_question(role=payload.role, task=payload.task, intent=payload.intent,
-                                           terminologies=self.chat_question.terminologies)
-        else:
-            sys_prompt = self.chat_question.analysis_sys_question()
-        analysis_msg.append(SystemMessage(content=sys_prompt))
-        # 输入 field + data modify by huhuhuhr
-        if self.chat_question.my_schema is not None:
-            analysis_msg.append(HumanMessage(
-                content=self.chat_question.analysis_user_question_with_schema(self.chat_question.my_schema)))
-        else:
-            analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
-
-        # modify by huhuhuhr
-        if self.chat_question.history_open is True:
-            SQLBotLogUtil.info("由于数据分析不需要历史记录")
-            self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
-                                                                  ai_modal_id=self.chat_question.ai_modal_id,
-                                                                  ai_modal_name=self.chat_question.ai_modal_name,
-                                                                  operate=OperationEnum.ANALYSIS,
-                                                                  record_id=self.record.id,
-                                                                  full_message=[
-                                                                      {'type': msg.type,
-                                                                       'content': msg.content} for
-                                                                      msg
-                                                                      in analysis_msg])
+        self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
+                                                              ai_modal_id=self.chat_question.ai_modal_id,
+                                                              ai_modal_name=self.chat_question.ai_modal_name,
+                                                              operate=OperationEnum.ANALYSIS,
+                                                              record_id=self.record.id,
+                                                              full_message=[
+                                                                  {'type': msg.type,
+                                                                   'content': msg.content} for
+                                                                  msg
+                                                                  in analysis_msg])
         full_thinking_text = ''
         full_analysis_text = ''
         # modify by huhuhuhr 打印分析
@@ -1497,6 +1473,23 @@ class LLMService:
                                                             token_usage=token_usage)
         self.record = save_analysis_answer(session=self.session, record_id=self.record.id,
                                            answer=orjson.dumps({'content': full_analysis_text}).decode())
+
+    def get_analysis_human_prompt(self):
+        if self.chat_question.my_schema is not None:
+            human_prompt = self.chat_question.analysis_user_question_with_schema(self.chat_question.my_schema)
+        else:
+            human_prompt = self.chat_question.analysis_user_question()
+        return human_prompt
+
+    def get_analysis_sys_prompt(self, payload):
+        if self.chat_question.my_promote is not None:
+            sys_prompt = self.get_my_sys_prompt(payload)
+        elif payload is not None:
+            sys_prompt = analysis_question(role=payload.role, task=payload.task, intent=payload.intent,
+                                           terminologies=self.chat_question.terminologies)
+        else:
+            sys_prompt = self.chat_question.analysis_sys_question()
+        return sys_prompt
 
     def get_my_sys_prompt(self, payload):
         # 术语 modify by huhuhuhr
@@ -1635,7 +1628,7 @@ class LLMService:
 
     def stream_with_think(self, raw_stream: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
         for chunk in self.model_think_parse(raw_stream):
-            # SQLBotLogUtil.info(f"stream_with_think-chunk:{chunk}")
+            SQLBotLogUtil.info(f"stream_with_think-chunk:{chunk}")
             yield chunk
 
     def _summarize_data_chunk(self, chunk_data_str, chunk_index, total_chunks, limits_token_usage, question):
