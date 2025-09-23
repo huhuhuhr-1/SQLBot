@@ -135,11 +135,26 @@ class LLMService:
         self.chat_question = chat_question
         self.config = config
         if no_reasoning:
+            SQLBotLogUtil.info("No reasoning")
             # only work while using qwen
             if self.config.additional_params:
                 if self.config.additional_params.get('extra_body'):
                     if self.config.additional_params.get('extra_body').get('enable_thinking'):
                         del self.config.additional_params['extra_body']['enable_thinking']
+
+        #  modify by huhuhuhr 20250923
+        if chat_question.no_reasoning is True:
+            SQLBotLogUtil.info("qwen no reasoning")
+
+            # 确保 additional_params 存在
+            if not self.config.additional_params:
+                self.config.additional_params = {}
+
+            extra_body = self.config.additional_params.setdefault('extra_body', {})
+
+            # 设置 chat_template_kwargs，确保不会覆盖已有配置
+            chat_template_kwargs = extra_body.setdefault('chat_template_kwargs', {})
+            chat_template_kwargs['enable_thinking'] = False
 
         self.chat_question.ai_modal_id = self.config.model_id
         self.chat_question.ai_modal_name = self.config.model_name

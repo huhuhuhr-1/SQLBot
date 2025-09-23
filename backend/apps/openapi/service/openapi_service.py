@@ -473,7 +473,8 @@ async def _run_analysis_or_predict(
         my_promote=chat_record.my_promote,
         my_schema=chat_record.my_schema,
         every=chat_record.every,
-        history_open=chat_record.history_open
+        history_open=chat_record.history_open,
+        no_reasoning=chat_record.no_reasoning
     )
 
     try:

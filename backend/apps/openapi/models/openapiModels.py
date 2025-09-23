@@ -60,6 +60,8 @@ class OpenChat(BaseModel):
     intent: Optional[bool] = Body(default=False, description='是否进行意图检测')
     every: Optional[bool] = Body(default=False, description='逐条分析')
     history_open: Optional[bool] = Body(default=True, description='历史信息打开')
+    no_reasoning: Optional[bool] = Body(default=False, description='不思考')
+
 
     @field_validator('my_promote', 'my_schema', mode='before')
     @classmethod
@@ -87,6 +89,7 @@ class OpenChatQuestion(AiModelQuestion):
     predict: Optional[bool] = Body(default=False, description='是否预测')
     recommend: Optional[bool] = Body(default=False, description='是否推荐')
     every: Optional[bool] = Body(default=False, description='逐条分析')
+    no_reasoning: Optional[bool] = Body(default=True, description='不思考')
     history_open: Optional[bool] = Body(default=True, description='历史信息打开')
 
     @field_validator('my_promote', 'my_schema', 'my_sql', mode='before')
