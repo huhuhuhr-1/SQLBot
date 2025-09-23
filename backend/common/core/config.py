@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     EMBEDDING_TERMINOLOGY_TOP_COUNT: int = EMBEDDING_DEFAULT_TOP_COUNT
     EMBEDDING_DATA_TRAINING_TOP_COUNT: int = EMBEDDING_DEFAULT_TOP_COUNT
 
+    PARSE_REASONING_BLOCK_ENABLED: bool = True
+    DEFAULT_REASONING_CONTENT_START: str = '<think>'
+    DEFAULT_REASONING_CONTENT_END: str = '</think>'
+
     PG_POOL_SIZE: int = 20
     PG_MAX_OVERFLOW: int = 30
     PG_POOL_RECYCLE: int = 3600
@@ -105,6 +109,8 @@ class Settings(BaseSettings):
     # qian wen 32k
     MAX_TOKEN_CHUNK: int = 30000
     TIKTOKEN_CACHE_DIR: str = '/opt/sqlbot/app/apps/tiktoken_cache'
+
+    TABLE_EMBEDDING_COUNT: int = 10
 
 
 settings = Settings()  # type: ignore
