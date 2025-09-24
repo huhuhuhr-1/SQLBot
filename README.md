@@ -16,7 +16,7 @@ SQLBot 是一款基于大模型和 RAG 的智能问数系统。SQLBot 的优势�
 
 ## 工作原理
 
-<img width="1189" height="624" alt="system-arch" src="https://github.com/user-attachments/assets/cde40783-369e-493e-bb59-44ce43c2e7c5" />
+<img width="1105" height="577" alt="system-arch" src="https://github.com/user-attachments/assets/462603fc-980b-4b8b-a6d4-a821c070a048" />
 
 ## 快速开始
 
