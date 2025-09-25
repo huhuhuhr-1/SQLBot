@@ -52,7 +52,9 @@ class OpenChat(BaseModel):
     
     用于根据聊天记录ID查询相关信息
     """
-    chat_record_id: int = Body(..., description='会话聊天消息标识')
+    chat_record_id: int = Body(None, description='会话聊天消息标识')
+    chat_id: int = Body(None, description='会话标识')
+    db_id: Optional[int] = Body(None, description='数据源标识')
     question: str = Body(None, description='问题内容')
     chat_data_object: Any = Body(None, description='分析问题')
     my_promote: str = Body(None, description='自定义提示词')

@@ -40,15 +40,16 @@ from apps.datasource.crud.permission import get_row_permission_filters, is_norma
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection
+from apps.openapi.dao.openapiDao import select_one, get_datasource_by_name_or_id
 # modify by huhuhuhr
-from apps.openapi.models.openapiModels import AnalysisIntentPayload
+from apps.openapi.models.openapiModels import AnalysisIntentPayload, DataSourceRequest
 from apps.openapi.models.openapiModels import OpenChatQuestion
 from apps.openapi.service.openapi_prompt import analysis_question
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
-from common.core.db import engine
+from common.core.db import engine, get_session
 from common.core.deps import CurrentAssistant, CurrentUser
 from common.error import SingleMessageError, SQLBotDBError, ParseSQLResultError, SQLBotDBConnectionError
 from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_orjson
@@ -1279,13 +1280,16 @@ class LLMService:
     # modify by huhuhuhr
     def run_analysis_or_predict_task_async(self, action_type: str, base_record: ChatRecord
                                            , dataStr: str = None, payload: AnalysisIntentPayload = None):
+
         self.set_record(save_analysis_predict_record(self.session, base_record, action_type))
         # modify by huhuhuhr
         self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type
                                       , dataStr, payload)
 
-    def run_analysis_or_predict_task_cache(self, action_type: str):
-        for chunk in self.run_analysis_or_predict_task(action_type):
+    # modify by huhuhuhr
+    def run_analysis_or_predict_task_cache(self, action_type: str
+                                           , dataStr: str = None, payload: AnalysisIntentPayload = None):
+        for chunk in self.run_analysis_or_predict_task(action_type, dataStr, payload):
             self.chunk_list.append(chunk)
 
     # modify by huhuhuhr
@@ -1388,6 +1392,23 @@ class LLMService:
                               payload: AnalysisIntentPayload = None):
         fields = self.get_fields_from_chart()
         self.chat_question.fields = orjson.dumps(fields).decode()
+        # 只分析数据的时候由于没有上级的recordId,所以不会有chat无法提取fields
+        if self.chat_question.fields is None or self.chat_question.fields == '[]':
+            self.record.ai_modal_id = self.chat_question.ai_modal_id
+            self.record.create_by = self.current_user.oid
+            try:
+                for session in get_session():
+                    datasource: CoreDatasource = get_datasource_by_name_or_id(
+                        session=session,
+                        user=self.current_user,
+                        query=DataSourceRequest(id=self.chat_question.db_id)
+                    )
+                    self.chat_question.fields = get_table_schema(session=self.session,
+                                                                 current_user=self.current_user,
+                                                                 ds=datasource,
+                                                                 question=self.chat_question.question)
+            except Exception as e:
+                SQLBotLogUtil.error(f"get table failed: {e}")
         # 按照字符数量阈值处理数据，而不是按行数
         if dataStr is not None:
             raw_data = json.loads(dataStr)
@@ -1605,8 +1626,9 @@ class LLMService:
 
         for chunk in chunks:
             SQLBotLogUtil.info(f"original chunk:{chunk}")
-            if chunk.additional_kwargs["reasoning_content"] is not None and chunk.additional_kwargs[
-                "reasoning_content"] != '':
+            if (chunk.additional_kwargs and hasattr(chunk.additional_kwargs, "reasoning_content")
+                    and chunk.additional_kwargs["reasoning_content"] is not None and chunk.additional_kwargs[
+                        "reasoning_content"] != ''):
                 yield chunk
                 continue
             token = chunk.content

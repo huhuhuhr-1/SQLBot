@@ -452,30 +452,62 @@ async def _run_analysis_or_predict(
     Returns:
         StreamingResponse: 流式响应，包含生成的结果
     """
-    chat_record_id = chat_record.chat_record_id
     record = None
-    for session in get_session():
-        record = await get_chat_record(session, chat_record_id)
+    if chat_record.chat_record_id is not None:
+        chat_record_id = chat_record.chat_record_id
 
-    if not record.chart:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it"
+        for session in get_session():
+            record = await get_chat_record(session, chat_record_id)
+
+        if not record.chart:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it"
+            )
+
+        # 更新问题内容（如果提供）
+        if chat_record.question:
+            record.question = chat_record.question
+
+        request_question = OpenChatQuestion(
+            chat_id=record.chat_id,
+            question=record.question,
+            my_promote=chat_record.my_promote,
+            my_schema=chat_record.my_schema,
+            every=chat_record.every,
+            history_open=chat_record.history_open,
+            no_reasoning=chat_record.no_reasoning
         )
-
-    # 更新问题内容（如果提供）
-    if chat_record.question:
+    else:
+        if not chat_record.chat_id or not chat_record.chat_data_object or not chat_record.db_id:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Chat record with chat_id or chat_data_object or db_id is not provided!"
+            )
+        record = ChatRecord()
         record.question = chat_record.question
+        record.chat_id = chat_record.chat_id
+        record.datasource = chat_record.db_id
+        record.engine_type = ''
+        record.ai_modal_id = -1
+        record.create_by = -1
+        record.chart = ''
+        if isinstance(chat_record.chat_data_object, str):
+            record.data = chat_record.chat_data_object
+        else:
+            record.data = orjson.dumps(chat_record.chat_data_object).decode()
+        record.analysis_record_id = -1
 
-    request_question = OpenChatQuestion(
-        chat_id=record.chat_id,
-        question=record.question,
-        my_promote=chat_record.my_promote,
-        my_schema=chat_record.my_schema,
-        every=chat_record.every,
-        history_open=chat_record.history_open,
-        no_reasoning=chat_record.no_reasoning
-    )
+        request_question = OpenChatQuestion(
+            chat_id=record.chat_id,
+            question=record.question,
+            my_promote=chat_record.my_promote,
+            my_schema=chat_record.my_schema,
+            every=chat_record.every,
+            history_open=chat_record.history_open,
+            no_reasoning=chat_record.no_reasoning,
+            db_id=chat_record.db_id
+        )
 
     try:
         payload = None

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import StreamingResponse
 
 from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat
-from apps.chat.models.chat_model import ChatQuestion, CreateChat
+from apps.chat.models.chat_model import CreateChat
 from apps.datasource.crud.datasource import get_datasource_list
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
@@ -154,19 +154,22 @@ async def getChat(
                 user=current_user,
                 query=DataSourceRequest(id=chat_question.db_id)
             )
-            if not datasource:
+            if datasource:
+                # 绑定数据源到聊天会话
+                await bind_datasource(datasource, chat_question.chat_id, session)
+                break
+            else:
                 raise HTTPException(
                     status_code=500,
                     detail="数据源未找到"
                 )
-            # 绑定数据源到聊天会话
-            await bind_datasource(datasource, chat_question.chat_id, session)
 
         # 创建LLM服务实例
         llm_service = await LLMService.create(
             current_user,
             chat_question,
-            current_assistant
+            current_assistant,
+            embedding=True
         )
         # 如果存在意图检测，则进行意图识别
         payload: Optional[IntentPayload] = (

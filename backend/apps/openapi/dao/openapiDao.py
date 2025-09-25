@@ -12,12 +12,13 @@ OpenAPI 数据访问对象模块
 
 from typing import Optional, List
 
+from fastapi import HTTPException
 from sqlalchemy import and_
 from sqlmodel import select
 
-from apps.chat.models.chat_model import Chat, ChatRecord
+from apps.chat.models.chat_model import Chat
 from apps.datasource.models.datasource import CoreDatasource
-from apps.openapi.models.openapiModels import DataSourceRequest, OpenChatQuestion
+from apps.openapi.models.openapiModels import DataSourceRequest
 from common.core.deps import SessionDep, CurrentUser
 
 
@@ -80,6 +81,12 @@ async def bind_datasource(
     """
     # 获取聊天会话对象
     chat: Chat = session.get(Chat, chat_id)
+
+    if chat is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Chat with chat_id {chat_id} not found"
+        )
 
     # 设置数据源ID
     chat.datasource = datasource.id
