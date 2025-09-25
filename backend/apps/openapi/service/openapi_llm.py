@@ -6,6 +6,7 @@ import urllib.parse
 import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
+# modify huhuhuhr
 from string import Template
 from typing import Any, List, Optional, Union, Dict, Iterator
 
@@ -14,6 +15,7 @@ import orjson
 import pandas as pd
 import requests
 import sqlparse
+# modify by huhuhuhr
 import tiktoken
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
@@ -30,13 +32,15 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_old_questions, save_analysis_predict_record, rename_chat, get_chart_config, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error
-from apps.chat.models.chat_model import ChatRecord, Chat, RenameChat, ChatLog, OperationEnum
+from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
+    ChatFinishStep
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection
+# modify by huhuhuhr
 from apps.openapi.models.openapiModels import AnalysisIntentPayload
 from apps.openapi.models.openapiModels import OpenChatQuestion
 from apps.openapi.service.openapi_prompt import analysis_question
@@ -64,6 +68,7 @@ db_session = session_maker()
 
 class LLMService:
     ds: CoreDatasource
+    # modify by huhuhuhr
     chat_question: OpenChatQuestion
     record: ChatRecord
     config: LLMConfig
@@ -87,9 +92,9 @@ class LLMService:
 
     last_execute_sql_error: str = None
 
+    # modify by huhuhuhr
     def __init__(self, current_user: CurrentUser, chat_question: OpenChatQuestion,
-                 current_assistant: Optional[CurrentAssistant] = None,
-                 no_reasoning: bool = False,
+                 current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
                  config: LLMConfig = None):
         # ✅ 确保是字符串，并设置环境变量 modify huhuhuhr
         os.environ["TIKTOKEN_CACHE_DIR"] = str(settings.TIKTOKEN_CACHE_DIR)
@@ -122,7 +127,8 @@ class LLMService:
                 if not ds:
                     raise SingleMessageError("No available datasource configuration found")
                 chat_question.engine = (ds.type_name if ds.type != 'excel' else 'PostgreSQL') + get_version(ds)
-                chat_question.db_schema = get_table_schema(session=self.session, current_user=current_user, ds=ds)
+                chat_question.db_schema = get_table_schema(session=self.session, current_user=current_user, ds=ds,
+                                                           question=chat_question.question)
 
         self.generate_sql_logs = list_generate_sql_logs(session=self.session, chart_id=chat_id)
         self.generate_chart_logs = list_generate_chart_logs(session=self.session, chart_id=chat_id)
@@ -134,8 +140,7 @@ class LLMService:
         self.ds = (ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None
         self.chat_question = chat_question
         self.config = config
-        if no_reasoning:
-            SQLBotLogUtil.info("No reasoning")
+        if no_reasoning or chat_question.no_reasoning is True:
             # only work while using qwen
             if self.config.additional_params:
                 if self.config.additional_params.get('extra_body'):
@@ -145,16 +150,12 @@ class LLMService:
         #  modify by huhuhuhr 20250923
         if chat_question.no_reasoning is True:
             SQLBotLogUtil.info("qwen no reasoning")
-
             # 确保 additional_params 存在
-            if not self.config.additional_params:
-                self.config.additional_params = {}
-
-            extra_body = self.config.additional_params.setdefault('extra_body', {})
-
-            # 设置 chat_template_kwargs，确保不会覆盖已有配置
-            chat_template_kwargs = extra_body.setdefault('chat_template_kwargs', {})
-            chat_template_kwargs['enable_thinking'] = False
+            if self.config.additional_params:
+                extra_body = self.config.additional_params.setdefault('extra_body', {})
+                # 设置 chat_template_kwargs，确保不会覆盖已有配置
+                chat_template_kwargs = extra_body.setdefault('chat_template_kwargs', {})
+                chat_template_kwargs['enable_thinking'] = False
 
         self.chat_question.ai_modal_id = self.config.model_id
         self.chat_question.ai_modal_name = self.config.model_name
@@ -290,22 +291,15 @@ class LLMService:
                                                                   in analysis_msg])
         full_thinking_text = ''
         full_analysis_text = ''
-        res = self.stream_with_think(self.llm.stream(analysis_msg))
         token_usage = {}
+        # modify by huhuhuhr
+        res = process_stream(self.stream_with_think(self.llm.stream(analysis_msg)), token_usage)
         for chunk in res:
-            SQLBotLogUtil.info(chunk)
-            reasoning_content_chunk = ''
-            if 'reasoning_content' in chunk.additional_kwargs:
-                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-            # else:
-            #     reasoning_content_chunk = chunk.get('reasoning_content')
-            if reasoning_content_chunk is None:
-                reasoning_content_chunk = ''
-            full_thinking_text += reasoning_content_chunk
-
-            full_analysis_text += chunk.content
-            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-            get_token_usage(chunk, token_usage)
+            if chunk.get('content'):
+                full_analysis_text += chunk.get('content')
+            if chunk.get('reasoning_content'):
+                full_thinking_text += chunk.get('reasoning_content')
+            yield chunk
 
         analysis_msg.append(AIMessage(full_analysis_text))
 
@@ -342,22 +336,15 @@ class LLMService:
                                                                       in predict_msg])
         full_thinking_text = ''
         full_predict_text = ''
-        res = self.stream_with_think(self.llm.stream(predict_msg))
         token_usage = {}
+        # modify by huhuhuhr
+        res = process_stream(self.stream_with_think(self.llm.stream(predict_msg)), token_usage)
         for chunk in res:
-            SQLBotLogUtil.info(chunk)
-            reasoning_content_chunk = ''
-            if 'reasoning_content' in chunk.additional_kwargs:
-                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-            # else:
-            #     reasoning_content_chunk = chunk.get('reasoning_content')
-            if reasoning_content_chunk is None:
-                reasoning_content_chunk = ''
-            full_thinking_text += reasoning_content_chunk
-
-            full_predict_text += chunk.content
-            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-            get_token_usage(chunk, token_usage)
+            if chunk.get('content'):
+                full_predict_text += chunk.get('content')
+            if chunk.get('reasoning_content'):
+                full_thinking_text += chunk.get('reasoning_content')
+            yield chunk
 
         predict_msg.append(AIMessage(full_predict_text))
         self.record = save_predict_answer(session=self.session, record_id=self.record.id,
@@ -378,7 +365,8 @@ class LLMService:
         if self.ds and not self.chat_question.db_schema:
             self.chat_question.db_schema = self.out_ds_instance.get_db_schema(
                 self.ds.id) if self.out_ds_instance else get_table_schema(session=self.session,
-                                                                          current_user=self.current_user, ds=self.ds)
+                                                                          current_user=self.current_user, ds=self.ds,
+                                                                          question=self.chat_question.question)
 
         guess_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         guess_msg.append(SystemMessage(content=self.chat_question.guess_sys_question()))
@@ -400,21 +388,14 @@ class LLMService:
         full_thinking_text = ''
         full_guess_text = ''
         token_usage = {}
-        res = self.stream_with_think(self.llm.stream(guess_msg))
+        # modify by huhuhuhr
+        res = process_stream(self.stream_with_think(self.llm.stream(guess_msg)), token_usage)
         for chunk in res:
-            SQLBotLogUtil.info(chunk)
-            reasoning_content_chunk = ''
-            if 'reasoning_content' in chunk.additional_kwargs:
-                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-            # else:
-            #     reasoning_content_chunk = chunk.get('reasoning_content')
-            if reasoning_content_chunk is None:
-                reasoning_content_chunk = ''
-            full_thinking_text += reasoning_content_chunk
-
-            full_guess_text += chunk.content
-            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-            get_token_usage(chunk, token_usage)
+            if chunk.get('content'):
+                full_guess_text += chunk.get('content')
+            if chunk.get('reasoning_content'):
+                full_thinking_text += chunk.get('reasoning_content')
+            yield chunk
 
         guess_msg.append(AIMessage(full_guess_text))
 
@@ -459,7 +440,8 @@ class LLMService:
         full_text = ''
         if not ignore_auto_select:
             if settings.EMBEDDING_ENABLED:
-                ds = get_ds_embedding(self.session, self.current_user, _ds_list, self.chat_question.question)
+                ds = get_ds_embedding(self.session, self.current_user, _ds_list, self.out_ds_instance,
+                                      self.chat_question.question, self.current_assistant)
                 yield {'content': '{"id":' + str(ds.get('id')) + '}'}
             else:
                 _ds_list_dict = []
@@ -479,21 +461,14 @@ class LLMService:
                                                                                              msg in datasource_msg])
 
                 token_usage = {}
-                res = self.stream_with_think(self.llm.stream(datasource_msg))
+                # modify by huhuhuhr
+                res = process_stream(self.stream_with_think(self.llm.stream(datasource_msg)), token_usage)
                 for chunk in res:
-                    SQLBotLogUtil.info(chunk)
-                    reasoning_content_chunk = ''
-                    if 'reasoning_content' in chunk.additional_kwargs:
-                        reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-                    # else:
-                    #     reasoning_content_chunk = chunk.get('reasoning_content')
-                    if reasoning_content_chunk is None:
-                        reasoning_content_chunk = ''
-                    full_thinking_text += reasoning_content_chunk
-
-                    full_text += chunk.content
-                    yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-                    get_token_usage(chunk, token_usage)
+                    if chunk.get('content'):
+                        full_text += chunk.get('content')
+                    if chunk.get('reasoning_content'):
+                        full_thinking_text += chunk.get('reasoning_content')
+                    yield chunk
                 datasource_msg.append(AIMessage(full_text))
 
                 self.current_logs[OperationEnum.CHOOSE_DATASOURCE] = end_log(session=self.session,
@@ -537,7 +512,8 @@ class LLMService:
                     self.chat_question.engine = (_ds.type_name if _ds.type != 'excel' else 'PostgreSQL') + get_version(
                         self.ds)
                     self.chat_question.db_schema = get_table_schema(session=self.session,
-                                                                    current_user=self.current_user, ds=self.ds)
+                                                                    current_user=self.current_user, ds=self.ds,
+                                                                    question=self.chat_question.question)
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type_name
                 # save chat
@@ -588,23 +564,15 @@ class LLMService:
         full_thinking_text = ''
         full_sql_text = ''
         token_usage = {}
-        # add at 20250619 huhuhuhr
+        # modify by huhuhuhr huhuhuhr
         self.print_Message(self.sql_message)
-        res = self.stream_with_think(self.llm.stream(self.sql_message))
+        res = process_stream(self.stream_with_think(self.llm.stream(self.sql_message)), token_usage)
         for chunk in res:
-            # SQLBotLogUtil.info(f"output:{chunk}")
-            reasoning_content_chunk = ''
-            if 'reasoning_content' in chunk.additional_kwargs:
-                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-            # else:
-            #     reasoning_content_chunk = chunk.get('reasoning_content')
-            if reasoning_content_chunk is None:
-                reasoning_content_chunk = ''
-            full_thinking_text += reasoning_content_chunk
-
-            full_sql_text += chunk.content
-            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-            get_token_usage(chunk, token_usage)
+            if chunk.get('content'):
+                full_sql_text += chunk.get('content')
+            if chunk.get('reasoning_content'):
+                full_thinking_text += chunk.get('reasoning_content')
+            yield chunk
 
         self.sql_message.append(AIMessage(full_sql_text))
 
@@ -617,6 +585,7 @@ class LLMService:
         self.record = save_sql_answer(session=self.session, record_id=self.record.id,
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
 
+    # modify by huhuhuhr
     def generate_sql_with_sql(self):
         # append current question
         self.sql_message.append(HumanMessage(
@@ -641,21 +610,13 @@ class LLMService:
         full_thinking_text = ''
         full_sql_text = ''
         token_usage = {}
-        res = self.stream_with_think(self.llm.stream(self.sql_message))
+        res = process_stream(self.stream_with_think(self.llm.stream(self.sql_message)), token_usage)
         for chunk in res:
-            SQLBotLogUtil.info(chunk)
-            reasoning_content_chunk = ''
-            if 'reasoning_content' in chunk.additional_kwargs:
-                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-            # else:
-            #     reasoning_content_chunk = chunk.get('reasoning_content')
-            if reasoning_content_chunk is None:
-                reasoning_content_chunk = ''
-            full_thinking_text += reasoning_content_chunk
-
-            full_sql_text += chunk.content
-            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-            get_token_usage(chunk, token_usage)
+            if chunk.get('content'):
+                full_sql_text += chunk.get('content')
+            if chunk.get('reasoning_content'):
+                full_thinking_text += chunk.get('reasoning_content')
+            yield chunk
 
         self.sql_message.append(AIMessage(full_sql_text))
 
@@ -668,6 +629,7 @@ class LLMService:
         self.record = save_sql_answer(session=self.session, record_id=self.record.id,
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
 
+    # modify by huhuhuhr
     def print_Message(self, messages=None):
         if messages is None:
             messages = self.sql_message
@@ -699,20 +661,15 @@ class LLMService:
 
         full_thinking_text = ''
         full_dynamic_text = ''
-        # modify by huhuhuhr 20250921
-        res = self.stream_with_think(self.llm.stream(dynamic_sql_msg))
         token_usage = {}
-        # modify by huhuhuhr 20250921
+        # modify by huhuhuhr
+        res = process_stream(self.stream_with_think(self.llm.stream(dynamic_sql_msg)), token_usage)
         for chunk in res:
-            SQLBotLogUtil.info(chunk)
-            reasoning_content_chunk = ''
-            if 'reasoning_content' in chunk.additional_kwargs:
-                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-            if reasoning_content_chunk is None:
-                reasoning_content_chunk = ''
-            full_thinking_text += reasoning_content_chunk
-            full_dynamic_text += chunk.content
-            get_token_usage(chunk, token_usage)
+            if chunk.get('content'):
+                full_dynamic_text += chunk.get('content')
+            if chunk.get('reasoning_content'):
+                full_thinking_text += chunk.get('reasoning_content')
+            yield chunk
 
         dynamic_sql_msg.append(AIMessage(full_dynamic_text))
 
@@ -764,23 +721,14 @@ class LLMService:
                                                                                        in permission_sql_msg])
         full_thinking_text = ''
         full_filter_text = ''
-        res = self.stream_with_think(self.llm.stream(permission_sql_msg))
         token_usage = {}
-        # modify by huhuhuhr 20250921
+        # modify by huhuhuhr
+        res = process_stream(self.stream_with_think(self.llm.stream(permission_sql_msg)), token_usage)
         for chunk in res:
-            SQLBotLogUtil.info(chunk)
-            reasoning_content_chunk = ''
-            if 'reasoning_content' in chunk.additional_kwargs:
-                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-            # else:
-            #     reasoning_content_chunk = chunk.get('reasoning_content')
-            if reasoning_content_chunk is None:
-                reasoning_content_chunk = ''
-            full_thinking_text += reasoning_content_chunk
-
-            full_filter_text += chunk.content
-            # yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-            get_token_usage(chunk, token_usage)
+            if chunk.get('content'):
+                full_filter_text += chunk.get('content')
+            if chunk.get('reasoning_content'):
+                full_thinking_text += chunk.get('reasoning_content')
 
         permission_sql_msg.append(AIMessage(full_filter_text))
 
@@ -830,22 +778,14 @@ class LLMService:
         full_thinking_text = ''
         full_chart_text = ''
         token_usage = {}
-        res = self.stream_with_think(self.llm.stream(self.chart_message))
-        # modify by huhuhuhr 20250921
+        # modify by huhuhuhr
+        res = process_stream(self.stream_with_think(self.llm.stream(self.chart_message)), token_usage)
         for chunk in res:
-            SQLBotLogUtil.info(chunk)
-            reasoning_content_chunk = ''
-            if 'reasoning_content' in chunk.additional_kwargs:
-                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-            # else:
-            #     reasoning_content_chunk = chunk.get('reasoning_content')
-            if reasoning_content_chunk is None:
-                reasoning_content_chunk = ''
-            full_thinking_text += reasoning_content_chunk
-
-            full_chart_text += chunk.content
-            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-            get_token_usage(chunk, token_usage)
+            if chunk.get('content'):
+                full_chart_text += chunk.get('content')
+            if chunk.get('reasoning_content'):
+                full_thinking_text += chunk.get('reasoning_content')
+            yield chunk
 
         self.chart_message.append(AIMessage(full_chart_text))
 
@@ -1034,14 +974,20 @@ class LLMService:
                 break
             yield chunk
 
-    def run_task_async(self, in_chat: bool = True):
-        self.future = executor.submit(self.run_task_cache, in_chat)
+    def run_task_async(self, in_chat: bool = True, stream: bool = True,
+                       finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART):
+        if in_chat:
+            stream = True
+        self.future = executor.submit(self.run_task_cache, in_chat, stream, finish_step)
 
-    def run_task_cache(self, in_chat: bool = True):
-        for chunk in self.run_task(in_chat):
+    def run_task_cache(self, in_chat: bool = True, stream: bool = True,
+                       finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART):
+        for chunk in self.run_task(in_chat, stream, finish_step):
             self.chunk_list.append(chunk)
 
-    def run_task(self, in_chat: bool = True):
+    def run_task(self, in_chat: bool = True, stream: bool = True,
+                 finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART):
+        json_result: Dict[str, Any] = {'success': True}
         try:
             if self.ds:
                 oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
@@ -1056,6 +1002,8 @@ class LLMService:
             # return id
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
+            if not stream:
+                json_result['record_id'] = self.get_record().id
 
             # return title
             if self.change_title:
@@ -1065,8 +1013,10 @@ class LLMService:
                                                                  brief=self.chat_question.question.strip()[:20]))
                     if in_chat:
                         yield 'data:' + orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
+                    if not stream:
+                        json_result['title'] = brief
 
-            # select datasource if datasource is none
+                # select datasource if datasource is none
             if not self.ds:
                 ds_res = self.select_datasource()
 
@@ -1084,7 +1034,8 @@ class LLMService:
                 self.chat_question.db_schema = self.out_ds_instance.get_db_schema(
                     self.ds.id) if self.out_ds_instance else get_table_schema(session=self.session,
                                                                               current_user=self.current_user,
-                                                                              ds=self.ds)
+                                                                              ds=self.ds,
+                                                                              question=self.chat_question.question)
             else:
                 self.validate_history_ds()
 
@@ -1142,15 +1093,21 @@ class LLMService:
                 else:
                     sql = self.check_save_sql(res=full_sql_text)
             else:
+                # modify by huhuhuhr
                 SQLBotLogUtil.info(full_sql_text)
                 sql = self.check_save_sql(res=full_sql_text)
 
-            SQLBotLogUtil.info(sql)
+            SQLBotLogUtil.info('sql: ' + sql)
+
+            if not stream:
+                json_result['sql'] = sql
+
             format_sql = sqlparse.format(sql, reindent=True)
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
             else:
-                yield f'```sql\n{format_sql}\n```\n\n'
+                if stream:
+                    yield f'```sql\n{format_sql}\n```\n\n'
 
             # execute sql
             real_execute_sql = sql
@@ -1161,10 +1118,46 @@ class LLMService:
                                                                           subsql)
                 real_execute_sql = assistant_dynamic_sql
 
+            if finish_step.value <= ChatFinishStep.GENERATE_SQL.value:
+                if in_chat:
+                    yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
+                if not stream:
+                    yield json_result
+                return
+
             result = self.execute_sql(sql=real_execute_sql)
             self.save_sql_data(data_obj=result)
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
+            if not stream:
+                json_result['data'] = result.get('data')
+
+            if finish_step.value <= ChatFinishStep.QUERY_DATA.value:
+                if stream:
+                    if in_chat:
+                        yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
+                    else:
+                        data = []
+                        _fields_list = []
+                        _fields_skip = False
+                        for _data in result.get('data'):
+                            _row = []
+                            for field in result.get('fields'):
+                                _row.append(_data.get(field))
+                                if not _fields_skip:
+                                    _fields_list.append(field)
+                            data.append(_row)
+                            _fields_skip = True
+
+                        if not data or not _fields_list:
+                            yield 'The SQL execution result is empty.\n\n'
+                        else:
+                            df = pd.DataFrame(np.array(data), columns=_fields_list)
+                            markdown_table = df.to_markdown(index=False)
+                            yield markdown_table + '\n\n'
+                else:
+                    yield json_result
+                return
 
             # generate chart
             chart_res = self.generate_chart(chart_type)
@@ -1182,41 +1175,46 @@ class LLMService:
             SQLBotLogUtil.info(full_chart_text)
             chart = self.check_save_chart(res=full_chart_text)
             SQLBotLogUtil.info(chart)
+
+            if not stream:
+                json_result['chart'] = chart
+
             if in_chat:
                 yield 'data:' + orjson.dumps(
                     {'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
             else:
-                data = []
-                _fields = {}
-                if chart.get('columns'):
-                    for _column in chart.get('columns'):
-                        if _column:
-                            _fields[_column.get('value')] = _column.get('name')
-                if chart.get('axis'):
-                    if chart.get('axis').get('x'):
-                        _fields[chart.get('axis').get('x').get('value')] = chart.get('axis').get('x').get('name')
-                    if chart.get('axis').get('y'):
-                        _fields[chart.get('axis').get('y').get('value')] = chart.get('axis').get('y').get('name')
-                    if chart.get('axis').get('series'):
-                        _fields[chart.get('axis').get('series').get('value')] = chart.get('axis').get('series').get(
-                            'name')
-                _fields_list = []
-                _fields_skip = False
-                for _data in result.get('data'):
-                    _row = []
-                    for field in result.get('fields'):
-                        _row.append(_data.get(field))
-                        if not _fields_skip:
-                            _fields_list.append(field if not _fields.get(field) else _fields.get(field))
-                    data.append(_row)
-                    _fields_skip = True
+                if stream:
+                    data = []
+                    _fields = {}
+                    if chart.get('columns'):
+                        for _column in chart.get('columns'):
+                            if _column:
+                                _fields[_column.get('value')] = _column.get('name')
+                    if chart.get('axis'):
+                        if chart.get('axis').get('x'):
+                            _fields[chart.get('axis').get('x').get('value')] = chart.get('axis').get('x').get('name')
+                        if chart.get('axis').get('y'):
+                            _fields[chart.get('axis').get('y').get('value')] = chart.get('axis').get('y').get('name')
+                        if chart.get('axis').get('series'):
+                            _fields[chart.get('axis').get('series').get('value')] = chart.get('axis').get('series').get(
+                                'name')
+                    _fields_list = []
+                    _fields_skip = False
+                    for _data in result.get('data'):
+                        _row = []
+                        for field in result.get('fields'):
+                            _row.append(_data.get(field))
+                            if not _fields_skip:
+                                _fields_list.append(field if not _fields.get(field) else _fields.get(field))
+                        data.append(_row)
+                        _fields_skip = True
 
-                if not data or not _fields_list:
-                    yield 'The SQL execution result is empty.\n\n'
-                else:
-                    df = pd.DataFrame(np.array(data), columns=_fields_list)
-                    markdown_table = df.to_markdown(index=False)
-                    yield markdown_table + '\n\n'
+                    if not data or not _fields_list:
+                        yield 'The SQL execution result is empty.\n\n'
+                    else:
+                        df = pd.DataFrame(np.array(data), columns=_fields_list)
+                        markdown_table = df.to_markdown(index=False)
+                        yield markdown_table + '\n\n'
 
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
@@ -1226,7 +1224,14 @@ class LLMService:
                     yield '### generated chart picture\n\n'
                     image_url = request_picture(self.record.chat_id, self.record.id, chart, result)
                     SQLBotLogUtil.info(image_url)
-                    yield f'![{chart["type"]}]({image_url})'
+                    if stream:
+                        yield f'![{chart["type"]}]({image_url})'
+                    else:
+                        json_result['image_url'] = image_url
+
+            if not stream:
+                yield json_result
+
         except Exception as e:
             traceback.print_exc()
             error_msg: str
@@ -1244,7 +1249,12 @@ class LLMService:
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
             else:
-                yield f'> &#x274c; **ERROR**\n\n> \n\n> {error_msg}。'
+                if stream:
+                    yield f'> &#x274c; **ERROR**\n\n> \n\n> {error_msg}。'
+                else:
+                    json_result['success'] = False
+                    json_result['message'] = error_msg
+                    yield json_result
         finally:
             self.finish()
 
@@ -1267,24 +1277,28 @@ class LLMService:
                     {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                      'type': 'recommended_question_result'}).decode() + '\n\n'
 
+    # modify by huhuhuhr
     def run_analysis_or_predict_task_async(self, action_type: str, base_record: ChatRecord, dataStr: str = None,
                                            payload: AnalysisIntentPayload = None):
         self.set_record(save_analysis_predict_record(self.session, base_record, action_type))
+        # modify by huhuhuhr
         self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type, dataStr, payload)
 
+    # modify byhuhuhuhr
     def run_analysis_or_predict_task_cache(self, action_type: str, dataStr: str = None,
                                            payload: AnalysisIntentPayload = None):
         for chunk in self.run_analysis_or_predict_task(action_type, dataStr, payload):
             self.chunk_list.append(chunk)
 
+    # modify by huhuhuhr
     def run_analysis_or_predict_task(self, action_type: str, dataStr: str = None,
                                      payload: AnalysisIntentPayload = None):
         try:
 
             yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
 
+            # modify by huhuhuhr
             if action_type == 'analysis':
-                # generate analysis
                 analysis_res = self.big_generate_analysis(dataStr, payload)
                 for chunk in analysis_res:
                     yield 'data:' + orjson.dumps(
@@ -1293,15 +1307,14 @@ class LLMService:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
 
                 yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
-
+            # modify by huhuhuhr
             elif action_type == 'big_analysis':
-                # generate analysis with big data handling
                 analysis_res = self.generate_analysis()
                 for chunk in analysis_res:
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                          'type': 'analysis-result'}).decode() + '\n\n'
-                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'big analysis generated'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
 
                 yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
 
@@ -1357,6 +1370,7 @@ class LLMService:
             except Exception as e:
                 raise SingleMessageError(f"ds is invalid [{str(e)}]")
 
+    # modify by huhuhuhr
     def count_tokens(self, text) -> int:
         """返回文本的 token 数量（int），失败时返回字符长度作为估算"""
         if not isinstance(text, str) or text == "":
@@ -1371,6 +1385,7 @@ class LLMService:
         except Exception:
             return len(text)
 
+    # modify by huhuhuhr
     def big_generate_analysis(self, dataStr: str = None,
                               payload: AnalysisIntentPayload = None):
         fields = self.get_fields_from_chart()
@@ -1457,23 +1472,14 @@ class LLMService:
         full_analysis_text = ''
         # modify by huhuhuhr 打印分析
         self.print_Message(analysis_msg)
-        res = self.stream_with_think(self.llm.stream(analysis_msg))
-        # res = self.llm.stream(analysis_msg)
         token_usage = {}
+        res = process_stream(self.stream_with_think(self.llm.stream(analysis_msg)), token_usage)
         for chunk in res:
-            SQLBotLogUtil.info(chunk)
-            reasoning_content_chunk = ''
-            if 'reasoning_content' in chunk.additional_kwargs:
-                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-            # else:
-            #     reasoning_content_chunk = chunk.get('reasoning_content')
-            if reasoning_content_chunk is None:
-                reasoning_content_chunk = ''
-            full_thinking_text += reasoning_content_chunk
-
-            full_analysis_text += chunk.content
-            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-            get_token_usage(chunk, token_usage)
+            if chunk.get('content'):
+                full_analysis_text += chunk.get('content')
+            if chunk.get('reasoning_content'):
+                full_thinking_text += chunk.get('reasoning_content')
+            yield chunk
 
         analysis_msg.append(AIMessage(full_analysis_text))
 
@@ -1489,6 +1495,7 @@ class LLMService:
         self.record = save_analysis_answer(session=self.session, record_id=self.record.id,
                                            answer=orjson.dumps({'content': full_analysis_text}).decode())
 
+    # modify by huhuhuhr
     def get_analysis_human_prompt(self):
         if self.chat_question.my_schema is not None:
             human_prompt = self.chat_question.analysis_user_question_with_schema(self.chat_question.my_schema)
@@ -1496,6 +1503,7 @@ class LLMService:
             human_prompt = self.chat_question.analysis_user_question()
         return human_prompt
 
+    # modify by huhuhuhr
     def get_analysis_sys_prompt(self, payload):
         if self.chat_question.my_promote is not None:
             sys_prompt = self.get_my_sys_prompt(payload)
@@ -1506,6 +1514,7 @@ class LLMService:
             sys_prompt = self.chat_question.analysis_sys_question()
         return sys_prompt
 
+    # modify by huhuhuhr
     def get_my_sys_prompt(self, payload):
         # 术语 modify by huhuhuhr
         if self.chat_question is not None and self.chat_question.terminologies is not None and self.chat_question.terminologies != '':
@@ -1523,6 +1532,7 @@ class LLMService:
         sys_prompt = template.safe_substitute(**template_vars)
         return sys_prompt
 
+    # modify by huhuhuhr
     def _chunk_data_by_tokens(self, data: List[Any], max_tokens: int) -> List[List[Any]]:
         """
         根据 token 数量将数据分块，每块不超过 max_tokens。
@@ -1585,6 +1595,7 @@ class LLMService:
 
         return chunks
 
+    # modify by huhuhuhr
     def model_think_parse(self, chunks: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
         THINK_BEGIN_TAG = "<think>"
         THINK_END_TAG = "</think>"
@@ -1595,7 +1606,11 @@ class LLMService:
         think_end = False
 
         for chunk in chunks:
-            # SQLBotLogUtil.info(f"original chunk:{chunk}")
+            SQLBotLogUtil.info(f"original chunk:{chunk}")
+            if chunk.additional_kwargs["reasoning_content"] is not None and chunk.additional_kwargs[
+                "reasoning_content"] != '':
+                yield chunk
+                continue
             token = chunk.content
             # 分次处理输入字符，以缓冲的为准，防止连续的 < 符号判断导致丢失 tag 的前部分，导致出错，如 <\n</|th|in|k>
             if "<" in token:
@@ -1641,11 +1656,13 @@ class LLMService:
                 yield chunk
             response_content = ""
 
+    # modify by huhuhuhr
     def stream_with_think(self, raw_stream: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
         for chunk in self.model_think_parse(raw_stream):
-            SQLBotLogUtil.info(f"stream_with_think-chunk:{chunk}")
+            SQLBotLogUtil.debug(f"stream_with_think-chunk:{chunk}")
             yield chunk
 
+    # modify by huhuhuhr
     def _summarize_data_chunk(self, chunk_data_str, chunk_index, total_chunks, limits_token_usage, question):
         """
         使用LLM对数据块进行摘要，明确要求使用中文回答
@@ -1752,14 +1769,114 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
     return request_path
 
 
-def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = {}):
+def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = None):
     try:
         if chunk.usage_metadata:
+            if token_usage is None:
+                token_usage = {}
             token_usage['input_tokens'] = chunk.usage_metadata.get('input_tokens')
             token_usage['output_tokens'] = chunk.usage_metadata.get('output_tokens')
             token_usage['total_tokens'] = chunk.usage_metadata.get('total_tokens')
     except Exception:
         pass
+
+
+def process_stream(res: Iterator[BaseMessageChunk],
+                   token_usage: Dict[str, Any] = None,
+                   enable_tag_parsing: bool = settings.PARSE_REASONING_BLOCK_ENABLED,
+                   start_tag: str = settings.DEFAULT_REASONING_CONTENT_START,
+                   end_tag: str = settings.DEFAULT_REASONING_CONTENT_END
+                   ):
+    if token_usage is None:
+        token_usage = {}
+    in_thinking_block = False  # 标记是否在思考过程块中
+    current_thinking = ''  # 当前收集的思考过程内容
+    pending_start_tag = ''  # 用于缓存可能被截断的开始标签部分
+
+    for chunk in res:
+        SQLBotLogUtil.info(f"process_stream chunk:{chunk}")
+        reasoning_content_chunk = ''
+        content = chunk.content
+        output_content = ''  # 实际要输出的内容
+
+        # 检查additional_kwargs中的reasoning_content
+        if 'reasoning_content' in chunk.additional_kwargs:
+            reasoning_content = chunk.additional_kwargs.get('reasoning_content', '')
+            if reasoning_content is None:
+                reasoning_content = ''
+
+            # 累积additional_kwargs中的思考内容到current_thinking
+            current_thinking += reasoning_content
+            reasoning_content_chunk = reasoning_content
+
+        # 只有当current_thinking不是空字符串时才跳过标签解析
+        if not in_thinking_block and current_thinking.strip() != '':
+            output_content = content  # 正常输出content
+            yield {
+                'content': output_content,
+                'reasoning_content': reasoning_content_chunk
+            }
+            get_token_usage(chunk, token_usage)
+            continue  # 跳过后续的标签解析逻辑
+
+        # 如果没有有效的思考内容，并且启用了标签解析，才执行标签解析逻辑
+        # 如果有缓存的开始标签部分，先拼接当前内容
+        if pending_start_tag:
+            content = pending_start_tag + content
+            pending_start_tag = ''
+
+        # 检查是否开始思考过程块（处理可能被截断的开始标签）
+        if enable_tag_parsing and not in_thinking_block and start_tag:
+            if start_tag in content:
+                start_idx = content.index(start_tag)
+                # 只有当开始标签前面没有其他文本时才认为是真正的思考块开始
+                if start_idx == 0 or content[:start_idx].strip() == '':
+                    # 完整标签存在且前面没有其他文本
+                    output_content += content[:start_idx]  # 输出开始标签之前的内容
+                    content = content[start_idx + len(start_tag):]  # 移除开始标签
+                    in_thinking_block = True
+                else:
+                    # 开始标签前面有其他文本，不认为是思考块开始
+                    output_content += content
+                    content = ''
+            else:
+                # 检查是否可能有部分开始标签
+                for i in range(1, len(start_tag)):
+                    if content.endswith(start_tag[:i]):
+                        # 只有当当前内容全是空白时才缓存部分标签
+                        if content[:-i].strip() == '':
+                            pending_start_tag = start_tag[:i]
+                            content = content[:-i]  # 移除可能的部分标签
+                            output_content += content
+                            content = ''
+                        break
+
+        # 处理思考块内容
+        if enable_tag_parsing and in_thinking_block and end_tag:
+            if end_tag in content:
+                # 找到结束标签
+                end_idx = content.index(end_tag)
+                current_thinking += content[:end_idx]  # 收集思考内容
+                reasoning_content_chunk += current_thinking  # 添加到当前块的思考内容
+                content = content[end_idx + len(end_tag):]  # 移除结束标签后的内容
+                current_thinking = ''  # 重置当前思考内容
+                in_thinking_block = False
+                output_content += content  # 输出结束标签之后的内容
+            else:
+                # 在遇到结束标签前，持续收集思考内容
+                current_thinking += content
+                reasoning_content_chunk += content
+                content = ''
+
+        else:
+            # 不在思考块中或标签解析未启用，正常输出
+            output_content += content
+
+        yield {
+            'content': output_content,
+            'reasoning_content': reasoning_content_chunk
+        }
+        get_token_usage(chunk, token_usage)
 
 
 def get_lang_name(lang: str):

@@ -151,6 +151,9 @@ async def get_default_config() -> LLMConfig:
             try:
                 config_raw = json.loads(db_model.config)
                 additional_params = {item["key"]: prepare_model_arg(item.get('val')) for item in config_raw if "key" in item and "val" in item}
+                # modify by huhuhuhr 20250925
+                if hasattr(additional_params, "extra_body") is False:
+                    additional_params.setdefault('extra_body', {})
             except Exception:
                 pass
         if not db_model.api_domain.startswith("http"):
