@@ -92,10 +92,10 @@ class LLMService:
 
     last_execute_sql_error: str = None
 
-    # modify by huhuhuhr
+    # modify by huhuhuhr 20250925 新增embedding
     def __init__(self, current_user: CurrentUser, chat_question: OpenChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
-                 config: LLMConfig = None):
+                 embedding: bool = False, config: LLMConfig = None):
         # ✅ 确保是字符串，并设置环境变量 modify huhuhuhr
         os.environ["TIKTOKEN_CACHE_DIR"] = str(settings.TIKTOKEN_CACHE_DIR)
         self._encoder = tiktoken.get_encoding("o200k_base")
@@ -128,7 +128,7 @@ class LLMService:
                     raise SingleMessageError("No available datasource configuration found")
                 chat_question.engine = (ds.type_name if ds.type != 'excel' else 'PostgreSQL') + get_version(ds)
                 chat_question.db_schema = get_table_schema(session=self.session, current_user=current_user, ds=ds,
-                                                           question=chat_question.question)
+                                                           question=chat_question.question, embedding=embedding)
 
         self.generate_sql_logs = list_generate_sql_logs(session=self.session, chart_id=chat_id)
         self.generate_chart_logs = list_generate_chart_logs(session=self.session, chart_id=chat_id)
@@ -140,7 +140,7 @@ class LLMService:
         self.ds = (ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None
         self.chat_question = chat_question
         self.config = config
-        if no_reasoning or chat_question.no_reasoning is True:
+        if no_reasoning:
             # only work while using qwen
             if self.config.additional_params:
                 if self.config.additional_params.get('extra_body'):
@@ -366,7 +366,8 @@ class LLMService:
             self.chat_question.db_schema = self.out_ds_instance.get_db_schema(
                 self.ds.id) if self.out_ds_instance else get_table_schema(session=self.session,
                                                                           current_user=self.current_user, ds=self.ds,
-                                                                          question=self.chat_question.question)
+                                                                          question=self.chat_question.question,
+                                                                          embedding=False)
 
         guess_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         guess_msg.append(SystemMessage(content=self.chat_question.guess_sys_question()))
@@ -1052,7 +1053,6 @@ class LLMService:
 
             full_sql_text = ''
             for chunk in sql_res:
-                # SQLBotLogUtil.info(f"sql:{chunk}")
                 full_sql_text += chunk.get('content')
                 if in_chat:
                     yield 'data:' + orjson.dumps(
@@ -1060,7 +1060,6 @@ class LLMService:
                          'type': 'sql-result'}).decode() + '\n\n'
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
-
             # filter sql
             SQLBotLogUtil.info(full_sql_text)
 
