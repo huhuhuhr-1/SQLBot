@@ -1277,21 +1277,20 @@ class LLMService:
                      'type': 'recommended_question_result'}).decode() + '\n\n'
 
     # modify by huhuhuhr
-    def run_analysis_or_predict_task_async(self, action_type: str, base_record: ChatRecord, dataStr: str = None,
-                                           payload: AnalysisIntentPayload = None):
+    def run_analysis_or_predict_task_async(self, action_type: str, base_record: ChatRecord
+                                           , dataStr: str = None, payload: AnalysisIntentPayload = None):
         self.set_record(save_analysis_predict_record(self.session, base_record, action_type))
         # modify by huhuhuhr
-        self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type, dataStr, payload)
+        self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type
+                                      , dataStr, payload)
 
-    # modify byhuhuhuhr
-    def run_analysis_or_predict_task_cache(self, action_type: str, dataStr: str = None,
-                                           payload: AnalysisIntentPayload = None):
-        for chunk in self.run_analysis_or_predict_task(action_type, dataStr, payload):
+    def run_analysis_or_predict_task_cache(self, action_type: str):
+        for chunk in self.run_analysis_or_predict_task(action_type):
             self.chunk_list.append(chunk)
 
     # modify by huhuhuhr
-    def run_analysis_or_predict_task(self, action_type: str, dataStr: str = None,
-                                     payload: AnalysisIntentPayload = None):
+    def run_analysis_or_predict_task(self, action_type: str
+                                     , dataStr: str = None, payload: AnalysisIntentPayload = None):
         try:
 
             yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
