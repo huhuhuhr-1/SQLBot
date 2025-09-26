@@ -191,9 +191,12 @@ class LLMService:
             return True
 
     def init_messages(self):
-        last_sql_messages: List[dict[str, Any]] = self.generate_sql_logs[-1].messages if len(
-            self.generate_sql_logs) > 0 else []
-
+        # modify by huhuhuhr chat的history开关
+        if self.chat_question.history_open is False:
+            last_sql_messages = []
+        else:
+            last_sql_messages: List[dict[str, Any]] = self.generate_sql_logs[-1].messages if len(
+                self.generate_sql_logs) > 0 else []
         # todo maybe can configure
         count_limit = 0 - base_message_count_limit
 
