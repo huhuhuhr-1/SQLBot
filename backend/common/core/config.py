@@ -110,6 +110,7 @@ class Settings(BaseSettings):
     MAX_TOKEN_CHUNK: int = 30000
     TIKTOKEN_CACHE_DIR: str = '/opt/sqlbot/app/apps/tiktoken_cache'
 
+    TABLE_EMBEDDING_ENABLED: bool = False
     TABLE_EMBEDDING_COUNT: int = 10
 
 
