@@ -43,8 +43,8 @@ from apps.datasource.crud.permission import get_row_permission_filters, is_norma
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection
-from apps.openapi.dao.openapiDao import select_one, get_datasource_by_name_or_id
 # modify by huhuhuhr
+from apps.openapi.dao.openapiDao import select_one, get_datasource_by_name_or_id
 from apps.openapi.models.openapiModels import AnalysisIntentPayload, DataSourceRequest
 from apps.openapi.models.openapiModels import OpenChatQuestion
 from apps.openapi.service.openapi_prompt import analysis_question
