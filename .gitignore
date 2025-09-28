@@ -189,3 +189,5 @@ test.py
 
 
 !/.venv/
+/backend/offline_packages/
+/backend/requirements.txt

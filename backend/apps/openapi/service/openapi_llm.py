@@ -34,6 +34,9 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_last_execute_sql_error
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
     ChatFinishStep
+from sqlbot_xpack.license.license_manage import SQLBotLicenseUtil
+from sqlbot_xpack.custom_prompt.curd.custom_prompt import find_custom_prompts
+from sqlbot_xpack.custom_prompt.models.custom_prompt_model import CustomPromptTypeEnum
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
@@ -49,6 +52,7 @@ from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, ge
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
+# modify by huuhuhuhr
 from common.core.db import engine, get_session
 from common.core.deps import CurrentAssistant, CurrentUser
 from common.error import SingleMessageError, SQLBotDBError, ParseSQLResultError, SQLBotDBConnectionError
@@ -277,8 +281,12 @@ class LLMService:
         self.chat_question.data = orjson.dumps(data.get('data')).decode()
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
 
+        ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
         self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
-                                                                    self.current_user.oid)
+                                                                    self.current_user.oid, ds_id)
+        if SQLBotLicenseUtil.valid():
+            self.chat_question.custom_prompt = find_custom_prompts(self.session, CustomPromptTypeEnum.ANALYSIS,
+                                                                   self.current_user.oid, ds_id)
 
         analysis_msg.append(SystemMessage(content=self.chat_question.analysis_sys_question()))
         analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
@@ -324,6 +332,12 @@ class LLMService:
         self.chat_question.fields = orjson.dumps(fields).decode()
         data = get_chat_chart_data(self.session, self.record.id)
         self.chat_question.data = orjson.dumps(data.get('data')).decode()
+
+        if SQLBotLicenseUtil.valid():
+            ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+            self.chat_question.custom_prompt = find_custom_prompts(self.session, CustomPromptTypeEnum.PREDICT_DATA,
+                                                                   self.current_user.oid, ds_id)
+
         predict_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         predict_msg.append(SystemMessage(content=self.chat_question.predict_sys_question()))
         predict_msg.append(HumanMessage(content=self.chat_question.predict_user_question()))
@@ -444,7 +458,7 @@ class LLMService:
         full_thinking_text = ''
         full_text = ''
         if not ignore_auto_select:
-            if settings.EMBEDDING_ENABLED:
+            if settings.TABLE_EMBEDDING_ENABLED:
                 ds = get_ds_embedding(self.session, self.current_user, _ds_list, self.out_ds_instance,
                                       self.chat_question.question, self.current_assistant)
                 yield {'content': '{"id":' + str(ds.get('id')) + '}'}
@@ -535,7 +549,7 @@ class LLMService:
         except Exception as e:
             _error = e
 
-        if not ignore_auto_select and not settings.EMBEDDING_ENABLED:
+        if not ignore_auto_select and not settings.TABLE_EMBEDDING_ENABLED:
             self.record = save_select_datasource_answer(session=self.session, record_id=self.record.id,
                                                         answer=orjson.dumps({'content': full_text}).decode(),
                                                         datasource=_datasource,
@@ -544,9 +558,13 @@ class LLMService:
             oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
             ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
-            self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question, oid)
+            self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question, oid,
+                                                                        ds_id)
             self.chat_question.data_training = get_training_template(self.session, self.chat_question.question, ds_id,
                                                                      oid)
+            if SQLBotLicenseUtil.valid():
+                self.chat_question.custom_prompt = find_custom_prompts(self.session, CustomPromptTypeEnum.GENERATE_SQL,
+                                                                       oid, ds_id)
 
             self.init_messages()
 
@@ -589,62 +607,6 @@ class LLMService:
                                                                 token_usage=token_usage)
         self.record = save_sql_answer(session=self.session, record_id=self.record.id,
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
-
-    # modify by huhuhuhr
-    def generate_sql_with_sql(self):
-        # append current question
-        self.sql_message.append(HumanMessage(
-            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))))
-        # 硬设置提示词
-        content = orjson.dumps({
-            "question": self.chat_question.question,
-            "sql": self.chat_question.my_sql
-        }).decode()
-        self.sql_message.append(HumanMessage(content=content))
-        # add at 20250619 huhuhuhr
-        self.print_Message(self.sql_message)
-
-        self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=self.session,
-                                                                  ai_modal_id=self.chat_question.ai_modal_id,
-                                                                  ai_modal_name=self.chat_question.ai_modal_name,
-                                                                  operate=OperationEnum.GENERATE_SQL,
-                                                                  record_id=self.record.id,
-                                                                  full_message=[
-                                                                      {'type': msg.type, 'content': msg.content} for msg
-                                                                      in self.sql_message])
-        full_thinking_text = ''
-        full_sql_text = ''
-        token_usage = {}
-        res = process_stream(self.stream_with_think(self.llm.stream(self.sql_message)), token_usage)
-        for chunk in res:
-            if chunk.get('content'):
-                full_sql_text += chunk.get('content')
-            if chunk.get('reasoning_content'):
-                full_thinking_text += chunk.get('reasoning_content')
-            yield chunk
-
-        self.sql_message.append(AIMessage(full_sql_text))
-
-        self.current_logs[OperationEnum.GENERATE_SQL] = end_log(session=self.session,
-                                                                log=self.current_logs[OperationEnum.GENERATE_SQL],
-                                                                full_message=[{'type': msg.type, 'content': msg.content}
-                                                                              for msg in self.sql_message],
-                                                                reasoning_content=full_thinking_text,
-                                                                token_usage=token_usage)
-        self.record = save_sql_answer(session=self.session, record_id=self.record.id,
-                                      answer=orjson.dumps({'content': full_sql_text}).decode())
-
-    # modify by huhuhuhr
-    def print_Message(self, messages=None):
-        if messages is None:
-            messages = self.sql_message
-        for i, msg in enumerate(messages):
-            if isinstance(msg, SystemMessage):
-                SQLBotLogUtil.info(f"\n\nSystem prompt [{i}]:\n {msg.content}\n")
-            elif isinstance(msg, HumanMessage):
-                SQLBotLogUtil.info(f"\nHuman prompt [{i}]:\n {msg.content}\n")
-            elif isinstance(msg, AIMessage):
-                SQLBotLogUtil.info(f"\nAI prompt [{i}]:\n {msg.content}\n\n")
 
     def generate_with_sub_sql(self, sql, sub_mappings: list):
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
@@ -998,9 +960,13 @@ class LLMService:
                 oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
                 ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
                 self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
-                                                                            oid)
+                                                                            oid, ds_id)
                 self.chat_question.data_training = get_training_template(self.session, self.chat_question.question,
                                                                          ds_id, oid)
+                if SQLBotLicenseUtil.valid():
+                    self.chat_question.custom_prompt = find_custom_prompts(self.session,
+                                                                           CustomPromptTypeEnum.GENERATE_SQL,
+                                                                           oid, ds_id)
 
             self.init_messages()
 
@@ -1728,6 +1694,64 @@ class LLMService:
                 "summary": f"生成数据块 {chunk_index} 的摘要时出错: {str(e)}\n",
                 "error": True
             }
+
+    # modify by huhuhuhr
+    def generate_sql_with_sql(self):
+        # append current question
+        self.sql_message.append(HumanMessage(
+            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))))
+        # 硬设置提示词
+        content = orjson.dumps({
+            "question": self.chat_question.question,
+            "sql": self.chat_question.my_sql
+        }).decode()
+        self.sql_message.append(HumanMessage(content=content))
+        # add at 20250619 huhuhuhr
+        self.print_Message(self.sql_message)
+
+        self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=self.session,
+                                                                  ai_modal_id=self.chat_question.ai_modal_id,
+                                                                  ai_modal_name=self.chat_question.ai_modal_name,
+                                                                  operate=OperationEnum.GENERATE_SQL,
+                                                                  record_id=self.record.id,
+                                                                  full_message=[
+                                                                      {'type': msg.type, 'content': msg.content} for
+                                                                      msg
+                                                                      in self.sql_message])
+        full_thinking_text = ''
+        full_sql_text = ''
+        token_usage = {}
+        res = process_stream(self.stream_with_think(self.llm.stream(self.sql_message)), token_usage)
+        for chunk in res:
+            if chunk.get('content'):
+                full_sql_text += chunk.get('content')
+            if chunk.get('reasoning_content'):
+                full_thinking_text += chunk.get('reasoning_content')
+            yield chunk
+
+        self.sql_message.append(AIMessage(full_sql_text))
+
+        self.current_logs[OperationEnum.GENERATE_SQL] = end_log(session=self.session,
+                                                                log=self.current_logs[OperationEnum.GENERATE_SQL],
+                                                                full_message=[
+                                                                    {'type': msg.type, 'content': msg.content}
+                                                                    for msg in self.sql_message],
+                                                                reasoning_content=full_thinking_text,
+                                                                token_usage=token_usage)
+        self.record = save_sql_answer(session=self.session, record_id=self.record.id,
+                                      answer=orjson.dumps({'content': full_sql_text}).decode())
+
+    # modify by huhuhuhr
+    def print_Message(self, messages=None):
+        if messages is None:
+            messages = self.sql_message
+        for i, msg in enumerate(messages):
+            if isinstance(msg, SystemMessage):
+                SQLBotLogUtil.info(f"\n\nSystem prompt [{i}]:\n {msg.content}\n")
+            elif isinstance(msg, HumanMessage):
+                SQLBotLogUtil.info(f"\nHuman prompt [{i}]:\n {msg.content}\n")
+            elif isinstance(msg, AIMessage):
+                SQLBotLogUtil.info(f"\nAI prompt [{i}]:\n {msg.content}\n\n")
 
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
