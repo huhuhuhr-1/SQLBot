@@ -5,8 +5,8 @@ import urllib.parse
 from decimal import Decimal
 from typing import Optional
 
+import psycopg2
 import pymssql
-
 from apps.db.db_sql import get_table_sql, get_field_sql, get_version_sql
 from common.error import ParseSQLResultError
 
@@ -191,6 +191,20 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
                         if is_raise:
                             raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                         return False
+            elif ds.type == 'kingbase':
+                with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database,
+                                      user=conf.username,
+                                      password=conf.password,
+                                      connect_timeout=10, **extra_config_dict) as conn, conn.cursor() as cursor:
+                    try:
+                        cursor.execute('select 1')
+                        SQLBotLogUtil.info("success")
+                        return True
+                    except Exception as e:
+                        SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                        if is_raise:
+                            raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
+                        return False
             elif ds.type == 'es':
                 es_conn = get_es_connect(conf)
                 if es_conn.ping():
@@ -269,8 +283,7 @@ def get_schema(ds: CoreDatasource):
             if ds.type == "sqlServer":
                 sql = """select name from sys.schemas"""
             elif ds.type == "pg" or ds.type == "excel":
-                sql = """SELECT nspname
-                         FROM pg_namespace"""
+                sql = """SELECT nspname FROM pg_namespace"""
             elif ds.type == "oracle":
                 sql = """select * from all_users"""
             with session.execute(text(sql)) as result:
@@ -290,6 +303,15 @@ def get_schema(ds: CoreDatasource):
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                             password=conf.password,
                                             timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
+                cursor.execute("""SELECT nspname FROM pg_namespace""")
+                res = cursor.fetchall()
+                res_list = [item[0] for item in res]
+                return res_list
+        elif ds.type == 'kingbase':
+            with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
+                                  password=conf.password,
+                                  options=f"-c statement_timeout={conf.timeout * 1000}",
+                                  **extra_config_dict) as conn, conn.cursor() as cursor:
                 cursor.execute("""SELECT nspname FROM pg_namespace""")
                 res = cursor.fetchall()
                 res_list = [item[0] for item in res]
@@ -331,6 +353,15 @@ def get_tables(ds: CoreDatasource):
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
+        elif ds.type == 'kingbase':
+            with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
+                                  password=conf.password,
+                                  options=f"-c statement_timeout={conf.timeout * 1000}",
+                                  **extra_config_dict) as conn, conn.cursor() as cursor:
+                cursor.execute(sql.format(sql_param))
+                res = cursor.fetchall()
+                res_list = [TableSchema(*item) for item in res]
+                return res_list
         elif ds.type == 'es':
             res = get_es_index(conf)
             res_list = [TableSchema(*item) for item in res]
@@ -369,6 +400,15 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
                                             password=conf.password,
                                             timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
                 cursor.execute(sql, (p1, p2))
+                res = cursor.fetchall()
+                res_list = [ColumnSchema(*item) for item in res]
+                return res_list
+        elif ds.type == 'kingbase':
+            with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
+                                  password=conf.password,
+                                  options=f"-c statement_timeout={conf.timeout * 1000}",
+                                  **extra_config_dict) as conn, conn.cursor() as cursor:
+                cursor.execute(sql.format(p1, p2))
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
@@ -442,6 +482,26 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                             password=conf.password,
                                             timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
+                try:
+                    cursor.execute(sql)
+                    res = cursor.fetchall()
+                    columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
+                                                                                                field in
+                                                                                                cursor.description]
+                    result_list = [
+                        {str(columns[i]): float(value) if isinstance(value, Decimal) else value for i, value in
+                         enumerate(tuple_item)}
+                        for tuple_item in res
+                    ]
+                    return {"fields": columns, "data": result_list,
+                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                except Exception as ex:
+                    raise ParseSQLResultError(str(ex))
+        elif ds.type == 'kingbase':
+            with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
+                                  password=conf.password,
+                                  options=f"-c statement_timeout={conf.timeout * 1000}",
+                                  **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute(sql)
                     res = cursor.fetchall()
