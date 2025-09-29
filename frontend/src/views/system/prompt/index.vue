@@ -201,9 +201,16 @@ const search = () => {
   searchLoading.value = true
   oldKeywords.value = keywords.value
   promptApi
-    .getList(pageInfo.currentPage, pageInfo.pageSize, currentType.value, {
-      name: keywords.value,
-    })
+    .getList(
+      pageInfo.currentPage,
+      pageInfo.pageSize,
+      currentType.value,
+      keywords.value
+        ? {
+            name: keywords.value,
+          }
+        : {}
+    )
     .then((res: any) => {
       toggleRowLoading.value = true
       fieldList.value = res.data
@@ -328,7 +335,7 @@ const typeChange = (val: any) => {
 </script>
 
 <template>
-  <div v-loading="searchLoading" class="prompt">
+  <div class="prompt">
     <div class="tool-left">
       <div class="btn-select">
         <el-button
@@ -464,7 +471,7 @@ const typeChange = (val: any) => {
               :description="$t('datasource.relevant_content_found')"
               img-type="tree"
             />
-            <template v-if="!keywords && !fieldList.length">
+            <template v-if="!oldKeywords && !fieldList.length">
               <EmptyBackground
                 class="datasource-yet"
                 :description="$t('prompt.no_prompt_words')"
