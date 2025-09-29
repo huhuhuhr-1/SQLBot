@@ -1443,6 +1443,11 @@ def process_stream(res: Iterator[BaseMessageChunk],
 
 
 def get_lang_name(lang: str):
-    if lang and lang == 'en':
+    if not lang:
+        return '简体中文'
+    normalized = lang.lower()
+    if normalized.startswith('en'):
         return '英文'
+    if normalized.startswith('ko'):
+        return '韩语'
     return '简体中文'
