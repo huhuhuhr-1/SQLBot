@@ -274,22 +274,99 @@ class LLMService:
                     fields.append(column_str)
         return fields
 
-    def generate_analysis(self):
+    # modify by huhuhuhr
+    def generate_analysis(self, dataStr: str = None,
+                          payload: AnalysisIntentPayload = None):
         fields = self.get_fields_from_chart()
         self.chat_question.fields = orjson.dumps(fields).decode()
-        data = get_chat_chart_data(self.session, self.record.id)
-        self.chat_question.data = orjson.dumps(data.get('data')).decode()
+        # modify by huhuhuhr 只分析数据的时候由于没有上级的recordId,所以不会有chat无法提取fields
+        if self.chat_question.fields is None or self.chat_question.fields == '[]':
+            self.record.ai_modal_id = self.chat_question.ai_modal_id
+            self.record.create_by = self.current_user.oid
+            try:
+                for session in get_session():
+                    datasource: CoreDatasource = get_datasource_by_name_or_id(
+                        session=session,
+                        user=self.current_user,
+                        query=DataSourceRequest(id=self.chat_question.db_id)
+                    )
+                    self.chat_question.fields = get_table_schema(session=self.session,
+                                                                 current_user=self.current_user,
+                                                                 ds=datasource,
+                                                                 question=self.chat_question.question)
+            except Exception as e:
+                SQLBotLogUtil.error(f"get table failed: {e}")
+        # 按照字符数量阈值处理数据，而不是按行数
+        if dataStr is not None:
+            raw_data = json.loads(dataStr)
+        else:
+            data = get_chat_chart_data(self.session, self.record.id)
+            raw_data = data.get('data')
+        max_token_chars = settings.MAX_TOKEN_CHUNK  # 设置字符阈值，可根据需要调整
+        self.chat_question.data = orjson.dumps(raw_data).decode()
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
-
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
         self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
                                                                     self.current_user.oid, ds_id)
         if SQLBotLicenseUtil.valid():
             self.chat_question.custom_prompt = find_custom_prompts(self.session, CustomPromptTypeEnum.ANALYSIS,
                                                                    self.current_user.oid, ds_id)
+        # 系统提示词 modify by huhuhuhr
+        sys_prompt = self.get_analysis_sys_prompt(payload)
+        analysis_msg.append(SystemMessage(content=sys_prompt))
+        if raw_data:
+            # 将数据转换为JSON字符串以估算字符数
+            data_str = orjson.dumps(raw_data).decode()
+            # 计算数据量
+            total_prompt_tokens = self.count_tokens(data_str)
 
-        analysis_msg.append(SystemMessage(content=self.chat_question.analysis_sys_question()))
-        analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
+            SQLBotLogUtil.info(f'Estimated total prompt tokens: {total_prompt_tokens}')
+
+            if (self.chat_question.every is not True and total_prompt_tokens <= max_token_chars) or len(raw_data) == 1:
+                # 数据量较小，直接使用原数据
+                self.chat_question.data = data_str
+                human_prompt = self.get_analysis_human_prompt()
+                # 输入 field + data modify by huhuhuhr
+                analysis_msg.append(HumanMessage(content=human_prompt))
+            else:
+                # 数据量大，需要进行分段摘要处理
+                if self.chat_question.every is True:
+                    # 当 every 为 True 时，不进行分片处理，直接使用全部数据
+                    chunks = self._chunk_data_every(raw_data)
+                    # 超过10条逐条分析，则进行分片处理
+                    if len(chunks) > 10:
+                        chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
+                else:
+                    # 否则进行分片处理
+                    chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
+                # 数据量大，需要进行逐条分析处理
+                remark = f"正在进行分析...请耐心等待。分片数量:{len(chunks)}\n\n"
+                yield {'content': "", 'reasoning_content': remark}
+                every_chunk_max_token_chars = max_token_chars / len(chunks)
+                for i, chunk in enumerate(chunks):
+                    chunk_str = orjson.dumps(chunk).decode()
+                    # 流式处理摘要生成
+                    remark = f"\n第{i + 1}段数据,归纳内容(生成中...)\n\n"
+                    yield {'content': "", 'reasoning_content': remark}
+                    for summary in self._summarize_data_chunk(chunk_str,
+                                                              i + 1,
+                                                              len(chunks),
+                                                              every_chunk_max_token_chars,
+                                                              self.chat_question.question):
+                        if summary.get("partial"):
+                            # 流式返回部分摘要
+                            yield {'content': "", 'reasoning_content': summary.get('summary')}
+                        elif summary.get("error"):
+                            yield {'content': "", 'reasoning_content': summary.get('summary')}
+                        else:
+                            final_summary = summary.get('summary')
+                            analysis_msg.append(HumanMessage(content=f"第{i + 1}段数据分析结果:{final_summary}"))
+                            yield {'content': "", 'reasoning_content': "\n"}
+        else:
+            self.chat_question.data = orjson.dumps([]).decode()
+            human_prompt = self.get_analysis_human_prompt()
+            # 输入 field + data modify by huhuhuhr
+            analysis_msg.append(HumanMessage(content=human_prompt))
 
         self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
                                                               ai_modal_id=self.chat_question.ai_modal_id,
@@ -303,8 +380,9 @@ class LLMService:
                                                                   in analysis_msg])
         full_thinking_text = ''
         full_analysis_text = ''
+        # modify by huhuhuhr 打印分析
+        self.print_Message(analysis_msg)
         token_usage = {}
-        # modify by huhuhuhr
         res = process_stream(self.stream_with_think(self.llm.stream(analysis_msg)), token_usage)
         for chunk in res:
             if chunk.get('content'):
@@ -1275,17 +1353,7 @@ class LLMService:
 
             # modify by huhuhuhr
             if action_type == 'analysis':
-                analysis_res = self.big_generate_analysis(dataStr, payload)
-                for chunk in analysis_res:
-                    yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                         'type': 'analysis-result'}).decode() + '\n\n'
-                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
-
-                yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
-            # modify by huhuhuhr
-            elif action_type == 'big_analysis':
-                analysis_res = self.generate_analysis()
+                analysis_res = self.generate_analysis(dataStr, payload)
                 for chunk in analysis_res:
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
@@ -1360,137 +1428,6 @@ class LLMService:
                 return len(tiktoken.get_encoding("o200k_base").encode(text))
         except Exception:
             return len(text)
-
-    # modify by huhuhuhr
-    def big_generate_analysis(self, dataStr: str = None,
-                              payload: AnalysisIntentPayload = None):
-        fields = self.get_fields_from_chart()
-        self.chat_question.fields = orjson.dumps(fields).decode()
-        # modify by huhuhuhr 只分析数据的时候由于没有上级的recordId,所以不会有chat无法提取fields
-        if self.chat_question.fields is None or self.chat_question.fields == '[]':
-            self.record.ai_modal_id = self.chat_question.ai_modal_id
-            self.record.create_by = self.current_user.oid
-            try:
-                for session in get_session():
-                    datasource: CoreDatasource = get_datasource_by_name_or_id(
-                        session=session,
-                        user=self.current_user,
-                        query=DataSourceRequest(id=self.chat_question.db_id)
-                    )
-                    self.chat_question.fields = get_table_schema(session=self.session,
-                                                                 current_user=self.current_user,
-                                                                 ds=datasource,
-                                                                 question=self.chat_question.question)
-            except Exception as e:
-                SQLBotLogUtil.error(f"get table failed: {e}")
-        # 按照字符数量阈值处理数据，而不是按行数
-        if dataStr is not None:
-            raw_data = json.loads(dataStr)
-        else:
-            data = get_chat_chart_data(self.session, self.record.id)
-            raw_data = data.get('data')
-        max_token_chars = settings.MAX_TOKEN_CHUNK  # 设置字符阈值，可根据需要调整
-        self.chat_question.data = orjson.dumps(raw_data).decode()
-        analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
-        ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
-        self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
-                                                                    self.current_user.oid, ds_id)
-        if SQLBotLicenseUtil.valid():
-            self.chat_question.custom_prompt = find_custom_prompts(self.session, CustomPromptTypeEnum.ANALYSIS,
-                                                                   self.current_user.oid, ds_id)
-        # 系统提示词 modify by huhuhuhr
-        sys_prompt = self.get_analysis_sys_prompt(payload)
-        analysis_msg.append(SystemMessage(content=sys_prompt))
-        if raw_data:
-            # 将数据转换为JSON字符串以估算字符数
-            data_str = orjson.dumps(raw_data).decode()
-            # 计算数据量
-            total_prompt_tokens = self.count_tokens(data_str)
-
-            SQLBotLogUtil.info(f'Estimated total prompt tokens: {total_prompt_tokens}')
-
-            if (self.chat_question.every is not True and total_prompt_tokens <= max_token_chars) or len(raw_data) == 1:
-                # 数据量较小，直接使用原数据
-                self.chat_question.data = data_str
-                human_prompt = self.get_analysis_human_prompt()
-                # 输入 field + data modify by huhuhuhr
-                analysis_msg.append(HumanMessage(content=human_prompt))
-            else:
-                # 数据量大，需要进行分段摘要处理
-                if self.chat_question.every is True:
-                    # 当 every 为 True 时，不进行分片处理，直接使用全部数据
-                    chunks = self._chunk_data_every(raw_data)
-                    # 超过10条逐条分析，则进行分片处理
-                    if len(chunks) > 10:
-                        chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
-                else:
-                    # 否则进行分片处理
-                    chunks = self._chunk_data_by_tokens(raw_data, max_token_chars)
-                # 数据量大，需要进行逐条分析处理
-                remark = f"正在进行分析...请耐心等待。分片数量:{len(chunks)}\n\n"
-                yield {'content': "", 'reasoning_content': remark}
-                every_chunk_max_token_chars = max_token_chars / len(chunks)
-                for i, chunk in enumerate(chunks):
-                    chunk_str = orjson.dumps(chunk).decode()
-                    # 流式处理摘要生成
-                    remark = f"\n第{i + 1}段数据,归纳内容(生成中...)\n\n"
-                    yield {'content': "", 'reasoning_content': remark}
-                    for summary in self._summarize_data_chunk(chunk_str,
-                                                              i + 1,
-                                                              len(chunks),
-                                                              every_chunk_max_token_chars,
-                                                              self.chat_question.question):
-                        if summary.get("partial"):
-                            # 流式返回部分摘要
-                            yield {'content': "", 'reasoning_content': summary.get('summary')}
-                        elif summary.get("error"):
-                            yield {'content': "", 'reasoning_content': summary.get('summary')}
-                        else:
-                            final_summary = summary.get('summary')
-                            analysis_msg.append(HumanMessage(content=f"第{i + 1}段数据分析结果:{final_summary}"))
-                            yield {'content': "", 'reasoning_content': "\n"}
-        else:
-            self.chat_question.data = orjson.dumps([]).decode()
-            human_prompt = self.get_analysis_human_prompt()
-            # 输入 field + data modify by huhuhuhr
-            analysis_msg.append(HumanMessage(content=human_prompt))
-
-        self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
-                                                              ai_modal_id=self.chat_question.ai_modal_id,
-                                                              ai_modal_name=self.chat_question.ai_modal_name,
-                                                              operate=OperationEnum.ANALYSIS,
-                                                              record_id=self.record.id,
-                                                              full_message=[
-                                                                  {'type': msg.type,
-                                                                   'content': msg.content} for
-                                                                  msg
-                                                                  in analysis_msg])
-        full_thinking_text = ''
-        full_analysis_text = ''
-        # modify by huhuhuhr 打印分析
-        self.print_Message(analysis_msg)
-        token_usage = {}
-        res = process_stream(self.stream_with_think(self.llm.stream(analysis_msg)), token_usage)
-        for chunk in res:
-            if chunk.get('content'):
-                full_analysis_text += chunk.get('content')
-            if chunk.get('reasoning_content'):
-                full_thinking_text += chunk.get('reasoning_content')
-            yield chunk
-
-        analysis_msg.append(AIMessage(full_analysis_text))
-
-        self.current_logs[OperationEnum.ANALYSIS] = end_log(session=self.session,
-                                                            log=self.current_logs[
-                                                                OperationEnum.ANALYSIS],
-                                                            full_message=[
-                                                                {'type': msg.type,
-                                                                 'content': msg.content}
-                                                                for msg in analysis_msg],
-                                                            reasoning_content=full_thinking_text,
-                                                            token_usage=token_usage)
-        self.record = save_analysis_answer(session=self.session, record_id=self.record.id,
-                                           answer=orjson.dumps({'content': full_analysis_text}).decode())
 
     # modify by huhuhuhr
     def get_analysis_human_prompt(self):
