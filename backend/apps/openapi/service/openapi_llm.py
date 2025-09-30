@@ -536,10 +536,16 @@ class LLMService:
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type_name
                 # save chat
-                self.session.add(_chat)
-                self.session.flush()
-                self.session.refresh(_chat)
-                self.session.commit()
+                with self.session.begin_nested():
+                    # 为了能继续记日志，先单独处理下事务
+                    try:
+                        self.session.add(_chat)
+                        self.session.flush()
+                        self.session.refresh(_chat)
+                        self.session.commit()
+                    except Exception as e:
+                        self.session.rollback()
+                        raise e
 
             elif data['fail']:
                 raise SingleMessageError(data['fail'])
@@ -636,7 +642,6 @@ class LLMService:
                 full_dynamic_text += chunk.get('content')
             if chunk.get('reasoning_content'):
                 full_thinking_text += chunk.get('reasoning_content')
-            yield chunk
 
         dynamic_sql_msg.append(AIMessage(full_dynamic_text))
 
@@ -1361,7 +1366,7 @@ class LLMService:
                               payload: AnalysisIntentPayload = None):
         fields = self.get_fields_from_chart()
         self.chat_question.fields = orjson.dumps(fields).decode()
-        # 只分析数据的时候由于没有上级的recordId,所以不会有chat无法提取fields
+        # modify by huhuhuhr 只分析数据的时候由于没有上级的recordId,所以不会有chat无法提取fields
         if self.chat_question.fields is None or self.chat_question.fields == '[]':
             self.record.ai_modal_id = self.chat_question.ai_modal_id
             self.record.create_by = self.current_user.oid
@@ -1385,10 +1390,14 @@ class LLMService:
             data = get_chat_chart_data(self.session, self.record.id)
             raw_data = data.get('data')
         max_token_chars = settings.MAX_TOKEN_CHUNK  # 设置字符阈值，可根据需要调整
-        # 术语
-        self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
-                                                                    self.current_user.oid)
+        self.chat_question.data = orjson.dumps(raw_data).decode()
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
+        ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+        self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
+                                                                    self.current_user.oid, ds_id)
+        if SQLBotLicenseUtil.valid():
+            self.chat_question.custom_prompt = find_custom_prompts(self.session, CustomPromptTypeEnum.ANALYSIS,
+                                                                   self.current_user.oid, ds_id)
         # 系统提示词 modify by huhuhuhr
         sys_prompt = self.get_analysis_sys_prompt(payload)
         analysis_msg.append(SystemMessage(content=sys_prompt))
@@ -1927,6 +1936,11 @@ def process_stream(res: Iterator[BaseMessageChunk],
 
 
 def get_lang_name(lang: str):
-    if lang and lang == 'en':
+    if not lang:
+        return '简体中文'
+    normalized = lang.lower()
+    if normalized.startswith('en'):
         return '英文'
+    if normalized.startswith('ko'):
+        return '韩语'
     return '简体中文'
