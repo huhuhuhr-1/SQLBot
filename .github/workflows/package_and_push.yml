@@ -82,7 +82,7 @@ jobs:
           --exclude .git \
           --exclude images \
           --exclude docker \
-          -czvf $package_offline .
+          -czvf $package_online .
           
           if [[ ${PACKAGE_EE} == 'true' ]]; then 
             package_offline_ee="sqlbot-offline-installer-${TAG_NAME}${platform}-ee.tar.gz"
@@ -103,5 +103,6 @@ jobs:
 
   
   
+
 
 

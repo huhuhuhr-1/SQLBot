@@ -495,10 +495,16 @@ class LLMService:
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type_name
                 # save chat
-                self.session.add(_chat)
-                self.session.flush()
-                self.session.refresh(_chat)
-                self.session.commit()
+                with self.session.begin_nested():
+                    # 为了能继续记日志，先单独处理下事务
+                    try:
+                        self.session.add(_chat)
+                        self.session.flush()
+                        self.session.refresh(_chat)
+                        self.session.commit()
+                    except Exception as e:
+                        self.session.rollback()
+                        raise e
 
             elif data['fail']:
                 raise SingleMessageError(data['fail'])
@@ -592,7 +598,6 @@ class LLMService:
                 full_dynamic_text += chunk.get('content')
             if chunk.get('reasoning_content'):
                 full_thinking_text += chunk.get('reasoning_content')
-            yield chunk
 
         dynamic_sql_msg.append(AIMessage(full_dynamic_text))
 

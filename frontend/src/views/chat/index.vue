@@ -459,6 +459,7 @@ const innerRef = ref()
 const chatCreatorRef = ref()
 
 const scrollToBottom = debounce(() => {
+  if (scrolling) return
   nextTick(() => {
     chatListRef.value?.scrollTo({
       top: chatListRef.value.wrapRef.scrollHeight,
@@ -730,7 +731,7 @@ const sendMessage = async ($event: any = {}) => {
 
   loading.value = true
   isTyping.value = true
-  if (isCompletePage.value || innerRef.value) {
+  if (isCompletePage.value && innerRef.value) {
     scrollTopVal = innerRef.value!.clientHeight
     scrollTime = setInterval(() => {
       scrollBottom()
@@ -750,6 +751,12 @@ const sendMessage = async ($event: any = {}) => {
   inputMessage.value = ''
 
   nextTick(async () => {
+    if (!isCompletePage.value && innerRef.value) {
+      scrollTopVal = innerRef.value!.clientHeight
+      scrollTime = setInterval(() => {
+        scrollBottom()
+      }, 300)
+    }
     const index = currentChat.value.records.length - 1
     if (chartAnswerRef.value) {
       if (chartAnswerRef.value instanceof Array) {
