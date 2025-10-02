@@ -16,6 +16,7 @@ import pandas as pd
 import requests
 import sqlparse
 # modify by huhuhuhr
+from sqlalchemy.exc import PendingRollbackError
 import tiktoken
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
@@ -113,7 +114,14 @@ class LLMService:
         self.current_assistant = current_assistant
         # chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
         chat_id = chat_question.chat_id
-        chat: Chat | None = self.session.get(Chat, chat_id)
+        # modify by huhuhuhr
+        try:
+            chat: Chat | None = self.session.get(Chat, chat_id)
+        except PendingRollbackError:
+            # 重置会话事务
+            self.session.rollback()
+            # 重新尝试查询
+            chat = None
         if not chat:
             raise SingleMessageError(f"Chat with id {chat_id} not found")
         ds: CoreDatasource | AssistantOutDsSchema | None = None

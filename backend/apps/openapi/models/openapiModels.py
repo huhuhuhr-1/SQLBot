@@ -64,7 +64,6 @@ class OpenChat(BaseModel):
     history_open: Optional[bool] = Body(default=True, description='历史信息打开')
     no_reasoning: Optional[bool] = Body(default=False, description='不思考')
 
-
     @field_validator('my_promote', 'my_schema', mode='before')
     @classmethod
     def empty_str_to_none(cls, v):
@@ -90,7 +89,7 @@ class OpenChatQuestion(AiModelQuestion):
     analysis: Optional[bool] = Body(default=False, description='是否分析')
     predict: Optional[bool] = Body(default=False, description='是否预测')
     recommend: Optional[bool] = Body(default=False, description='是否推荐')
-    every: Optional[bool] = Body(default=False, description='逐条分析')
+    every: Optional[bool] = Body(default=False, description='逐条分析,分析')
     no_reasoning: Optional[bool] = Body(default=True, description='不思考')
     history_open: Optional[bool] = Body(default=True, description='历史信息打开')
 
@@ -281,3 +280,9 @@ class IntentPayload:
             {"search": self.search, "analysis": self.analysis, "predict": self.predict},
             ensure_ascii=False
         )
+
+
+class DbBindChat(BaseModel):
+    title: str = Body(..., description='标题')
+    db_id: int = Body(..., description='数据库标记')
+    origin: Optional[int] = 0  # 0是页面上，mcp是1，小助手是2

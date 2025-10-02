@@ -11,14 +11,15 @@ engine = create_engine(
     str(settings.SQLALCHEMY_DATABASE_URI),
     pool_size=settings.PG_POOL_SIZE,  # 连接池大小
     max_overflow=settings.PG_MAX_OVERFLOW,  # 超出pool_size后最多可以创建的连接数
-    pool_timeout=settings.PG_POOL_RECYCLE,  # 等待连接池连接的超时时间（秒）
-    pool_recycle=settings.PG_POOL_PRE_PING,  # 连接回收时间（秒）
-    pool_pre_ping=True,  # 每次从连接池获取连接时先测试连接是否有效
+    pool_timeout=settings.PG_POOL_TIMEOUT,  # 等待连接池连接的超时时间（秒）
+    pool_recycle=settings.PG_POOL_RECYCLE,  # 连接回收时间（秒）
+    pool_pre_ping=settings.PG_POOL_PRE_PING,  # 每次从连接池获取连接时先测试连接是否有效
+    pool_reset_on_return='rollback',  # 添加此配置确保连接返回时重置
     echo=settings.SQL_DEBUG  # 是否输出SQL语句到日志
 )
 
 # 创建会话工厂，用于创建新的会话
-SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+# SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -50,10 +51,9 @@ def get_db_session() -> Generator[Session, None, None]:
     Yields:
         Session: 数据库会话对象
     """
-    session = SessionLocal()
+    session = Session(engine)  # 直接使用 engine 创建会话
     try:
         yield session
-        session.commit()
     except Exception:
         session.rollback()
         raise

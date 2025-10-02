@@ -10,7 +10,7 @@ from apps.chat.models.chat_model import CreateChat
 from apps.datasource.crud.datasource import get_datasource_list
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, IntentPayload
+    OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat
 from apps.openapi.service.openapi_llm import LLMService
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
     chat_identify_intent, _get_chats_to_clean, _create_clean_response, \
@@ -22,7 +22,6 @@ from common.core.db import get_session
 from common.core.deps import SessionDep, CurrentUser, CurrentAssistant, Trans
 from common.utils.utils import SQLBotLogUtil
 
-# 创建 OpenAPI 路由实例
 router = APIRouter(tags=["openapi"], prefix="/openapi")
 
 
@@ -252,6 +251,37 @@ async def get_data(session: SessionDep, record_chat: OpenChat):
 
     # 使用异步线程执行数据库查询
     return await asyncio.to_thread(_fetch_chart_data)
+
+
+@router.post("/createRecordAndBindDb")
+async def bind_data_source(session: SessionDep, current_user: CurrentUser, db_bind_chat: DbBindChat):
+    """
+    绑定数据源并开始聊天
+
+    根据指定的数据源ID和用户输入，创建一个新的聊天记录并开始聊天。
+
+    Args:
+        session: 数据库会话依赖
+        current_user: 当前认证用户信息
+        db_bind_chat: 包含数据源ID和用户输入的请求对象
+
+    Returns:
+        创建的聊天记录对象
+
+    Raises:
+        HTTPException: 当处理过程中出现异常时抛出500错误
+    """
+    try:
+        create_chat_obj = CreateChat(
+            datasource=db_bind_chat.db_id,
+            question=db_bind_chat.title
+        )
+        return create_chat(session, current_user, create_chat_obj)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 
 @router.post("/getRecommend", dependencies=[Depends(common_headers)])

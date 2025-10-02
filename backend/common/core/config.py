@@ -102,9 +102,10 @@ class Settings(BaseSettings):
     DEFAULT_REASONING_CONTENT_START: str = '<think>'
     DEFAULT_REASONING_CONTENT_END: str = '</think>'
 
-    PG_POOL_SIZE: int = 20
-    PG_MAX_OVERFLOW: int = 30
+    PG_POOL_SIZE: int = 50
+    PG_MAX_OVERFLOW: int = 100
     PG_POOL_RECYCLE: int = 3600
+    PG_POOL_TIMEOUT: int = 60
     PG_POOL_PRE_PING: bool = True
     # qian wen 32k
     MAX_TOKEN_CHUNK: int = 30000
