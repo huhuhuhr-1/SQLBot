@@ -168,6 +168,7 @@ async def getChat(
             current_user,
             chat_question,
             current_assistant,
+            no_reasoning=chat_question.no_reasoning,
             embedding=True
         )
         # 如果存在意图检测，则进行意图识别
@@ -326,7 +327,13 @@ async def get_recommend(
         )
 
         # 创建LLM服务实例并设置推荐问题模式
-        llm_service = await LLMService.create(current_user, chat_question, current_assistant, True)
+        llm_service = await LLMService.create(
+            current_user,
+            chat_question,
+            current_assistant,
+            no_reasoning=chat_record.no_reasoning,
+            embedding=True
+        )
 
         # 设置聊天记录
         llm_service.set_record(record)

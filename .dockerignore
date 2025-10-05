@@ -26,6 +26,11 @@ frontend/.eslintrc.js
 frontend/.prettierrc
 frontend/*.log
 frontend/.DS_Store
+frontend/SQLBot-0.0.0.tgz
+
+# g2-ssr 构建产物
+g2-ssr/node_modules
+g2-ssr/dist
 
 # Python 冗余文件（按你提供的列表精准排除）
 backend/*.pyo

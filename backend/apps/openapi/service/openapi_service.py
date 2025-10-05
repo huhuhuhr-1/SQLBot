@@ -185,9 +185,19 @@ async def merge_streaming_chunks(stream,
                                 for session in get_session():
                                     result = session.execute(stmt)
                                     record = result.scalar_one_or_none()
-                                    question = record.question
-                                # 执行分析
-                                if record and record.chart:
+                                    if record is not None:
+                                        question = record.question
+                                        break
+                                if record is None:
+                                    SQLBotLogUtil.warning(
+                                        f"未找到聊天记录 {recorded_id}，跳过后续分析/预测流程"
+                                    )
+                                    warning_chunk = {
+                                        'type': 'warning',
+                                        'content': f'Chat record {recorded_id} not found'
+                                    }
+                                    yield f"data:{orjson.dumps(warning_chunk).decode()}\n\n"
+                                elif record.chart:
                                     # 分析
                                     if chat_question.analysis and hasattr(payload,
                                                                           'analysis') and payload.analysis != "":
