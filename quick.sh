@@ -11,6 +11,7 @@ WITH_VECTOR=true
 BUILDER_BASE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
 SSR_BASE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
 RUNTIME_BASE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
+ENABLE_LOCAL_PG=true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -22,6 +23,7 @@ while [[ $# -gt 0 ]]; do
       BUILDER_BASE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base-lite:latest
       SSR_BASE=$BUILDER_BASE
       RUNTIME_BASE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-lite:latest
+      ENABLE_LOCAL_PG=false
       shift
       ;;
     --builder-base)
@@ -54,6 +56,7 @@ docker build \
   --build-arg BUILDER_BASE=$BUILDER_BASE \
   --build-arg SSR_BASE=$SSR_BASE \
   --build-arg RUNTIME_BASE=$RUNTIME_BASE \
+  --build-arg ENABLE_LOCAL_PG=$ENABLE_LOCAL_PG \
   -t zf-sqlbot:v1.2.0.$VERSION .
 
 echo "✅ 完成！"

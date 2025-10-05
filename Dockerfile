@@ -6,6 +6,7 @@ ARG BUILDER_BASE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
 ARG SSR_BASE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
 ARG RUNTIME_BASE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
 ARG INCLUDE_VECTOR=true
+ARG ENABLE_LOCAL_PG=true
 
 FROM ${VECTOR_IMAGE} AS vector-model
 FROM ${BUILDER_BASE} AS sqlbot-builder
@@ -48,11 +49,12 @@ COPY g2-ssr/ /app/
 # Runtime stage
 # --------------------
 FROM ${RUNTIME_BASE}
+ARG ENABLE_LOCAL_PG
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime &&     echo "Asia/Shanghai" > /etc/timezone
 
 # Set runtime environment variables
-ENV PYTHONUNBUFFERED=1     SQLBOT_HOME=/opt/sqlbot     PYTHONPATH=/opt/sqlbot/app     PATH="/opt/sqlbot/app/.venv/bin:$PATH"     POSTGRES_DB=sqlbot     POSTGRES_USER=root     POSTGRES_PASSWORD=Password123@pg
+ENV PYTHONUNBUFFERED=1     SQLBOT_HOME=/opt/sqlbot     PYTHONPATH=/opt/sqlbot/app     PATH="/opt/sqlbot/app/.venv/bin:$PATH"     POSTGRES_DB=sqlbot     POSTGRES_USER=root     POSTGRES_PASSWORD=Password123@pg     ENABLE_LOCAL_PG=${ENABLE_LOCAL_PG}
 
 # Copy necessary files from builder
 COPY start.sh /opt/sqlbot/app/start.sh
