@@ -155,7 +155,7 @@ async def getChat(
             )
             if datasource:
                 # 绑定数据源到聊天会话
-                await bind_datasource(datasource, chat_question.chat_id, session)
+                await bind_datasource(datasource, chat_question.chat_id, session, current_user)
                 break
             else:
                 raise HTTPException(

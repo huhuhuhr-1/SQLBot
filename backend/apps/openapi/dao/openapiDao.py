@@ -40,6 +40,7 @@ def get_datasource_by_name_or_id(
         
     Raises:
         ValueError: 当查询条件验证失败时抛出异常
+        HTTPException: 当用户无权访问数据源时抛出
     """
     # 验证查询条件
     query.validate_query_fields_manual()
@@ -60,21 +61,32 @@ def get_datasource_by_name_or_id(
 
     # 执行查询并返回第一个匹配结果
     statement = select(CoreDatasource).where(and_(*conditions))
-    return session.exec(statement).first()
+    datasource = session.exec(statement).first()
+    
+    # 额外的权限验证：确保用户确实有权访问该数据源
+    if datasource and datasource.oid != current_oid:
+        raise HTTPException(
+            status_code=403,
+            detail=f"User does not have permission to access datasource {datasource.id}"
+        )
+    
+    return datasource
 
 
 async def bind_datasource(
         datasource: CoreDatasource,
         chat_id: int,
-        session: SessionDep
+        session: SessionDep,
+        user: CurrentUser
 ) -> None:
     """
     将数据源绑定到聊天会话
     
     Args:
         datasource: 要绑定的数据源对象
-        request_question: 聊天问题请求对象
+        chat_id: 聊天会话ID
         session: 数据库会话依赖
+        user: 当前用户信息
         
     Note:
         此函数会修改聊天会话的数据源关联，并提交事务
@@ -86,6 +98,20 @@ async def bind_datasource(
         raise HTTPException(
             status_code=400,
             detail=f"Chat with chat_id {chat_id} not found"
+        )
+
+    # 验证用户是否有权访问此聊天记录
+    if chat.create_by != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"User does not have permission to access chat {chat_id}"
+        )
+
+    # 验证用户是否有权访问此数据源
+    if datasource.oid != user.oid:
+        raise HTTPException(
+            status_code=403,
+            detail=f"User does not have permission to access datasource {datasource.id}"
         )
 
     # 设置数据源ID
@@ -128,7 +154,7 @@ def select_one(
         user: CurrentUser
 ) -> Optional[CoreDatasource]:
     """
-    根据数据源名称或ID查询数据源信息
+    获取当前用户工作空间下的任一数据源
 
     Args:
         session: 数据库会话依赖
@@ -136,15 +162,12 @@ def select_one(
 
     Returns:
         Optional[CoreDatasource]: 找到的数据源对象，如果未找到则返回 None
-
-    Raises:
-        ValueError: 当查询条件验证失败时抛出异常
     """
 
     # 获取当前用户的工作空间ID，默认为1
     current_oid = user.oid if user.oid is not None else 1
 
-    # 构建查询条件列表
+    # 构建查询条件
     conditions = [CoreDatasource.oid == current_oid]
 
     # 执行查询并返回第一个匹配结果

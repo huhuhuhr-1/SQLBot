@@ -69,7 +69,6 @@ dynamic_ds_types = [1, 3]
 dynamic_subsql_prefix = 'select * from sqlbot_dynamic_temp_table_'
 
 session_maker = sessionmaker(bind=engine)
-db_session = session_maker()
 
 
 class LLMService:
@@ -82,7 +81,7 @@ class LLMService:
     sql_message: List[Union[BaseMessage, dict[str, Any]]] = []
     chart_message: List[Union[BaseMessage, dict[str, Any]]] = []
 
-    session: Session = db_session
+    session: Session
     current_user: CurrentUser
     current_assistant: Optional[CurrentAssistant] = None
     out_ds_instance: Optional[AssistantOutDs] = None
@@ -106,9 +105,8 @@ class LLMService:
         os.environ["TIKTOKEN_CACHE_DIR"] = str(settings.TIKTOKEN_CACHE_DIR)
         self._encoder = tiktoken.get_encoding("o200k_base")
         self.chunk_list = []
-        # engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
-        # session_maker = sessionmaker(bind=engine)
-        # self.session = session_maker()
+        # 为当前实例创建独立的数据库会话
+        self.session = session_maker()
         self.session.exec = self.session.exec if hasattr(self.session, "exec") else self.session.execute
         self.current_user = current_user
         self.current_assistant = current_assistant
@@ -622,16 +620,15 @@ class LLMService:
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type_name
                 # save chat
-                with self.session.begin_nested():
-                    # 为了能继续记日志，先单独处理下事务
-                    try:
-                        self.session.add(_chat)
-                        self.session.flush()
-                        self.session.refresh(_chat)
-                        self.session.commit()
-                    except Exception as e:
-                        self.session.rollback()
-                        raise e
+                # 为了能继续记日志，先单独处理下事务
+                try:
+                    self.session.add(_chat)
+                    self.session.flush()
+                    self.session.refresh(_chat)
+                    self.session.commit()
+                except Exception as e:
+                    self.session.rollback()
+                    raise e
 
             elif data['fail']:
                 raise SingleMessageError(data['fail'])
@@ -1706,6 +1703,14 @@ class LLMService:
                 SQLBotLogUtil.info(f"\nHuman prompt [{i}]:\n {msg.content}\n")
             elif isinstance(msg, AIMessage):
                 SQLBotLogUtil.info(f"\nAI prompt [{i}]:\n {msg.content}\n\n")
+
+    def __del__(self):
+        # 确保在对象销毁时关闭数据库会话
+        try:
+            if hasattr(self, 'session') and self.session:
+                self.session.close()
+        except Exception as e:
+            SQLBotLogUtil.error(f"Error closing session in LLMService: {str(e)}")
 
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
