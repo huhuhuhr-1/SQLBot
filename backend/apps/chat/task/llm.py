@@ -171,7 +171,8 @@ class LLMService:
 
         self.sql_message = []
         # add sys prompt
-        self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question()))
+        self.sql_message.append(SystemMessage(
+            content=self.chat_question.sql_sys_question(self.ds.type, settings.GENERATE_SQL_QUERY_LIMIT_ENABLED)))
         if last_sql_messages is not None and len(last_sql_messages) > 0:
             # limit count
             for last_sql_message in last_sql_messages[count_limit:]:
@@ -565,7 +566,7 @@ class LLMService:
         self.record = save_sql_answer(session=_session, record_id=self.record.id,
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
 
-    def generate_with_sub_sql(self, _session: Session, sql, sub_mappings: list):
+    def generate_with_sub_sql(self, session: Session, sql, sub_mappings: list):
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
         self.chat_question.sql = sql
         self.chat_question.sub_query = sub_query
@@ -573,7 +574,7 @@ class LLMService:
         dynamic_sql_msg.append(SystemMessage(content=self.chat_question.dynamic_sys_question()))
         dynamic_sql_msg.append(HumanMessage(content=self.chat_question.dynamic_user_question()))
 
-        self.current_logs[OperationEnum.GENERATE_DYNAMIC_SQL] = start_log(session=_session,
+        self.current_logs[OperationEnum.GENERATE_DYNAMIC_SQL] = start_log(session=session,
                                                                           ai_modal_id=self.chat_question.ai_modal_id,
                                                                           ai_modal_name=self.chat_question.ai_modal_name,
                                                                           operate=OperationEnum.GENERATE_DYNAMIC_SQL,
@@ -595,7 +596,7 @@ class LLMService:
 
         dynamic_sql_msg.append(AIMessage(full_dynamic_text))
 
-        self.current_logs[OperationEnum.GENERATE_DYNAMIC_SQL] = end_log(session=_session,
+        self.current_logs[OperationEnum.GENERATE_DYNAMIC_SQL] = end_log(session=session,
                                                                         log=self.current_logs[
                                                                             OperationEnum.GENERATE_DYNAMIC_SQL],
                                                                         full_message=[
