@@ -2,7 +2,6 @@ import asyncio
 import io
 import traceback
 
-import numpy as np
 import orjson
 import pandas as pd
 from fastapi import APIRouter, HTTPException
@@ -10,7 +9,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, select
 
 from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, rename_chat, \
-    delete_chat, get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data, get_chat_record_by_id
+    delete_chat, get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data, get_chat_record_by_id, \
+    format_json_data
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, ExcelData
 from apps.chat.task.llm import LLMService
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
@@ -23,7 +23,7 @@ async def chats(session: SessionDep, current_user: CurrentUser):
     return list_chats(session, current_user)
 
 
-@router.get("/get/{chart_id}")
+@router.get("/{chart_id}")
 async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int, current_assistant: CurrentAssistant):
     def inner():
         return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user,
@@ -32,7 +32,7 @@ async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int
     return await asyncio.to_thread(inner)
 
 
-@router.get("/get/with_data/{chart_id}")
+@router.get("/{chart_id}/with_data")
 async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, chart_id: int,
                              current_assistant: CurrentAssistant):
     def inner():
@@ -42,18 +42,20 @@ async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, cha
     return await asyncio.to_thread(inner)
 
 
-@router.get("/record/get/{chart_record_id}/data")
+@router.get("/record/{chart_record_id}/data")
 async def chat_record_data(session: SessionDep, chart_record_id: int):
     def inner():
-        return get_chat_chart_data(chart_record_id=chart_record_id, session=session)
+        data = get_chat_chart_data(chart_record_id=chart_record_id, session=session)
+        return format_json_data(data)
 
     return await asyncio.to_thread(inner)
 
 
-@router.get("/record/get/{chart_record_id}/predict_data")
+@router.get("/record/{chart_record_id}/predict_data")
 async def chat_predict_data(session: SessionDep, chart_record_id: int):
     def inner():
-        return get_chat_predict_data(chart_record_id=chart_record_id, session=session)
+        data = get_chat_predict_data(chart_record_id=chart_record_id, session=session)
+        return format_json_data(data)
 
     return await asyncio.to_thread(inner)
 
@@ -69,7 +71,7 @@ async def rename(session: SessionDep, chat: RenameChat):
         )
 
 
-@router.get("/delete/{chart_id}")
+@router.delete("/{chart_id}")
 async def delete(session: SessionDep, chart_id: int):
     try:
         return delete_chat(session=session, chart_id=chart_id)
@@ -116,7 +118,7 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
 
         request_question = ChatQuestion(chat_id=record.chat_id, question=record.question if record.question else '')
 
-        llm_service = await LLMService.create(current_user, request_question, current_assistant, True)
+        llm_service = await LLMService.create(session, current_user, request_question, current_assistant, True)
         llm_service.set_record(record)
         llm_service.run_recommend_questions_task_async()
     except Exception as e:
@@ -145,8 +147,9 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
     """
 
     try:
-        llm_service = await LLMService.create(current_user, request_question, current_assistant, embedding=True)
-        llm_service.init_record()
+        llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
+                                              embedding=True)
+        llm_service.init_record(session=session)
         llm_service.run_task_async()
     except Exception as e:
         traceback.print_exc()
@@ -187,8 +190,8 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
 
         request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
 
-        llm_service = await LLMService.create(current_user, request_question, current_assistant)
-        llm_service.run_analysis_or_predict_task_async(action_type, record)
+        llm_service = await LLMService.create(session, current_user, request_question, current_assistant)
+        llm_service.run_analysis_or_predict_task_async(session, action_type, record)
     except Exception as e:
         traceback.print_exc()
 
@@ -211,20 +214,52 @@ async def export_excel(excel_data: ExcelData, trans: Trans):
                 detail=trans("i18n_excel_export.data_is_empty")
             )
 
+        # 预处理数据并记录每列的格式类型
+        col_formats = {}  # 格式类型：'text'（文本）、'number'（数字）、'default'（默认）
+        for field_idx, field in enumerate(excel_data.axis):
+            _fields_list.append(field.name)
+            col_formats[field_idx] = 'default'  # 默认不特殊处理
+
         for _data in excel_data.data:
             _row = []
-            for field in excel_data.axis:
-                _row.append(_data.get(field.value))
+            for field_idx, field in enumerate(excel_data.axis):
+                value = _data.get(field.value)
+                if value is not None:
+                    # 检查是否为数字且需要特殊处理
+                    if isinstance(value, (int, float)):
+                        # 整数且超过15位 → 转字符串并标记为文本列
+                        if isinstance(value, int) and len(str(abs(value))) > 15:
+                            value = str(value)
+                            col_formats[field_idx] = 'text'
+                        # 小数且超过15位有效数字 → 转字符串并标记为文本列
+                        elif isinstance(value, float):
+                            decimal_str = format(value, '.16f').rstrip('0').rstrip('.')
+                            if len(decimal_str) > 15:
+                                value = str(value)
+                                col_formats[field_idx] = 'text'
+                        # 其他数字列标记为数字格式（避免科学记数法）
+                        elif col_formats[field_idx] != 'text':
+                            col_formats[field_idx] = 'number'
+                _row.append(value)
             data.append(_row)
-        for field in excel_data.axis:
-            _fields_list.append(field.name)
-        df = pd.DataFrame(np.array(data), columns=_fields_list)
+
+        df = pd.DataFrame(data, columns=_fields_list)
 
         buffer = io.BytesIO()
 
         with pd.ExcelWriter(buffer, engine='xlsxwriter',
-                            engine_kwargs={'options': {'strings_to_numbers': True}}) as writer:
+                            engine_kwargs={'options': {'strings_to_numbers': False}}) as writer:
             df.to_excel(writer, sheet_name='Sheet1', index=False)
+
+            # 获取 xlsxwriter 的工作簿和工作表对象
+            workbook = writer.book
+            worksheet = writer.sheets['Sheet1']
+
+            for col_idx, fmt_type in col_formats.items():
+                if fmt_type == 'text':
+                    worksheet.set_column(col_idx, col_idx, None, workbook.add_format({'num_format': '@'}))
+                elif fmt_type == 'number':
+                    worksheet.set_column(col_idx, col_idx, None, workbook.add_format({'num_format': '0'}))
 
         buffer.seek(0)
         return io.BytesIO(buffer.getvalue())

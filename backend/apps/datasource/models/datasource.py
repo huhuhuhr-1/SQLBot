@@ -21,6 +21,7 @@ class CoreDatasource(SQLModel, table=True):
     num: str = Field(max_length=256, nullable=True)
     oid: int = Field(sa_column=Column(BigInteger()))
     table_relation: List = Field(sa_column=Column(JSONB, nullable=True))
+    embedding: str = Field(sa_column=Column(Text, nullable=True))
 
 
 class CoreTable(SQLModel, table=True):
@@ -31,6 +32,7 @@ class CoreTable(SQLModel, table=True):
     table_name: str = Field(sa_column=Column(Text))
     table_comment: str = Field(sa_column=Column(Text))
     custom_comment: str = Field(sa_column=Column(Text))
+    embedding: str = Field(sa_column=Column(Text, nullable=True))
 
 
 class CoreField(SQLModel, table=True):

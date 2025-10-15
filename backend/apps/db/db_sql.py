@@ -4,7 +4,7 @@ from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
 
 
 def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
-    if ds.type == "mysql" or ds.type == "doris":
+    if ds.type == "mysql" or ds.type == "doris" or ds.type == "starrocks":
         return """
                 SELECT VERSION()
                 """
@@ -76,19 +76,23 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
               """, conf.dbSchema
     elif ds.type == "oracle":
         return """
-                SELECT 
+                SELECT DISTINCT
                     t.TABLE_NAME AS "TABLE_NAME",
                     NVL(c.COMMENTS, '') AS "TABLE_COMMENT"
                 FROM (
                     SELECT TABLE_NAME, 'TABLE' AS OBJECT_TYPE
-                    FROM DBA_TABLES
+                    FROM ALL_TABLES
                     WHERE OWNER = :param  
                     UNION ALL
                     SELECT VIEW_NAME AS TABLE_NAME, 'VIEW' AS OBJECT_TYPE
-                    FROM DBA_VIEWS
+                    FROM ALL_VIEWS
+                    WHERE OWNER = :param  
+                    UNION ALL
+                    SELECT MVIEW_NAME AS TABLE_NAME, 'MATERIALIZED VIEW' AS OBJECT_TYPE
+                    FROM ALL_MVIEWS
                     WHERE OWNER = :param  
                 ) t
-                LEFT JOIN DBA_TAB_COMMENTS c 
+                LEFT JOIN ALL_TAB_COMMENTS c 
                     ON t.TABLE_NAME = c.TABLE_NAME 
                     AND c.TABLE_TYPE = t.OBJECT_TYPE
                     AND c.OWNER = :param   
@@ -130,7 +134,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
                   relkind in  ('r','p', 'f') 
                   AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = %s)
                 """, conf.dbSchema
-    elif ds.type == "doris":
+    elif ds.type == "doris" or ds.type == "starrocks":
         return """
                 SELECT 
                     TABLE_NAME, 
@@ -277,7 +281,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                 """
         sql2 = " AND c.TABLE_NAME = :param2" if table_name is not None and table_name != "" else ""
         return sql1 + sql2, conf.dbSchema, table_name
-    elif ds.type == "doris":
+    elif ds.type == "doris" or ds.type == "starrocks":
         sql1 = """
                 SELECT 
                     COLUMN_NAME,

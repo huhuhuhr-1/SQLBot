@@ -12,6 +12,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from alembic import command
 from apps.api import api_router
+from common.utils.embedding_threads import fill_empty_table_and_ds_embeddings
 from apps.system.crud.aimodel_manage import async_model_info
 from apps.system.crud.assistant import init_dynamic_cors
 from apps.system.middleware.auth import TokenMiddleware
@@ -35,6 +36,10 @@ def init_data_training_embedding_data():
     fill_empty_data_training_embeddings()
 
 
+def init_table_and_ds_embedding():
+    fill_empty_table_and_ds_embeddings()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations()
@@ -42,6 +47,7 @@ async def lifespan(app: FastAPI):
     init_dynamic_cors(app)
     init_terminology_embedding_data()
     init_data_training_embedding_data()
+    init_table_and_ds_embedding()
     SQLBotLogUtil.info("✅ SQLBot 初始化完成")
     await sqlbot_xpack.core.clean_xpack_cache()
     await async_model_info()  # 异步加密已有模型的密钥和地址
