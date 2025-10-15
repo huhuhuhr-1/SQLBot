@@ -1,13 +1,27 @@
 import asyncio
+import hashlib
+import json
+import os
 import traceback
+import uuid
+
+import orjson
+from sqlalchemy import text
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from starlette.responses import StreamingResponse
+from datetime import datetime
 
+import pandas as pd
+from fastapi import APIRouter, Depends, HTTPException, File, Form
+from sqlbot_xpack.file_utils import UploadFile
+from starlette.responses import StreamingResponse
 from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat
 from apps.chat.models.chat_model import CreateChat
-from apps.datasource.crud.datasource import get_datasource_list
+from apps.datasource.api.datasource import insert_pg
+from apps.datasource.crud.datasource import get_datasource_list, create_ds, getTables, update_table_and_fields
+from apps.datasource.models.datasource import CreateDatasource, CoreDatasource, TableObj, CoreTable
+from apps.datasource.utils.utils import aes_encrypt
+from apps.db.engine import get_engine_conn
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
     OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat
@@ -16,13 +30,17 @@ from apps.openapi.service.openapi_service import merge_streaming_chunks, create_
     chat_identify_intent, _get_chats_to_clean, _create_clean_response, \
     _execute_cleanup, \
     _run_analysis_or_predict
+
+from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.system.crud.user import authenticate
 from apps.system.schemas.system_schema import BaseUserDTO
+from common.core.config import settings
 from common.core.db import get_session
 from common.core.deps import SessionDep, CurrentUser, CurrentAssistant, Trans
 from common.utils.utils import SQLBotLogUtil
 
 router = APIRouter(tags=["openapi"], prefix="/openapi")
+path = settings.EXCEL_PATH
 
 
 @router.post("/getToken", summary="创建认证令牌",
@@ -438,3 +456,52 @@ async def predict_chat_record(
         StreamingResponse: 流式响应，包含预测结果
     """
     return await _run_analysis_or_predict(current_user, chat_record, current_assistant, 'predict')
+
+
+@router.post("/uploadExcelAndCreateDatasource", response_model=CoreDatasource)
+async def upload_excel_and_create_datasource(
+        session: SessionDep,
+        trans: Trans,
+        user: CurrentUser,
+        file: UploadFile = File(...),
+):
+    ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv"}
+    if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
+        raise HTTPException(status_code=400, detail="Only support .xlsx/.xls/.csv")
+
+    os.makedirs(path, exist_ok=True)
+    filename = f"{file.filename.split('.')[0]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}.{file.filename.split('.')[1]}"
+    save_path = os.path.join(path, filename)
+
+    with open(save_path, "wb") as f:
+        f.write(await file.read())
+
+    def inner():
+        try:
+            return upload_excel_and_create_datasource_service(session, trans, user, save_path, file.filename)
+        finally:
+            if os.path.exists(save_path):
+                os.remove(save_path)
+                SQLBotLogUtil.info(f"🧹 临时文件已删除：{save_path}")
+
+    return await asyncio.to_thread(inner)
+
+
+@router.post(
+    "/deleteDatasource",
+    summary="根据 ID 删除数据源",
+    description="删除指定数据源及其关联的表、字段记录。",
+    dependencies=[Depends(common_headers)],
+)
+async def delete_datasource_by_id(session: SessionDep, id: int):
+    """
+    删除数据源：
+    - 对 Excel 类型，自动 DROP 物理表；
+    - 清理 CoreTable/CoreField 记录；
+    - 日志可追溯。
+    """
+
+    def inner():
+        return delete_ds(session, id)
+
+    return await asyncio.to_thread(inner)

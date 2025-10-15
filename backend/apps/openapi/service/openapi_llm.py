@@ -213,7 +213,8 @@ class LLMService:
         self.sql_message = []
         # modify by huhuhuhr 自定义提示词
         if self.chat_question.my_promote is not None and self.chat_question.my_promote.strip() != '':
-            self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question()))
+            self.sql_message.append(SystemMessage(
+                content=self.chat_question.sql_sys_question(self.ds.type, settings.GENERATE_SQL_QUERY_LIMIT_ENABLED)))
             sys_promote = self.get_my_sys_prompt(payload=None)
             self.sql_message.append(SystemMessage(content=sys_promote))
         else:
@@ -221,7 +222,8 @@ class LLMService:
                 self.sql_message.append(SystemMessage(
                     content=self.chat_question.sql_sys_question_with_schema(self.chat_question.my_schema)))
             else:
-                self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question()))
+                self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question(self.ds.type,
+                                                                                                  settings.GENERATE_SQL_QUERY_LIMIT_ENABLED)))
         if last_sql_messages is not None and len(last_sql_messages) > 0:
             # limit count
             for last_sql_message in last_sql_messages[count_limit:]:
