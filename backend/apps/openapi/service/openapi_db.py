@@ -96,10 +96,30 @@ def delete_ds(session: SessionDep, id: int):
             session.commit()
 
 
-def insert_pg(df, table_name, engine):
-    """将 DataFrame 写入 PostgreSQL（replace 模式）"""
+def insert_pg(df: pd.DataFrame, table_name: str, engine):
+    """
+    将 DataFrame 写入 PostgreSQL（replace 模式）
+    - 表名：外层传入（f1, f2, ...）
+    - 字段名：自动生成为 c1, c2, ...
+    - 字段注释：保留 Excel 原始 header 名称
+    """
     try:
+        # === 1️⃣ 重命名 DataFrame 列 ===
+        original_columns = list(df.columns)
+        new_columns = [f"h{i + 1}" for i in range(len(original_columns))]
+        rename_map = dict(zip(original_columns, new_columns))
+        df = df.rename(columns=rename_map)
+
+        # === 2️⃣ 写入 PostgreSQL ===
         df.to_sql(table_name, engine, if_exists="replace", index=False)
+
+        # === 3️⃣ 写入字段注释 ===
+        with engine.connect() as conn:
+            for new_col, orig_col in rename_map.items():
+                comment_sql = text(f'COMMENT ON COLUMN "{table_name}"."{orig_col}" IS :comment')
+                conn.execute(comment_sql, {"comment": new_col})
+            conn.commit()
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to insert table {table_name}: {e}")
 
@@ -112,29 +132,61 @@ def upload_excel_and_create_datasource_service(session, trans, user, save_path: 
     - 自动处理重名文件
     - 自动加密 configuration
     - 异常时清理孤表
+    - 兼容 .csv / .xlsx / .xls / .ods / .xlsb 等格式
+    - 兼容 Pydantic v2 (from_attributes)
     """
     created_tables = []  # 成功导入的表名
     try:
         SQLBotLogUtil.info(f"📂 开始上传并创建数据源：{original_filename}")
         engine = get_engine_conn()
 
+        # === Step 0: 基本校验 ===
+        if not os.path.exists(save_path) or os.path.getsize(save_path) < 10:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty or invalid.")
+
         # === Step 1: 解析 Excel/CSV ===
-        if original_filename.endswith(".csv"):
-            df = pd.read_csv(save_path, engine="c")
+        file_ext = os.path.splitext(original_filename)[1].lower()
+
+        if file_ext == ".csv":
+            try:
+                df = pd.read_csv(save_path, engine="c")
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"CSV parsing failed: {e}")
+
             if df.empty or len(df.columns) == 0 or df.dropna(how="all").empty:
-                SQLBotLogUtil.info(f"⚠️ 跳过 CSV：无有效数据")
+                SQLBotLogUtil.info("⚠️ 跳过 CSV：无有效数据")
             else:
                 table_name = f"sheet1_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
                 insert_pg(df, table_name, engine)
                 created_tables.append(table_name)
                 SQLBotLogUtil.info(f"✅ 导入 CSV 完成：{table_name}")
-        else:
-            # 逐 sheet 读取
-            sheet_names = pd.ExcelFile(save_path).sheet_names
-            for sheet_name in sheet_names:
-                df = pd.read_excel(save_path, sheet_name=sheet_name, engine="calamine")
 
-                # ⚠️ 跳过空 sheet（行全空 或 无列）
+        else:
+            # === 安全尝试 Excel 引擎 ===
+            def try_excel_engines(path: str):
+                for eng in ["openpyxl", "xlrd", "calamine"]:
+                    try:
+                        xls = pd.ExcelFile(path, engine=eng)
+                        return xls, eng
+                    except Exception as e:
+                        SQLBotLogUtil.warn(f"⚠️ 尝试引擎 {eng} 失败: {e}")
+                raise ValueError("No valid Excel engine could open this file.")
+
+            try:
+                xls, used_engine = try_excel_engines(save_path)
+                SQLBotLogUtil.info(f"✅ 使用 Excel 引擎：{used_engine}")
+            except Exception as e:
+                SQLBotLogUtil.error(f"❌ Excel 文件无法解析: {e}")
+                raise HTTPException(status_code=400, detail=f"Excel parsing failed: {e}")
+
+            # === 遍历 sheet ===
+            for sheet_name in xls.sheet_names:
+                try:
+                    df = pd.read_excel(save_path, sheet_name=sheet_name, engine=used_engine)
+                except Exception as e:
+                    SQLBotLogUtil.error(f"⚠️ 读取 Sheet [{sheet_name}] 失败: {e}")
+                    continue
+
                 if df.empty or len(df.columns) == 0 or df.dropna(how="all").empty:
                     SQLBotLogUtil.info(f"⚠️ 跳过空 Sheet：{sheet_name}")
                     continue
@@ -145,33 +197,20 @@ def upload_excel_and_create_datasource_service(session, trans, user, save_path: 
                 SQLBotLogUtil.info(f"✅ 导入 Sheet 完成：{table_name}")
 
         if not created_tables:
-            SQLBotLogUtil.error(f"❌ Excel 内无有效数据表，终止创建。")
+            SQLBotLogUtil.error("❌ Excel 内无有效数据表，终止创建。")
             raise HTTPException(status_code=400, detail="Excel has no valid data sheets")
 
         # === Step 2: 构建配置并加密 ===
         conf_dict = {
             "file_path": save_path,
-            "sheets": [{"tableName": tname, "tableComment": ""} for tname in created_tables]
+            "sheets": [{"tableName": tname, "tableComment": ""} for tname in created_tables],
         }
         configuration_encrypted = aes_encrypt(json.dumps(conf_dict, ensure_ascii=False))
 
-        # === Step 3: 检查并生成唯一名称 ===
-        # base_name = original_filename
-        # existing_names = [
-        #     row[0]
-        #     for row in session.exec(
-        #         select(CoreDatasource.name).where(CoreDatasource.oid == user.oid)
-        #     ).all()
-        # ]
-        #
-        # if base_name in existing_names:
-        #     suffix = uuid.uuid4().hex[:6]
-        #     ds_name = f"{base_name.split('.')[0]}_{suffix}.{base_name.split('.')[-1]}"
-        #     SQLBotLogUtil.info(f"⚠️ 检测到同名数据源，自动重命名为：{ds_name}")
-        # else:
-        #     ds_name = base_name
+        # === Step 3: 生成唯一名称 ===
         suffix = uuid.uuid4().hex[:6]
         ds_name = f"{original_filename.split('.')[0]}_{suffix}.{original_filename.split('.')[-1]}"
+
         # === Step 4: 创建数据源对象 ===
         tables_payload = [CoreTable(table_name=tname, table_comment="") for tname in created_tables]
         ds = CreateDatasource(
@@ -184,19 +223,6 @@ def upload_excel_and_create_datasource_service(session, trans, user, save_path: 
         datasource = create_ds(session, trans, user, ds)
         session.flush()
         SQLBotLogUtil.info(f"✅ 数据源创建成功 ID={datasource.id}")
-
-        # === Step 5: 更新表字段信息 ===
-        try:
-            for tname in created_tables:
-                tables = getTables(session, datasource.id)
-                for t in tables:
-                    if t.table_name == tname:
-                        update_table_and_fields(session, TableObj.from_orm(t))
-            SQLBotLogUtil.info(f"🧾 已登记 {len(created_tables)} 个表结构")
-        except Exception as e:
-            SQLBotLogUtil.error(f"⚠️ 更新表字段失败: {e}")
-
-        SQLBotLogUtil.info(f"🎉 上传并创建数据源流程完成：{ds_name}")
         return datasource
 
     except Exception as e:
@@ -208,7 +234,7 @@ def upload_excel_and_create_datasource_service(session, trans, user, save_path: 
                 engine = get_engine_conn()
                 with engine.connect() as conn:
                     for tname in created_tables:
-                        conn.execute(text(f'DROP TABLE IF EXISTS "{tname}"'))
+                        conn.execute(text(f'DROP TABLE IF EXISTS \"{tname}\"'))
                         SQLBotLogUtil.info(f"🧹 已清理孤表：{tname}")
                     conn.commit()
             except Exception as drop_err:
