@@ -1,35 +1,27 @@
-import asyncio
-import hashlib
-import os
-import uuid
-
-import pandas as pd
-import json
-from fastapi import HTTPException
-from sqlalchemy import text
-from sqlmodel import select
-
-from apps.datasource.utils.utils import aes_decrypt
-from apps.db.engine import get_engine_conn
-from common.core.config import settings
-from common.core.deps import SessionDep
-from ...datasource.api.datasource import insert_pg
-from ...datasource.crud.field import delete_field_by_ds_id
-from ...datasource.crud.table import delete_table_by_ds_id
-from ...datasource.models.datasource import CoreDatasource, DatasourceConf
 import hashlib
 import json
 import os
 import traceback
 import uuid
+
 import pandas as pd
-from sqlalchemy import text
 from fastapi import HTTPException
-from common.utils.utils import SQLBotLogUtil
-from apps.db.engine import get_engine_conn
-from apps.datasource.crud.datasource import create_ds, getTables, update_table_and_fields
-from apps.datasource.models.datasource import CreateDatasource, CoreTable, TableObj
+from sqlalchemy import text
+from sqlmodel import select
+
+from apps.datasource.crud.datasource import create_ds
+from apps.datasource.models.datasource import CreateDatasource, CoreTable
+from apps.datasource.utils.utils import aes_decrypt
 from apps.datasource.utils.utils import aes_encrypt
+from apps.db.engine import get_engine_conn
+from common.core.config import settings
+from common.core.deps import SessionDep
+from common.utils.utils import SQLBotLogUtil
+from .openapi_excle_create_table import insert_pg_by_ai
+from ...datasource.api.datasource import insert_pg
+from ...datasource.crud.field import delete_field_by_ds_id
+from ...datasource.crud.table import delete_table_by_ds_id
+from ...datasource.models.datasource import CoreDatasource, DatasourceConf
 
 path = settings.EXCEL_PATH
 
@@ -55,7 +47,7 @@ def delete_ds(session: SessionDep, id: int):
             try:
                 conf_raw = term.configuration or ""
                 if not conf_raw.strip():
-                    SQLBotLogUtil.warn(f"⚠️ 数据源 ID={id} 无配置项 configuration，跳过表删除。")
+                    SQLBotLogUtil.warning(f"⚠️ 数据源 ID={id} 无配置项 configuration，跳过表删除。")
                 else:
                     conf = DatasourceConf(**json.loads(aes_decrypt(conf_raw)))
                     engine = get_engine_conn()
@@ -63,7 +55,7 @@ def delete_ds(session: SessionDep, id: int):
                         for sheet in conf.sheets:
                             table_name = sheet.get("tableName")
                             if not table_name:
-                                SQLBotLogUtil.warn(f"⚠️ 跳过无效 Sheet 项: {sheet}")
+                                SQLBotLogUtil.warning(f"⚠️ 跳过无效 Sheet 项: {sheet}")
                                 continue
                             SQLBotLogUtil.info(f"🗑️ 删除 Excel 表：{table_name}")
                             conn.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
@@ -124,7 +116,9 @@ def insert_pg(df: pd.DataFrame, table_name: str, engine):
         raise HTTPException(status_code=400, detail=f"Failed to insert table {table_name}: {e}")
 
 
-def upload_excel_and_create_datasource_service(session, trans, user, save_path: str, original_filename: str):
+def upload_excel_and_create_datasource_service(session, trans, user, save_path: str, original_filename: str,
+                                                     example_size: int = 10,
+                                                     ai: bool = False, ):
     """
     上传 Excel 并自动创建数据源（Excel类型）
     用于 openapi 层的复用。
@@ -157,32 +151,18 @@ def upload_excel_and_create_datasource_service(session, trans, user, save_path: 
                 SQLBotLogUtil.info("⚠️ 跳过 CSV：无有效数据")
             else:
                 table_name = f"sheet1_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
-                insert_pg(df, table_name, engine)
+                if ai is True:
+                    insert_pg_by_ai(df, table_name, engine, example_size)
+                else:
+                    insert_pg(df, table_name, engine)
                 created_tables.append(table_name)
                 SQLBotLogUtil.info(f"✅ 导入 CSV 完成：{table_name}")
 
         else:
-            # === 安全尝试 Excel 引擎 ===
-            def try_excel_engines(path: str):
-                for eng in ["openpyxl", "xlrd", "calamine"]:
-                    try:
-                        xls = pd.ExcelFile(path, engine=eng)
-                        return xls, eng
-                    except Exception as e:
-                        SQLBotLogUtil.warn(f"⚠️ 尝试引擎 {eng} 失败: {e}")
-                raise ValueError("No valid Excel engine could open this file.")
-
-            try:
-                xls, used_engine = try_excel_engines(save_path)
-                SQLBotLogUtil.info(f"✅ 使用 Excel 引擎：{used_engine}")
-            except Exception as e:
-                SQLBotLogUtil.error(f"❌ Excel 文件无法解析: {e}")
-                raise HTTPException(status_code=400, detail=f"Excel parsing failed: {e}")
-
-            # === 遍历 sheet ===
-            for sheet_name in xls.sheet_names:
+            sheet_names = pd.ExcelFile(save_path).sheet_names
+            for sheet_name in sheet_names:
                 try:
-                    df = pd.read_excel(save_path, sheet_name=sheet_name, engine=used_engine)
+                    df = pd.read_excel(save_path, sheet_name=sheet_name, engine='calamine')
                 except Exception as e:
                     SQLBotLogUtil.error(f"⚠️ 读取 Sheet [{sheet_name}] 失败: {e}")
                     continue
@@ -192,7 +172,10 @@ def upload_excel_and_create_datasource_service(session, trans, user, save_path: 
                     continue
 
                 table_name = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
-                insert_pg(df, table_name, engine)
+                if ai is True:
+                    insert_pg_by_ai(df, table_name, engine, example_size)
+                else:
+                    insert_pg(df, table_name, engine)
                 created_tables.append(table_name)
                 SQLBotLogUtil.info(f"✅ 导入 Sheet 完成：{table_name}")
 

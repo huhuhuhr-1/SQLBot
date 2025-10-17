@@ -23,6 +23,28 @@ from ..crud.table import delete_table_by_ds_id, update_table
 from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, TableObj, \
     DatasourceConf, TableAndFields
 
+# modify by huhuhuhr
+def get_datasource_list_for_openapi(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[CoreDatasource]:
+    current_oid = user.oid if user.oid is not None else 1
+    if user.isAdmin and oid:
+        current_oid = oid
+
+    # 明确列出需要的字段，不包括要排除的字段
+    stmt = select(
+        CoreDatasource.id,
+        CoreDatasource.name,
+        CoreDatasource.type,
+        CoreDatasource.type_name,
+        CoreDatasource.description,
+        CoreDatasource.status,
+        CoreDatasource.create_time,
+        CoreDatasource.oid,
+        CoreDatasource.create_by,
+        # 添加其他需要的字段，排除不需要的字段
+    ).where(CoreDatasource.oid == current_oid).order_by(CoreDatasource.name)
+
+    result = session.exec(stmt).all()
+    return result
 
 def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[CoreDatasource]:
     current_oid = user.oid if user.oid is not None else 1

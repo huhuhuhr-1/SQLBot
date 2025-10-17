@@ -1,37 +1,26 @@
 import asyncio
 import hashlib
-import json
 import os
 import traceback
 import uuid
-
-import orjson
-from sqlalchemy import text
 from typing import Optional
 
-from datetime import datetime
-
-import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, File, Form
-from sqlbot_xpack.file_utils import UploadFile
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from starlette.responses import StreamingResponse
+
 from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat
 from apps.chat.models.chat_model import CreateChat
-from apps.datasource.api.datasource import insert_pg
-from apps.datasource.crud.datasource import get_datasource_list, create_ds, getTables, update_table_and_fields
-from apps.datasource.models.datasource import CreateDatasource, CoreDatasource, TableObj, CoreTable
-from apps.datasource.utils.utils import aes_encrypt
-from apps.db.engine import get_engine_conn
+from apps.datasource.crud.datasource import get_datasource_list, get_datasource_list_for_openapi
+from apps.datasource.models.datasource import CoreDatasource
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
     OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat
+from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.openapi.service.openapi_llm import LLMService
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
     chat_identify_intent, _get_chats_to_clean, _create_clean_response, \
     _execute_cleanup, \
     _run_analysis_or_predict
-
-from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.system.crud.user import authenticate
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.config import settings
@@ -111,7 +100,7 @@ async def get_data_source_list(session: SessionDep, user: CurrentUser):
     Returns:
         用户可访问的数据源列表
     """
-    return get_datasource_list(session=session, user=user)
+    return get_datasource_list_for_openapi(session=session, user=user)
 
 
 @router.post("/getDataSourceByIdOrName", summary="根据ID或名称获取数据源",
@@ -464,21 +453,25 @@ async def upload_excel_and_create_datasource(
         trans: Trans,
         user: CurrentUser,
         file: UploadFile = File(...),
+        example_size: int = Form(10),
+        ai: bool = Form(False),
 ):
     ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv"}
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
-        raise HTTPException(status_code=400, detail="Only support .xlsx/.xls/.csv")
+        raise HTTPException(400, "Only support .xlsx/.xls/.csv")
 
     os.makedirs(path, exist_ok=True)
     filename = f"{file.filename.split('.')[0]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}.{file.filename.split('.')[1]}"
     save_path = os.path.join(path, filename)
-
     with open(save_path, "wb") as f:
         f.write(await file.read())
 
     def inner():
         try:
-            return upload_excel_and_create_datasource_service(session, trans, user, save_path, file.filename)
+            return upload_excel_and_create_datasource_service(
+                session, trans, user, save_path, filename,
+                example_size, ai
+            )
         finally:
             if os.path.exists(save_path):
                 os.remove(save_path)

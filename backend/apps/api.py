@@ -6,11 +6,13 @@ from apps.dashboard.api import dashboard_api
 from apps.data_training.api import data_training
 from apps.datasource.api import datasource, table_relation
 from apps.mcp import mcp
+from apps.openapi.demo import demo
 from apps.system.api import login, user, aimodel, workspace, assistant
 from apps.terminology.api import terminology
 
 api_router = APIRouter()
 api_router.include_router(openapi.router)
+api_router.include_router(demo.router)
 api_router.include_router(login.router)
 api_router.include_router(user.router)
 api_router.include_router(workspace.router)
