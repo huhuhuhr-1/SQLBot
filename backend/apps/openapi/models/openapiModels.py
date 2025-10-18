@@ -10,15 +10,16 @@ OpenAPI 数据模型模块
 日期: 2025/01/30
 版本: 1.0.0
 """
-from dataclasses import dataclass
-from typing import Any, Dict, Union
+import datetime
 import json
 import re
-from pydantic import BaseModel, field_validator
+from dataclasses import dataclass
+from typing import Any, Dict
 from typing import List, Union, Optional
 
 from fastapi import Body, Header
 from pydantic import BaseModel, validator
+from pydantic import field_validator
 
 from apps.chat.models.chat_model import AiModelQuestion
 
@@ -286,3 +287,17 @@ class DbBindChat(BaseModel):
     title: str = Body(..., description='标题')
     db_id: int = Body(..., description='数据库标记')
     origin: Optional[int] = 0  # 0是页面上，mcp是1，小助手是2
+
+
+class DatasourceResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    type: str
+    type_name: str
+    configuration: str
+    create_time: datetime.datetime
+    create_by: int
+    status: str
+    num: str
+    oid: int

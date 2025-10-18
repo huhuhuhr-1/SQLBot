@@ -92,7 +92,7 @@ def insert_pg(df: pd.DataFrame, table_name: str, engine):
     """
     将 DataFrame 写入 PostgreSQL（replace 模式）
     - 表名：外层传入（f1, f2, ...）
-    - 字段名：自动生成为 c1, c2, ...
+    - 字段名：自动生成为 h1, h2, ...
     - 字段注释：保留 Excel 原始 header 名称
     """
     try:
@@ -105,11 +105,11 @@ def insert_pg(df: pd.DataFrame, table_name: str, engine):
         # === 2️⃣ 写入 PostgreSQL ===
         df.to_sql(table_name, engine, if_exists="replace", index=False)
 
-        # === 3️⃣ 写入字段注释 ===
+        # === 3️⃣ 写入字段注释（修正版）===
         with engine.connect() as conn:
-            for new_col, orig_col in rename_map.items():
-                comment_sql = text(f'COMMENT ON COLUMN "{table_name}"."{orig_col}" IS :comment')
-                conn.execute(comment_sql, {"comment": new_col})
+            for orig_col, new_col in rename_map.items():
+                comment_sql = text(f'COMMENT ON COLUMN "{table_name}"."{new_col}" IS :comment')
+                conn.execute(comment_sql, {"comment": orig_col})
             conn.commit()
 
     except Exception as e:
@@ -117,8 +117,8 @@ def insert_pg(df: pd.DataFrame, table_name: str, engine):
 
 
 def upload_excel_and_create_datasource_service(session, trans, user, save_path: str, original_filename: str,
-                                                     example_size: int = 10,
-                                                     ai: bool = False, ):
+                                               example_size: int = 10,
+                                               ai: bool = False, ):
     """
     上传 Excel 并自动创建数据源（Excel类型）
     用于 openapi 层的复用。
@@ -224,3 +224,11 @@ def upload_excel_and_create_datasource_service(session, trans, user, save_path: 
                 SQLBotLogUtil.error(f"⚠️ 清理孤表失败: {drop_err}")
 
         raise HTTPException(status_code=500, detail=f"Upload and create datasource failed: {e}")
+    finally:
+        # === Step 7: 删除上传的临时文件 ===
+        try:
+            if os.path.exists(save_path):
+                os.remove(save_path)
+                SQLBotLogUtil.info(f"🧹 临时文件已删除：{save_path}")
+        except Exception as fe:
+            SQLBotLogUtil.warning(f"⚠️ 临时文件删除失败: {fe}")

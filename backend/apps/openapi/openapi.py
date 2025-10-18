@@ -3,14 +3,14 @@ import hashlib
 import os
 import traceback
 import uuid
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from starlette.responses import StreamingResponse
 
 from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat
 from apps.chat.models.chat_model import CreateChat
-from apps.datasource.crud.datasource import get_datasource_list, get_datasource_list_for_openapi
+from apps.datasource.crud.datasource import get_datasource_list_for_openapi, get_datasource_list_for_openapi_excels
 from apps.datasource.models.datasource import CoreDatasource
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
@@ -473,10 +473,7 @@ async def upload_excel_and_create_datasource(
                 example_size, ai
             )
         finally:
-            if os.path.exists(save_path):
-                os.remove(save_path)
-                SQLBotLogUtil.info(f"🧹 临时文件已删除：{save_path}")
-
+            SQLBotLogUtil.info("上传结束")
     return await asyncio.to_thread(inner)
 
 
@@ -496,5 +493,27 @@ async def delete_datasource_by_id(session: SessionDep, id: int):
 
     def inner():
         return delete_ds(session, id)
+
+    return await asyncio.to_thread(inner)
+
+
+@router.post(
+    "/deleteExcels",
+    summary="清空excle",
+    description="清空excel",
+    dependencies=[Depends(common_headers)],
+)
+async def delete_excels(session: SessionDep, user: CurrentUser):
+    """
+    删除数据源：
+    - 对 Excel 类型，自动 DROP 物理表；
+    - 清理 CoreTable/CoreField 记录；
+    - 日志可追溯。
+    """
+
+    def inner():
+        ids: List[int] = get_datasource_list_for_openapi_excels(session, user)
+        for id in ids:
+            delete_ds(session, id)
 
     return await asyncio.to_thread(inner)

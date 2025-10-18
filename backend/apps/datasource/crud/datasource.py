@@ -22,29 +22,67 @@ from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
 from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, TableObj, \
     DatasourceConf, TableAndFields
+from ...openapi.models.openapiModels import DatasourceResponse
+
 
 # modify by huhuhuhr
-def get_datasource_list_for_openapi(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[CoreDatasource]:
+def get_datasource_list_for_openapi_excels(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[
+    int]:
     current_oid = user.oid if user.oid is not None else 1
     if user.isAdmin and oid:
         current_oid = oid
 
-    # 明确列出需要的字段，不包括要排除的字段
-    stmt = select(
-        CoreDatasource.id,
-        CoreDatasource.name,
-        CoreDatasource.type,
-        CoreDatasource.type_name,
-        CoreDatasource.description,
-        CoreDatasource.status,
-        CoreDatasource.create_time,
-        CoreDatasource.oid,
-        CoreDatasource.create_by,
-        # 添加其他需要的字段，排除不需要的字段
-    ).where(CoreDatasource.oid == current_oid).order_by(CoreDatasource.name)
+    # 使用 scalars() 直接获取 ID 值列表
+    return session.exec(
+        select(CoreDatasource.id)
+        .where(
+            and_(
+                CoreDatasource.type == 'excel',
+                CoreDatasource.oid == current_oid
+            )
+        )
+    ).all()
 
-    result = session.exec(stmt).all()
-    return result
+
+# modify by huhuhuhr
+# 修改函数实现
+def get_datasource_list_for_openapi(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[
+    DatasourceResponse]:
+    current_oid = user.oid if user.oid is not None else 1
+    if user.isAdmin and oid:
+        current_oid = oid
+
+    result = session.exec(
+        select(
+            CoreDatasource.id,
+            CoreDatasource.name,
+            CoreDatasource.description,
+            CoreDatasource.type,
+            CoreDatasource.type_name,
+            CoreDatasource.configuration,
+            CoreDatasource.create_time,
+            CoreDatasource.create_by,
+            CoreDatasource.status,
+            CoreDatasource.num,
+            CoreDatasource.oid,
+        ).where(CoreDatasource.oid == current_oid).order_by(
+            CoreDatasource.name)).all()
+
+    # 将查询结果转换为 DatasourceResponse 对象列表
+    return [DatasourceResponse(
+        id=row[0],
+        name=row[1],
+        description=row[2],
+        type=row[3],
+        type_name=row[4],
+        configuration=row[5],
+        create_time=row[6],
+        create_by=row[7],
+        status=row[8],
+        num=row[9],
+        oid=row[10]
+    ) for row in result]
+
 
 def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[CoreDatasource]:
     current_oid = user.oid if user.oid is not None else 1
