@@ -47,7 +47,7 @@ spec:
     spec:
       containers:
       - name: sqlbot
-        image: dataease/sqlbot:latest  # Use the built image
+        image: dataease/sqlbot:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000

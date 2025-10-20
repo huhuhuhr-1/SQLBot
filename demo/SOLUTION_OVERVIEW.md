@@ -2,13 +2,14 @@
 
 ## 方案概述
 
-本方案提供了一个完整的 SQLBot 应用在 Kubernetes 上的部署解决方案，使用 Sealos 作为 Kubernetes 发行版。方案包含：
+本方案提供了 SQLBot 应用的多种部署解决方案，采用 Sealos 作为部署工具。支持两种打包方式：
 
-1. **WSL 兼容性处理** - 解决 Docker 与 Sealos 在 WSL 环境中的冲突
-2. **完整的应用部署** - 包括 SQLBot 应用和 PostgreSQL 数据库
-3. **数据持久化** - 通过 PVC 确保数据持久存储
-4. **服务暴露** - 通过 NodePort 和 Ingress 暴露服务
-5. **生产就绪配置** - 包含资源限制、健康检查等生产级配置
+1. **应用镜像打包** - 仅打包 SQLBot 应用，适用于已有 Kubernetes 集群
+2. **集群镜像打包** - 打包完整的 Kubernetes 集群 + SQLBot 应用
+3. **WSL 兼容性处理** - 解决 Docker 与 Sealos 在 WSL 环境中的冲突
+4. **数据持久化** - 通过 PVC 确保数据持久存储
+5. **服务暴露** - 通过 NodePort 和 Ingress 暴露服务
+6. **生产就绪配置** - 包含资源限制、健康检查等生产级配置
 
 ## 解决方案特点
 

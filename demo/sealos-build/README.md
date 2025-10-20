@@ -12,23 +12,45 @@ sealos-build/
 
 ## 构建和部署步骤
 
-### 1. 构建 Docker 镜像
+### 两种打包方式
+
+Sealos 支持两种打包方式：
+
+#### 方式1：应用镜像打包 (推荐)
+这种方式只打包应用本身，适用于已有 Kubernetes 集群的场景：
+
+**构建应用镜像包：**
 ```bash
-# 方法1: 使用构建脚本
+# 构建应用 Docker 镜像
 cd /opt/github/SQLBot
-bash sealos-build/build-docker-image.sh
-
-# 方法2: 直接使用 Docker
 docker build -t dataease/sqlbot:latest .
+
+# 创建应用包（包含部署文件）
+bash /opt/github/SQLBot/sealos-build/package-app.sh
+# 输出: sqlbot-app-v1.0.0.tar.gz
 ```
 
-### 2. 部署到新的 Sealos 集群（包含 Kubernetes）
+**部署到现有集群：**
 ```bash
-# 使用部署脚本部署全新的集群
-bash /opt/github/SQLBot/sealos-build/deploy-sqlbot.sh new
+# 方法1: 直接使用 kubectl
+kubectl apply -f /opt/github/SQLBot/sealos-build/sqlbot-app.yaml
+
+# 方法2: 使用打包文件中的部署配置
+kubectl apply -f /opt/github/SQLBot/demo/sealos-build/sqlbot-app-v1.0.0/sqlbot-app/sqlbot-app.yaml
 ```
 
-### 3. 部署到现有 Kubernetes 集群
+#### 方式2：完整集群镜像打包
+这种方式打包完整的集群（包含 Kubernetes + 应用），适用于从零开始的场景：
+```bash
+# 构建应用 Docker 镜像
+cd /opt/github/SQLBot
+docker build -t dataease/sqlbot:latest .
+
+# 使用部署脚本部署全新的集群（包含 Kubernetes + SQLBot）
+bash /opt/github/SQLBot/sealos-build/deploy-sqlbot.sh full
+```
+
+### 部署到现有 Kubernetes 集群
 ```bash
 # 如果您已经有运行的 Kubernetes 集群
 bash /opt/github/SQLBot/sealos-build/deploy-sqlbot.sh existing

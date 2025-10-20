@@ -24,12 +24,20 @@ demo/
 │   └── manifests/                  # Kubernetes 资源定义
 │       └── demo-app.yaml           # 应用部署定义
 └── sealos-build/                   # SQLBot Sealos 镜像构建方案
-    ├── Clusterfile                 # SQLBot 集群定义文件
-    ├── sqlbot-k8s.yaml             # SQLBot Kubernetes 资源定义
+    ├── Clusterfile                 # SQLBot 集群定义文件（完整集群）
+    ├── Applicationfile             # SQLBot 应用定义文件（仅应用）
+    ├── sqlbot-k8s.yaml             # SQLBot Kubernetes 资源定义（旧版）
+    ├── sqlbot-app.yaml             # SQLBot 应用资源定义（新版）
+    ├── sqlbot-app-v1.0.0.tar.gz    # SQLBot 应用包（已打包）
+    ├── package-app.sh              # 创建应用包脚本
+    ├── APP_PACKAGE_DEPLOY_GUIDE.md # 应用包部署指南
+    ├── MINIKUBE_DEPLOY_GUIDE.md    # Minikube 部署指南
     ├── build-docker-image.sh       # 构建 Docker 镜像脚本
     ├── deploy-sqlbot.sh            # 部署 SQLBot 脚本
+    ├── PACKING_GUIDE.md            # 打包方式说明
     ├── README.md                   # 使用说明
-    └── build-config.md             # 构建配置文档
+    ├── build-config.md             # 构建配置文档
+    └── deploy-validation.sh        # 本地验证脚本
 ```
 
 ## 主要功能

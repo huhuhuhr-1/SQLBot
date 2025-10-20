@@ -52,9 +52,9 @@ check_prerequisites() {
     fi
 }
 
-# Function to deploy SQLBot cluster with WSL compatibility
-deploy_sqlbot_cluster() {
-    print_info "Deploying SQLBot cluster with WSL compatibility..."
+# Function to deploy SQLBot cluster with WSL compatibility (Full cluster mode)
+deploy_sqlbot_full_cluster() {
+    print_info "Deploying SQLBot full cluster (Kubernetes + Application) with WSL compatibility..."
     
     # Check if we need to temporarily rename containerd files for WSL
     if systemctl is-active --quiet docker; then
@@ -70,23 +70,39 @@ deploy_sqlbot_cluster() {
     fi
     
     # Deploy the cluster using sealos
-    print_info "Running sealos to deploy SQLBot cluster..."
+    print_info "Running sealos to deploy SQLBot cluster with Kubernetes..."
     
-    # Use the Clusterfile to deploy
+    # Use the Clusterfile to deploy with both Kubernetes and SQLBot
     cd /opt/github/SQLBot/sealos-build
     sealos run swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/labring/kubernetes:v1.28.0 \
                swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/labring/calico:v3.26.5 \
                --with-images dataease/sqlbot:latest
     
     if [ $? -eq 0 ]; then
-        print_status "SQLBot cluster deployed successfully!"
+        print_status "SQLBot full cluster deployed successfully!"
     else
-        print_error "Failed to deploy SQLBot cluster"
+        print_error "Failed to deploy SQLBot full cluster"
         
         # Restore containerd files in case of error
         restore_containerd
         exit 1
     fi
+}
+
+# Function to deploy only SQLBot application (Application-only mode)
+deploy_sqlbot_application_only() {
+    print_info "Deploying only SQLBot application to existing Kubernetes cluster..."
+    
+    # Apply the application manifests directly to existing cluster
+    kubectl apply -f /opt/github/SQLBot/sealos-build/sqlbot-app.yaml
+    
+    print_status "SQLBot application deployed to existing cluster!"
+    
+    # Wait for application to be ready
+    print_info "Waiting for SQLBot application to be ready..."
+    kubectl wait --for=condition=ready pod -l app=sqlbot -n sqlbot --timeout=600s
+    
+    print_status "SQLBot application is ready!"
 }
 
 # Function to restore containerd files
@@ -121,8 +137,7 @@ deploy_to_existing_cluster() {
     
     # Wait for deployments to be ready
     print_info "Waiting for SQLBot deployments to be ready..."
-    kubectl wait --for=condition=ready pod -l app=sqlbot -n sqlbot --timeout=300s
-    kubectl wait --for=condition=ready pod -l app=postgres -n sqlbot --timeout=300s
+    kubectl wait --for=condition=ready pod -l app=sqlbot -n sqlbot --timeout=600s  # Increased timeout for PostgreSQL initialization
     
     print_status "SQLBot application is ready"
 }
@@ -158,19 +173,28 @@ display_access_info() {
 
 # Main function
 main() {
-    print_info "Starting SQLBot Sealos Cluster Deployment"
+    print_info "Starting SQLBot Sealos Deployment"
     
     # Parse command line arguments
-    case "${1:-new}" in
-        "new")
+    case "${1:-app}" in
+        "new"|"full")
+            print_info "Deploying full SQLBot cluster (Kubernetes + Application)..."
             check_prerequisites
-            deploy_sqlbot_cluster
+            deploy_sqlbot_full_cluster
             # Restore containerd after deployment
             restore_containerd
             verify_deployment
             display_access_info
             ;;
+        "app"|"application")
+            print_info "Deploying only SQLBot application to existing cluster..."
+            check_prerequisites
+            deploy_sqlbot_application_only
+            verify_deployment
+            display_access_info
+            ;;
         "existing")
+            print_info "Deploying SQLBot application to existing cluster..."
             check_prerequisites
             deploy_to_existing_cluster
             verify_deployment
@@ -181,9 +205,10 @@ main() {
             display_access_info
             ;;
         *)
-            print_error "Usage: $0 [new|existing|verify]"
-            print_info "  new: Deploy new cluster with SQLBot (default)"
-            print_info "  existing: Deploy SQLBot to existing cluster"
+            print_error "Usage: $0 [full|app|existing|verify]"
+            print_info "  full|new: Deploy full cluster with Kubernetes + SQLBot"
+            print_info "  app|application: Deploy only SQLBot application to existing cluster (default)"
+            print_info "  existing: Deploy SQLBot to existing cluster (legacy)"
             print_info "  verify: Verify existing deployment"
             exit 1
             ;;
