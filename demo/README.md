@@ -16,13 +16,20 @@ demo/
 ├── SQLBot_OpenAPI_接口文档.md      # OpenAPI 接口文档（参考）
 ├── demo-app/                       # 示例应用源代码
 │   └── Dockerfile                  # 应用 Docker 镜像构建文件
-└── sealos-demo/                    # Sealos 集群镜像构建 Demo
-    ├── Clusterfile                 # 集群定义文件
-    ├── BUILD_INSTRUCTIONS.md       # 构建说明文档
-    ├── README.md                   # 基础说明
-    ├── deploy-demo.sh              # 应用部署脚本
-    └── manifests/                  # Kubernetes 资源定义
-        └── demo-app.yaml           # 应用部署定义
+├── sealos-demo/                    # Sealos 集群镜像构建 Demo
+│   ├── Clusterfile                 # 集群定义文件
+│   ├── BUILD_INSTRUCTIONS.md       # 构建说明文档
+│   ├── README.md                   # 基础说明
+│   ├── deploy-demo.sh              # 应用部署脚本
+│   └── manifests/                  # Kubernetes 资源定义
+│       └── demo-app.yaml           # 应用部署定义
+└── sealos-build/                   # SQLBot Sealos 镜像构建方案
+    ├── Clusterfile                 # SQLBot 集群定义文件
+    ├── sqlbot-k8s.yaml             # SQLBot Kubernetes 资源定义
+    ├── build-docker-image.sh       # 构建 Docker 镜像脚本
+    ├── deploy-sqlbot.sh            # 部署 SQLBot 脚本
+    ├── README.md                   # 使用说明
+    └── build-config.md             # 构建配置文档
 ```
 
 ## 主要功能
