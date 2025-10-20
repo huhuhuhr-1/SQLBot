@@ -80,7 +80,7 @@ class LLMService:
     llm: BaseChatModel
     sql_message: List[Union[BaseMessage, dict[str, Any]]] = []
     chart_message: List[Union[BaseMessage, dict[str, Any]]] = []
-
+    # modify by huhuhuhr
     session: Session
     current_user: CurrentUser
     current_assistant: Optional[CurrentAssistant] = None
@@ -105,7 +105,7 @@ class LLMService:
         os.environ["TIKTOKEN_CACHE_DIR"] = str(settings.TIKTOKEN_CACHE_DIR)
         self._encoder = tiktoken.get_encoding("o200k_base")
         self.chunk_list = []
-        # 为当前实例创建独立的数据库会话
+        # modify by huhuhuhr为当前实例创建独立的数据库会话
         self.session = session_maker()
         self.session.exec = self.session.exec if hasattr(self.session, "exec") else self.session.execute
         self.current_user = current_user
