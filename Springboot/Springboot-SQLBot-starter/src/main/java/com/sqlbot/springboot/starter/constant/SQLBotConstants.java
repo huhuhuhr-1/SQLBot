@@ -42,6 +42,11 @@ public final class SQLBotConstants {
          */
         public static final String CLEAN = "/openapi/deleteChats";
 
+        /**
+         * 新增pg
+         */
+        public static final String ADD_PG = "/openapi/addPg";
+
         private ApiPaths() {
         }
     }

@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import os
 import traceback
 import uuid
@@ -10,11 +11,13 @@ from starlette.responses import StreamingResponse
 
 from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat
 from apps.chat.models.chat_model import CreateChat
-from apps.datasource.crud.datasource import get_datasource_list_for_openapi, get_datasource_list_for_openapi_excels
-from apps.datasource.models.datasource import CoreDatasource
+from apps.datasource.crud.datasource import get_datasource_list_for_openapi, get_datasource_list_for_openapi_excels, \
+    create_ds
+from apps.datasource.models.datasource import CoreDatasource, CreateDatasource, CoreTable, DatasourceConf
+from apps.datasource.utils.utils import aes_encrypt
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat
+    OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat, SinglePgConfig
 from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.openapi.service.openapi_llm import LLMService
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
@@ -474,6 +477,42 @@ async def upload_excel_and_create_datasource(
             )
         finally:
             SQLBotLogUtil.info("上传结束")
+
+    return await asyncio.to_thread(inner)
+
+
+@router.post("/addPg", response_model=CoreDatasource)
+async def add(session: SessionDep, trans: Trans, user: CurrentUser, config: SinglePgConfig):
+    conf_dict = DatasourceConf(
+        host=config.host,
+        port=config.port,
+        username=config.username,
+        password=config.password,
+        database=config.database,
+        driver=config.driver,
+        extraJdbc=config.extraJdbc,
+        dbSchema=config.dbSchema,
+        filename=config.filename,
+        sheets=config.sheets,
+        mode=config.mode,
+        timeout=config.timeout
+    )
+    # 将模型转换为字典以便JSON序列化
+    conf_dict_as_dict = conf_dict.dict() if hasattr(conf_dict, 'dict') else vars(conf_dict)
+    configuration_encrypted = aes_encrypt(json.dumps(conf_dict_as_dict, ensure_ascii=False))
+
+    tables_payload = [CoreTable(table_name=config.tableName, table_comment=config.tableComment)]
+
+    db = CreateDatasource(
+        name=config.tableComment,
+        type="pg",
+        configuration=configuration_encrypted,
+        tables=tables_payload,
+    )
+
+    def inner():
+        return create_ds(session, trans, user, db)
+
     return await asyncio.to_thread(inner)
 
 

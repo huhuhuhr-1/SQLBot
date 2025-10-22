@@ -35,7 +35,7 @@ src/main/resources/
 
 ```yaml
 sqlbot:
-  url: http://10.20.14.100:8000          # SQLBot服务器地址
+  url: http://127.0.0.1:8000          # SQLBot服务器地址
   connection-timeout: 10000               # 连接超时时间(ms)
   read-timeout: 30000                    # 读取超时时间(ms)
   timeout: 30000                         # 写入超时时间(ms)
@@ -131,13 +131,13 @@ curl -X POST http://localhost:8080/api/test/chat \
 ### 2. HTTP请求日志
 
 ```
-🚀 发起POST请求 - URL: http://10.20.14.100:8000/openapi/chat, 响应类型: ChatResponse
+🚀 发起POST请求 - URL: http://127.0.0.1:8000/openapi/chat, 响应类型: ChatResponse
 📤 请求体 - 类型: ChatRequest, 内容: {"dbId":1,"question":"查询用户表的数据","chatId":123}
 🔑 已添加认证头 - Token: bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-📥 收到POST响应 - URL: http://10.20.14.100:8000/openapi/chat, 状态码: 200, 响应大小: 256 bytes
+📥 收到POST响应 - URL: http://127.0.0.1:8000/openapi/chat, 状态码: 200, 响应大小: 256 bytes
 🔍 处理响应 - 状态码: 200, 响应体长度: 256 字符
 ✅ 响应解析成功 - 类型: ChatResponse, 结果: ChatResponse@12345
-✅ POST请求成功 - URL: http://10.20.14.100:8000/openapi/chat, 响应类型: ChatResponse, 结果: 非空
+✅ POST请求成功 - URL: http://127.0.0.1:8000/openapi/chat, 响应类型: ChatResponse, 结果: 非空
 ```
 
 ### 3. 成功响应日志

@@ -17,7 +17,7 @@
 ```yaml
 sqlbot:
   enabled: true
-  url: http://10.20.14.100:8000
+  url: http://127.0.0.1:8000
   connection-timeout: 10000
   read-timeout: 30000
   timeout: 30000

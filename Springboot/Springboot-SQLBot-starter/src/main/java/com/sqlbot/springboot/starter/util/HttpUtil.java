@@ -75,7 +75,7 @@ public class HttpUtil {
      * 执行GET请求 - 使用{@code Class&lt;T&gt;}参数
      *
      * @param <T>          响应类型参数
-     * @param url         请求路径
+     * @param url          请求路径
      * @param responseType 响应类型Class对象
      * @return 解析后的响应对象
      * @throws SQLBotApiException 当请求失败时抛出异常

@@ -301,3 +301,36 @@ class DatasourceResponse(BaseModel):
     status: str
     num: str
     oid: int
+
+
+class SinglePgConfig(BaseModel):
+    tableName: str = ''
+    tableComment: str = ''
+    host: str = ''
+    port: int = 0
+    username: str = ''
+    password: str = ''
+    database: str = ''
+    driver: str = ''
+    extraJdbc: str = ''
+    dbSchema: str = 'public'
+    filename: str = ''
+    sheets: List = []
+    mode: str = 'service_name'
+    timeout: int = 30
+
+    def to_dict(self):
+        return {
+            "host": self.host,
+            "port": self.port,
+            "username": self.username,
+            "password": self.password,
+            "database": self.database,
+            "driver": self.driver,
+            "extraJdbc": self.extraJdbc,
+            "dbSchema": self.dbSchema,
+            "filename": self.filename,
+            "sheets": self.sheets,
+            "mode": self.mode,
+            "timeout": self.timeout
+        }

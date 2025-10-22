@@ -5,6 +5,8 @@ import com.sqlbot.springboot.starter.model.request.*;
 import com.sqlbot.springboot.starter.model.response.*;
 import com.sqlbot.springboot.starter.exception.*;
 import com.sqlbot.springboot.starter.util.HttpUtil;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -22,7 +24,27 @@ public class SQLBotClient {
 
     private final SQLBotProperties properties;
     private final HttpUtil httpUtil;
+    /**
+     * -- GETTER --
+     * 获取当前令牌
+     *
+     * @return 当前令牌
+     */
+    @Getter
     private String currentToken;
+    /**
+     * -- GETTER --
+     * 获取当前聊天会话ID
+     * <p>
+     * <p>
+     * -- SETTER --
+     * 设置聊天会话ID
+     *
+     * @return 当前聊天会话ID
+     * @param chatId 聊天会话ID
+     */
+    @Setter
+    @Getter
     private Integer currentChatId;
 
     /**
@@ -388,33 +410,6 @@ public class SQLBotClient {
     }
 
     /**
-     * 获取当前令牌
-     *
-     * @return 当前令牌
-     */
-    public String getCurrentToken() {
-        return currentToken;
-    }
-
-    /**
-     * 获取当前聊天会话ID
-     *
-     * @return 当前聊天会话ID
-     */
-    public Integer getCurrentChatId() {
-        return currentChatId;
-    }
-
-    /**
-     * 设置聊天会话ID
-     *
-     * @param chatId 聊天会话ID
-     */
-    public void setCurrentChatId(Integer chatId) {
-        this.currentChatId = chatId;
-    }
-
-    /**
      * 清除认证信息
      */
     public void clearAuthentication() {
@@ -434,4 +429,35 @@ public class SQLBotClient {
             throw new SQLBotAuthenticationException("用户未认证，请先调用getToken方法获取访问令牌");
         }
     }
+
+    /**
+     * 添加 PostgreSQL 数据源
+     *
+     * @param request PostAddPgRequest 请求参数
+     * @return CommonDataResponse 响应数据
+     * @throws SQLBotException 当请求失败时抛出
+     */
+    public CommonDataResponse addPg(PostAddPgRequest request) throws SQLBotException {
+        log.debug("正在创建 PostgreSQL 数据源，表名: {}", request.getTableName());
+
+        ensureAuthenticated();
+
+        if (request == null) {
+            throw new SQLBotClientException("请求对象不能为空");
+        }
+
+        try {
+            String fullUrl = properties.getUrl() + SQLBotConstants.ApiPaths.ADD_PG;
+            CommonDataResponse response = httpUtil.post(fullUrl, request, CommonDataResponse.class);
+
+            log.info("成功添加 PostgreSQL 数据源，返回消息: {}", response.getMsg());
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("添加 PostgreSQL 数据源失败: {}", e.getMessage(), e);
+            throw new SQLBotException("添加 PostgreSQL 数据源失败: " + e.getMessage(), e);
+        }
+    }
+
 }
