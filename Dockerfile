@@ -65,7 +65,7 @@ COPY g2-ssr/charts/* /app/charts/
 RUN npm install
 
 # Runtime stage
-FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
+FROM --platform=${BUILDPLATFORM} registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone
