@@ -34,7 +34,13 @@ ENV DB_CLIENT=/opt/sqlbot/db_client
 RUN apt-get update && \
     apt-get install -y curl unzip && \
     mkdir -p ${DB_CLIENT} && \
-    curl -L -o app.zip https://download.oracle.com/otn_software/linux/instantclient/2326000/instantclient-basic-linux.x64-23.26.0.0.0.zip && \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+      echo "Building for x86_64"; \
+      curl -L -o app.zip https://download.oracle.com/otn_software/linux/instantclient/2326000/instantclient-basic-linux.x64-23.26.0.0.0.zip; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+      echo "Building for ARM64"; \
+      curl -L -o app.zip https://download.oracle.com/otn_software/linux/instantclient/2390000/instantclient-basic-linux.arm64-23.9.0.25.07.zip; \
+    fi && \
     unzip app.zip -d ${DB_CLIENT} && \
     rm app.zip && \
     mv ${DB_CLIENT}/instantclient* ${DB_CLIENT}/oracle_instant_client
