@@ -28,3 +28,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && chmod g+xr /usr/bin/ld.so \
     && chmod g+x /usr/local/bin/python*
+
+ENV DB_CLIENT=/opt/sqlbot/db_client
+
+RUN apt-get update && \
+    apt-get install -y curl unzip && \
+    mkdir -p ${DB_CLIENT} && \
+    curl -L -o app.zip https://download.oracle.com/otn_software/linux/instantclient/2326000/instantclient-basic-linux.x64-23.26.0.0.0.zip && \
+    unzip app.zip -d ${DB_CLIENT} && \
+    rm app.zip && \
+    mv ${DB_CLIENT}/instantclient* ${DB_CLIENT}/oracle_instant_client
