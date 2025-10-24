@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chmod g+x /usr/local/bin/python*
 
 ENV DB_CLIENT=/opt/sqlbot/db_client
-
+ARG TARGETARCH
 RUN apt-get update && \
     apt-get install -y curl unzip && \
     mkdir -p ${DB_CLIENT} && \
