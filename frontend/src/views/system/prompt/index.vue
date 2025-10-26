@@ -70,7 +70,7 @@ const copyCode = () => {
       ElMessage.success(t('embedded.copy_successful'))
     })
     .catch(function () {
-      ElMessage.error(t('embedded.copy_successful'))
+      ElMessage.error(t('embedded.copy_failed'))
     })
 }
 const cancelDelete = () => {
@@ -629,7 +629,7 @@ const typeChange = (val: any) => {
       <el-form-item :label="t('ds.title')">
         <div class="content">
           {{
-            pageForm.datasource_names.length
+            pageForm.datasource_names.length && pageForm.specific_ds
               ? pageForm.datasource_names.join()
               : t('training.all_data_sources')
           }}

@@ -88,8 +88,16 @@ def get_last_execute_sql_error(session: SessionDep, chart_id: int):
 
 def format_json_data(origin_data: dict):
     result = {'fields': origin_data.get('fields') if origin_data.get('fields') else []}
+    _list = origin_data.get('data') if origin_data.get('data') else []
+    data = format_json_list_data(_list)
+    result['data'] = data
+
+    return result
+
+
+def format_json_list_data(origin_data: list[dict]):
     data = []
-    for _data in origin_data.get('data') if origin_data.get('data') else []:
+    for _data in origin_data if origin_data else []:
         _row = {}
         for key, value in _data.items():
             if value is not None:
@@ -105,9 +113,8 @@ def format_json_data(origin_data: dict):
                             value = str(value)
             _row[key] = value
         data.append(_row)
-    result['data'] = data
 
-    return result
+    return data
 
 
 def get_chat_chart_data(session: SessionDep, chart_record_id: int):
@@ -234,6 +241,14 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                  finish=row.finish, error=row.error, data=row.data, predict_data=row.predict_data))
 
     result = list(map(format_record, record_list))
+
+    for row in result:
+        try:
+            data_value = row.get('data')
+            if data_value is not None:
+                row['data'] = format_json_data(data_value)
+        except Exception:
+            pass
 
     chat_info.records = result
 

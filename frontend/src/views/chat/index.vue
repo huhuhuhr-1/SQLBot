@@ -138,9 +138,11 @@
           <div class="welcome-content">
             <template v-if="isCompletePage">
               <div class="greeting">
-                <el-icon size="32">
-                  <logo_fold />
-                </el-icon>
+                <img height="32" width="32" v-if="loginBg" :src="loginBg" alt="" />
+                <el-icon size="32" v-else
+                  ><custom_small v-if="appearanceStore.themeColor !== 'default'"></custom_small>
+                  <LOGO_fold v-else></LOGO_fold
+                ></el-icon>
                 {{ t('qa.greeting') }}
               </div>
               <div class="sub">
@@ -181,7 +183,20 @@
           </div>
         </div>
         <div v-else-if="computedMessages.length == 0 && loading" class="welcome-content-block">
-          <logo />
+          <div style="display: flex; align-items: center; height: 30px">
+            <img
+              height="30"
+              width="30"
+              v-if="logoAssistant || loginBg"
+              :src="logoAssistant ? logoAssistant : loginBg"
+              alt=""
+            />
+            <el-icon size="30" v-else
+              ><custom_small v-if="appearanceStore.themeColor !== 'default'"></custom_small>
+              <LOGO_fold v-else></LOGO_fold
+            ></el-icon>
+            <span style="margin-left: 12px">{{ appearanceStore.name }}</span>
+          </div>
         </div>
         <el-scrollbar
           v-if="computedMessages.length > 0"
@@ -198,7 +213,12 @@
             }"
           >
             <template v-for="(message, _index) in computedMessages" :key="_index">
-              <ChatRow :current-chat="currentChat" :msg="message" :hide-avatar="message.first_chat">
+              <ChatRow
+                :logoAssistant="logoAssistant"
+                :current-chat="currentChat"
+                :msg="message"
+                :hide-avatar="message.first_chat"
+              >
                 <RecommendQuestion
                   v-if="message.role === 'assistant' && message.first_chat"
                   ref="recommendQuestionRef"
@@ -422,16 +442,18 @@ import ChatToolBar from './ChatToolBar.vue'
 import { dsTypeWithImg } from '@/views/ds/js/ds-type'
 import { useI18n } from 'vue-i18n'
 import { find, forEach } from 'lodash-es'
+import custom_small from '@/assets/svg/logo-custom_small.svg'
+import LOGO_fold from '@/assets/LOGO-fold.svg'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
 import icon_screen_outlined from '@/assets/svg/icon_screen_outlined.svg'
 import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
 import logo_fold from '@/assets/svg/logo-custom_small.svg'
-import logo from '@/assets/LOGO.svg'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 import { useAssistantStore } from '@/stores/assistant'
 import { onClickOutside } from '@vueuse/core'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useUserStore } from '@/stores/user'
 import { debounce } from 'lodash-es'
 
@@ -483,11 +505,14 @@ const scrollToBottom = debounce(() => {
 
 const loading = ref<boolean>(false)
 const chatList = ref<Array<ChatInfo>>([])
+const appearanceStore = useAppearanceStoreWithOut()
 
 const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
 const isTyping = ref<boolean>(false)
-
+const loginBg = computed(() => {
+  return appearanceStore.getLogin
+})
 const computedMessages = computed<Array<ChatMessage>>(() => {
   const messages: Array<ChatMessage> = []
   if (currentChatId.value === undefined) {

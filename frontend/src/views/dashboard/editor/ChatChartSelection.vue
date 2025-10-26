@@ -58,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Chat, chatApi, ChatInfo } from '@/api/chat.ts'
 import DashboardChatList from '@/views/dashboard/editor/DashboardChatList.vue'
@@ -79,10 +79,6 @@ const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
 const chartInfoList = ref<Array<any>>([])
 const emits = defineEmits(['addChatChart'])
-
-onMounted(() => {
-  getChatList()
-})
 
 function selectChange(value: boolean, viewInfo: any) {
   if (value) {
@@ -200,7 +196,10 @@ function getChatList() {
 
 const dialogInit = () => {
   dialogShow.value = true
+  currentChatId.value = undefined
   state.curMultiplexingComponents = []
+  chartInfoList.value = []
+  getChatList()
 }
 
 const saveMultiplexing = () => {
