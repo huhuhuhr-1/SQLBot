@@ -5,13 +5,13 @@ import koKR from './ko-KR.json'
 import elementEnLocale from 'element-plus-secondary/es/locale/lang/en'
 import elementZhLocale from 'element-plus-secondary/es/locale/lang/zh-cn'
 import { useCache } from '@/utils/useCache'
+import { getBrowserLocale } from '@/utils/utils'
 
 const elementKoLocale = elementEnLocale
 const { wsCache } = useCache()
 
 const getDefaultLocale = () => {
-  const language = wsCache.get('user.language')
-  return language || 'zh-CN'
+  return wsCache.get('user.language') || getBrowserLocale() || 'zh-CN'
 }
 
 const messages = {
@@ -32,7 +32,7 @@ const messages = {
 export const i18n = createI18n({
   legacy: false,
   locale: getDefaultLocale(),
-  fallbackLocale: 'en',
+  fallbackLocale: 'zh-CN',
   globalInjection: true,
   messages,
 })
