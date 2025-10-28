@@ -334,3 +334,9 @@ class SinglePgConfig(BaseModel):
             "mode": self.mode,
             "timeout": self.timeout
         }
+
+
+
+class DataSourceRequestWithSql(BaseModel):
+    db_id: Optional[str] = None
+    sql: Optional[str] = None

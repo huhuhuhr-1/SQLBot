@@ -15,9 +15,10 @@ from apps.datasource.crud.datasource import get_datasource_list_for_openapi, get
     create_ds
 from apps.datasource.models.datasource import CoreDatasource, CreateDatasource, CoreTable, DatasourceConf
 from apps.datasource.utils.utils import aes_encrypt
+from apps.db.db import exec_sql
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat, SinglePgConfig
+    OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat, SinglePgConfig, DataSourceRequestWithSql
 from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.openapi.service.openapi_llm import LLMService
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
@@ -29,6 +30,7 @@ from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.config import settings
 from common.core.db import get_session
 from common.core.deps import SessionDep, CurrentUser, CurrentAssistant, Trans
+from common.error import ParseSQLResultError, SQLBotDBError
 from common.utils.utils import SQLBotLogUtil
 
 router = APIRouter(tags=["openapi"], prefix="/openapi")
@@ -262,6 +264,40 @@ async def get_data(session: SessionDep, record_chat: OpenChat):
 
     # 使用异步线程执行数据库查询
     return await asyncio.to_thread(_fetch_chart_data)
+
+
+@router.post("/getDataByDbIdAndSql", dependencies=[Depends(common_headers)])
+def get_data(current_user: CurrentUser, request: DataSourceRequestWithSql):
+    datasource = None
+    for session in get_session():
+        datasource = get_datasource_by_name_or_id(
+            session=session,
+            user=current_user,
+            query=DataSourceRequest(id=request.db_id)  # 使用 request.db_id 而不是 request.ds.id
+        )
+        if datasource is None:
+            raise HTTPException(
+                status_code=500,
+                detail="数据源未找到"
+            )
+        break  # 找到后退出循环
+
+    if datasource is None:
+        raise HTTPException(
+            status_code=500,
+            detail="数据源未找到"
+        )
+
+    SQLBotLogUtil.info(f"Executing SQL on ds_id {request.db_id}: {request.sql}")
+    try:
+        # 使用 datasource 而不是 request.ds
+        return exec_sql(ds=datasource, sql=request.sql, origin_column=False)
+    except Exception as e:
+        if isinstance(e, ParseSQLResultError):
+            raise e
+        else:
+            err = traceback.format_exc(limit=1, chain=True)
+            raise SQLBotDBError(err)
 
 
 @router.post("/createRecordAndBindDb")
