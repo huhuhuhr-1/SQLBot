@@ -3,6 +3,9 @@ package com.sqlbot.springboot.starter;
 import com.sqlbot.springboot.starter.api.auth.AuthService;
 import com.sqlbot.springboot.starter.api.user.UserService;
 import com.sqlbot.springboot.starter.api.datasource.DataSourceService;
+import com.sqlbot.springboot.starter.api.assistant.AssistantService;
+import com.sqlbot.springboot.starter.api.aimodel.AiModelService;
+import com.sqlbot.springboot.starter.api.terminology.TerminologyService;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -25,11 +28,18 @@ public class SQLBotStarter {
     @Getter
     private final DataSourceService dataSourceService;
     
+    @Getter
+    private final AssistantService assistantService;
+    
+    @Getter
+    private final AiModelService aiModelService;
+    
+    @Getter
+    private final TerminologyService terminologyService;
+    
     // 未来可添加其他模块服务
     // @Getter
     // private final ChatService chatService;
-    // @Getter
-    // private final AssistantService assistantService;
     // 等等...
 
     /**
@@ -43,6 +53,9 @@ public class SQLBotStarter {
         this.authService = new AuthService(properties);
         this.userService = new UserService(properties);
         this.dataSourceService = new DataSourceService(properties);
+        this.assistantService = new AssistantService(properties);
+        this.aiModelService = new AiModelService(properties);
+        this.terminologyService = new TerminologyService(properties);
         
         log.info("SQLBot主服务初始化完成");
     }
@@ -72,5 +85,32 @@ public class SQLBotStarter {
      */
     public DataSourceService getDataSource() {
         return dataSourceService;
+    }
+    
+    /**
+     * 获取助手服务
+     *
+     * @return 助手服务实例
+     */
+    public AssistantService getAssistant() {
+        return assistantService;
+    }
+    
+    /**
+     * 获取AI模型服务
+     *
+     * @return AI模型服务实例
+     */
+    public AiModelService getAiModel() {
+        return aiModelService;
+    }
+    
+    /**
+     * 获取术语服务
+     *
+     * @return 术语服务实例
+     */
+    public TerminologyService getTerminology() {
+        return terminologyService;
     }
 }

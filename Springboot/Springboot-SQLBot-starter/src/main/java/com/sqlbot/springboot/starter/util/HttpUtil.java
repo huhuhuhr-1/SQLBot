@@ -585,6 +585,77 @@ public class HttpUtil {
     }
 
     /**
+     * 执行DELETE请求 - 带请求体
+     *
+     * @param <T> 响应类型参数
+     * @param url 请求路径
+     * @param requestBody 请求体对象
+     * @param responseType 响应类型Class对象
+     * @return 解析后的响应对象
+     * @throws SQLBotApiException 当请求失败时抛出异常
+     */
+    public <T> T deleteWithBody(String url, Object requestBody, Class<T> responseType) {
+        log.info("🚀 发起DELETE请求 - URL: {}, 响应类型: {}", url, responseType.getSimpleName());
+
+        RequestBody body;
+        if (requestBody != null) {
+            try {
+                String json = objectMapper.writeValueAsString(requestBody);
+                log.debug("📤 请求体 - 内容: {}", json);
+                body = RequestBody.create(json, MediaType.get("application/json; charset=utf-8"));
+            } catch (Exception e) {
+                log.error("❌ 请求参数序列化失败: {}", e.getMessage(), e);
+                throw new SQLBotClientException("请求参数序列化失败: " + e.getMessage());
+            }
+        } else {
+            log.debug("请求体为空");
+            body = RequestBody.create("{}", MediaType.get("application/json; charset=utf-8"));
+        }
+
+        Request.Builder requestBuilder = new Request.Builder()
+                .url(url)
+                .delete(body)  // 使用delete方法而不是post
+                .header("Content-Type", "application/json");
+
+        // 添加认证头
+        if (currentToken != null) {
+            requestBuilder.header("Authorization", currentToken);
+            requestBuilder.header("X-Sqlbot-Token", currentToken);
+            log.debug("已添加认证头");
+        }
+
+        Request request = requestBuilder.build();
+        Response response = null;
+
+        try {
+            response = okHttpClient.newCall(request).execute();
+            log.info("📥 收到DELETE响应 - URL: {}, 状态码: {}, 响应大小: {} bytes",
+                    url, response.code(), response.body() != null ? response.body().contentLength() : 0);
+
+            T result = handleResponse(response, responseType);
+            log.info("✅ DELETE请求成功 - URL: {}, 响应类型: {}, 结果: {}",
+                    url, responseType.getSimpleName(), result != null ? "非空" : "空");
+            return result;
+
+        } catch (Exception e) {
+            log.error("❌ DELETE请求失败 - URL: {}, 错误: {}", url, e.getMessage(), e);
+            throw new SQLBotApiException("网络请求失败: " + e.getMessage(), e);
+        } finally {
+            // 确保响应被正确关闭
+            if (response != null) {
+                try {
+                    if (response.body() != null) {
+                        response.body().close();
+                    }
+                    response.close();
+                } catch (Exception e) {
+                    log.warn("关闭DELETE响应时发生异常: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    /**
      * 上传文件
      *
      * @param <T> 响应类型参数
