@@ -267,37 +267,136 @@ async def get_data(session: SessionDep, record_chat: OpenChat):
 
 
 @router.post("/getDataByDbIdAndSql", dependencies=[Depends(common_headers)])
-def get_data(current_user: CurrentUser, request: DataSourceRequestWithSql):
-    datasource = None
-    for session in get_session():
-        datasource = get_datasource_by_name_or_id(
-            session=session,
-            user=current_user,
-            query=DataSourceRequest(id=request.db_id)  # 使用 request.db_id 而不是 request.ds.id
-        )
-        if datasource is None:
-            raise HTTPException(
-                status_code=500,
-                detail="数据源未找到"
-            )
-        break  # 找到后退出循环
-
-    if datasource is None:
+def get_data_by_db_id_and_sql(current_user: CurrentUser, request: DataSourceRequestWithSql):
+    # 验证输入参数
+    if not request.db_id:
         raise HTTPException(
-            status_code=500,
-            detail="数据源未找到"
+            status_code=400,
+            detail="db_id 参数不能为空"
         )
+
+    if not request.sql:
+        raise HTTPException(
+            status_code=400,
+            detail="sql 参数不能为空"
+        )
+
+    # 增加SQL注入防护：检查SQL语句中是否包含危险操作
+    sanitized_sql = request.sql.strip()
+    if not _is_safe_sql(sanitized_sql):
+        raise HTTPException(
+            status_code=400,
+            detail="SQL语句包含不安全的操作"
+        )
+
+    datasource = None
+    # 以更标准的方式使用数据库会话
+    for session in get_session():
+        try:
+            datasource = get_datasource_by_name_or_id(
+                session=session,
+                user=current_user,
+                query=DataSourceRequest(id=request.db_id)  # 使用 request.db_id 而不是 request.ds.id
+            )
+            if datasource is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="数据源未找到"
+                )
+            break
+        finally:
+            # 确保会话被正确关闭
+            session.close()
 
     SQLBotLogUtil.info(f"Executing SQL on ds_id {request.db_id}: {request.sql}")
     try:
         # 使用 datasource 而不是 request.ds
-        return exec_sql(ds=datasource, sql=request.sql, origin_column=False)
+        return exec_sql(ds=datasource, sql=sanitized_sql, origin_column=False)
     except Exception as e:
         if isinstance(e, ParseSQLResultError):
             raise e
         else:
             err = traceback.format_exc(limit=1, chain=True)
             raise SQLBotDBError(err)
+
+
+def _is_safe_sql(sql: str) -> bool:
+    """
+    严格的SQL安全检查，只允许安全的查询操作
+    注意：这只是一个基本检查，生产环境应使用参数化查询
+    """
+    import re
+    
+    # 转换为小写便于检查
+    lower_sql = sql.lower().strip()
+    
+    # 检查是否以SELECT开头（只允许查询）
+    if not lower_sql.startswith('select'):
+        return False
+    
+    # 检查是否包含危险关键字（任何修改或删除数据的操作）
+    dangerous_keywords = [
+        'drop', 'delete', 'insert', 'update', 'create', 'alter', 'truncate', 'exec', 
+        'execute', 'sp_', 'xp_', '0x', 'char(', 'varchar(', 'substring(', 'cast(',
+        'declare', 'use', 'grant', 'revoke', 'kill', 'load', 'handler', 'call',
+        'replace', 'merge', 'upsert', 'admin', 'shutdown', 'begin', 'commit',
+        'rollback', 'transaction', 'savepoint', 'lock', 'unlock',
+        'analyze', 'vacuum', 'reindex', 'optimize', 'repair', 'flush', 'purge',
+        'rename', 'detach', 'attach', 'import', 'export', 'unload', 'copy',
+        'with',  # 部分CTE可能被滥用，谨慎处理
+        'into',  # 防止 INTO 关键字用于写入数据
+        'outfile', 'infile', 'dumpfile',  # 文件操作
+        'load_file', 'sys', 'system', 'exec', 'execute',  # 系统操作
+        'procedure', 'function', 'trigger', 'event',  # 存储过程等
+        'grant', 'revoke', 'reassign', 'set',  # 权限修改
+        'comment',  # 某些数据库的注释操作可能有风险
+        'merge', 'call', 'do',  # MySQL的存储过程相关
+        '_', 'nchar', 'nvarchar', 'varbinary',  # 特殊字符/二进制操作
+        'unhex', 'decode', 'encode',  # 编码解码函数
+        'benchmark', 'sleep', 'waitfor',  # 延时函数
+        'pg_sleep', 'dbms_pipe', 'utl_http',  # 休眠和其他危险函数
+        'current_user', 'session_user',  # 用户信息获取
+        'database', 'schema', 'version', 'user',  # 信息获取函数
+        'connection_id', 'last_insert_id',  # 会话相关信息
+        'extractvalue', 'updatexml',  # XML相关函数，可能被注入利用
+        'load', 'dump',  # 加载/转储操作
+    ]
+    
+    for keyword in dangerous_keywords:
+        if keyword in lower_sql:
+            return False
+    
+    # 检查是否存在常见的SQL注入模式（使用正则表达式）
+    injection_patterns = [
+        r'--', r'/\*', r'\*/', r'union', r'waitfor delay', r'benchmark', r'sleep',
+        r'order by', r'group by',  # 这些可能会被用来探测数据库结构
+        r'union select', r'union all select',  # 明确禁止联合查询
+        r'procedure analyse',  # MYSQL函数，可能暴露结构信息
+        r'into outfile', r'into dumpfile',  # 文件写入操作
+        r'load_file',  # 文件读取操作
+        r'@@',  # MySQL系统变量
+        r'select.*select',  # 嵌套查询可能被滥用
+        r'from.*information_schema',  # 获取数据库结构
+        r'from.*pg_.*',  # PostgreSQL系统表
+        r'from.*sys.*',  # 系统表
+        r'from.*information_',  # 信息模式表
+    ]
+    
+    for pattern in injection_patterns:
+        if re.search(pattern, lower_sql):
+            return False
+    
+    # 额外验证：检查是否包含子查询修改操作
+    subquery_patterns = [
+        r'select.*insert', r'select.*update', r'select.*delete', 
+        r'select.*create', r'select.*drop', r'select.*alter'
+    ]
+    
+    for pattern in subquery_patterns:
+        if re.search(pattern, lower_sql):
+            return False
+    
+    return True
 
 
 @router.post("/createRecordAndBindDb")

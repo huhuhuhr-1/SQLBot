@@ -154,13 +154,112 @@ await bind_datasource(datasource, chat_question.chat_id, session, current_user)
 3. 权限测试 - 验证权限控制有效
 4. 资源泄露测试 - 确认会话正确关闭
 
-## 6. 总结
+## 6. 最新增强：SQL注入防护与接口安全
 
-通过实施上述修复，SQLBot OpenAPI模块的以下方面得到显著改进：
+### 6.1 修复函数名冲突
 
-1. **安全性**: 添加了完整的用户权限验证，防止未经授权的数据访问
+**问题描述:**
+新添加的接口函数名 `get_data` 与现有接口函数名冲突，导致功能覆盖。
+
+**解决方案:**
+- 将新接口函数名从 `get_data` 改为 `get_data_by_db_id_and_sql`
+- 避免了与现有功能的冲突
+
+### 6.2 增强SQL注入防护
+
+**问题描述:**
+新添加的 `/getDataByDbIdAndSql` 接口存在SQL注入风险，允许执行任意SQL语句。
+
+**解决方案:**
+- 实现了严格的 `_is_safe_sql` 函数验证SQL语句
+- 仅允许 `SELECT` 查询语句
+- 阻止所有数据修改操作（INSERT、UPDATE、DELETE、DROP、TRUNCATE等）
+- 增加正则表达式模式检查，防止复杂的SQL注入
+
+**修改后的代码:**
+```python
+def _is_safe_sql(sql: str) -> bool:
+    """
+    严格的SQL安全检查，只允许安全的查询操作
+    注意：这只是一个基本检查，生产环境应使用参数化查询
+    """
+    import re
+    
+    # 转换为小写便于检查
+    lower_sql = sql.lower().strip()
+    
+    # 检查是否以SELECT开头（只允许查询）
+    if not lower_sql.startswith('select'):
+        return False
+    
+    # 检查是否包含危险关键字（任何修改或删除数据的操作）
+    dangerous_keywords = [
+        'drop', 'delete', 'insert', 'update', 'create', 'alter', 'truncate', 'exec', 
+        'execute', 'sp_', 'xp_', '0x', 'char(', 'varchar(', 'substring(', 'cast(',
+        'declare', 'use', 'grant', 'revoke', 'kill', 'load', 'handler', 'call',
+        'replace', 'merge', 'upsert', 'admin', 'shutdown', 'begin', 'commit',
+        'rollback', 'transaction', 'savepoint', 'lock', 'unlock',
+        'analyze', 'vacuum', 'reindex', 'optimize', 'repair', 'flush', 'purge',
+        'rename', 'detach', 'attach', 'import', 'export', 'unload', 'copy',
+        'with', 'into', 'outfile', 'infile', 'dumpfile',
+        'load_file', 'sys', 'system', 'procedure', 'function', 'trigger', 'event',
+        'comment', 'merge', 'call', 'do', '_', 'nchar', 'nvarchar', 'varbinary',
+        'unhex', 'decode', 'encode', 'benchmark', 'sleep', 'waitfor',
+        'pg_sleep', 'dbms_pipe', 'utl_http', 'extractvalue', 'updatexml',
+        'load', 'dump'
+    ]
+    
+    for keyword in dangerous_keywords:
+        if keyword in lower_sql:
+            return False
+    
+    # 使用正则表达式检查更复杂的注入模式
+    injection_patterns = [
+        r'--', r'/\*', r'\*/', r'union', r'waitfor delay', r'benchmark', r'sleep',
+        r'order by', r'group by', r'union select', r'union all select',
+        r'procedure analyse', r'into outfile', r'into dumpfile', r'load_file',
+        r'@@', r'select.*select', r'from.*information_schema',
+        r'from.*pg_.*', r'from.*sys.*', r'from.*information_',
+    ]
+    
+    for pattern in injection_patterns:
+        if re.search(pattern, lower_sql):
+            return False
+    
+    # 检查子查询中的危险操作
+    subquery_patterns = [
+        r'select.*insert', r'select.*update', r'select.*delete', 
+        r'select.*create', r'select.*drop', r'select.*alter'
+    ]
+    
+    for pattern in subquery_patterns:
+        if re.search(pattern, lower_sql):
+            return False
+    
+    return True
+```
+
+**效果:**
+- 仅允许安全的SELECT查询
+- 阻止所有数据修改和删除操作
+- 防止访问数据库结构信息
+- 防止文件操作和系统函数调用
+
+### 6.3 参数验证与会话管理优化
+
+**实现:**
+- 在数据模型中将可选参数改为必需参数
+- 添加对输入参数的非空验证
+- 优化数据库会话管理，确保正确关闭
+
+## 7. 总结
+
+通过实施上述修复和增强，SQLBot OpenAPI模块的以下方面得到显著改进：
+
+1. **安全性**: 添加了完整的用户权限验证和严格的SQL注入防护，防止未经授权的数据访问和恶意SQL执行
 2. **稳定性**: 解决了数据库会话管理问题，提高了多线程环境下的稳定性
-3. **可靠性**: 修复了事务处理问题，确保数据一致性
+3. **可靠性**: 修复了事务处理问题和函数名冲突，确保数据一致性
 4. **性能**: 改进了资源管理，减少了连接泄漏风险
+5. **安全增强**: 仅允许安全的查询操作，阻止所有危险的数据修改和系统操作
 
-这些修复增强了系统的整体质量，为用户提供更加安全、稳定的服务。
+这些修复和增强措施极大地提高了系统的整体质量，为用户提供更加安全、稳定和可靠的API服务。

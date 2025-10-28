@@ -338,5 +338,5 @@ class SinglePgConfig(BaseModel):
 
 
 class DataSourceRequestWithSql(BaseModel):
-    db_id: Optional[str] = None
-    sql: Optional[str] = None
+    db_id: str = Body(..., description='数据源ID')
+    sql: str = Body(..., description='SQL查询语句')
