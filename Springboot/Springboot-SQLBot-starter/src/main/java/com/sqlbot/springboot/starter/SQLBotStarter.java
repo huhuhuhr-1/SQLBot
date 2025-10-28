@@ -8,6 +8,10 @@ import com.sqlbot.springboot.starter.api.aimodel.AiModelService;
 import com.sqlbot.springboot.starter.api.terminology.TerminologyService;
 import com.sqlbot.springboot.starter.api.data_training.DataTrainingService;
 import com.sqlbot.springboot.starter.api.chat.ChatService;
+import com.sqlbot.springboot.starter.api.dashboard.DashboardService;
+import com.sqlbot.springboot.starter.api.mcp.McpService;
+import com.sqlbot.springboot.starter.api.table_relation.TableRelationService;
+import com.sqlbot.springboot.starter.api.demo.DemoService;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -45,10 +49,17 @@ public class SQLBotStarter {
     @Getter
     private final ChatService chatService;
     
-    // 未来可添加其他模块服务
-    // @Getter
-    // private final DashboardService dashboardService;
-    // 等等...
+    @Getter
+    private final DashboardService dashboardService;
+    
+    @Getter
+    private final McpService mcpService;
+    
+    @Getter
+    private final TableRelationService tableRelationService;
+    
+    @Getter
+    private final DemoService demoService;
 
     /**
      * 构造SQLBot主服务
@@ -66,6 +77,10 @@ public class SQLBotStarter {
         this.terminologyService = new TerminologyService(properties);
         this.dataTrainingService = new DataTrainingService(properties);
         this.chatService = new ChatService(properties);
+        this.dashboardService = new DashboardService(properties);
+        this.mcpService = new McpService(properties);
+        this.tableRelationService = new TableRelationService(properties);
+        this.demoService = new DemoService(properties);
         
         log.info("SQLBot主服务初始化完成");
     }
@@ -140,5 +155,41 @@ public class SQLBotStarter {
      */
     public ChatService getChat() {
         return chatService;
+    }
+    
+    /**
+     * 获取仪表板服务
+     *
+     * @return 仪表板服务实例
+     */
+    public DashboardService getDashboard() {
+        return dashboardService;
+    }
+    
+    /**
+     * 获取MCP服务
+     *
+     * @return MCP服务实例
+     */
+    public McpService getMcp() {
+        return mcpService;
+    }
+    
+    /**
+     * 获取表关系服务
+     *
+     * @return 表关系服务实例
+     */
+    public TableRelationService getTableRelation() {
+        return tableRelationService;
+    }
+    
+    /**
+     * 获取Demo服务
+     *
+     * @return Demo服务实例
+     */
+    public DemoService getDemo() {
+        return demoService;
     }
 }
