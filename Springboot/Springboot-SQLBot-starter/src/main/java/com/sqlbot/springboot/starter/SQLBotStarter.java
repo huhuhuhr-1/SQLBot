@@ -6,6 +6,8 @@ import com.sqlbot.springboot.starter.api.datasource.DataSourceService;
 import com.sqlbot.springboot.starter.api.assistant.AssistantService;
 import com.sqlbot.springboot.starter.api.aimodel.AiModelService;
 import com.sqlbot.springboot.starter.api.terminology.TerminologyService;
+import com.sqlbot.springboot.starter.api.data_training.DataTrainingService;
+import com.sqlbot.springboot.starter.api.chat.ChatService;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -37,9 +39,15 @@ public class SQLBotStarter {
     @Getter
     private final TerminologyService terminologyService;
     
+    @Getter
+    private final DataTrainingService dataTrainingService;
+    
+    @Getter
+    private final ChatService chatService;
+    
     // 未来可添加其他模块服务
     // @Getter
-    // private final ChatService chatService;
+    // private final DashboardService dashboardService;
     // 等等...
 
     /**
@@ -56,6 +64,8 @@ public class SQLBotStarter {
         this.assistantService = new AssistantService(properties);
         this.aiModelService = new AiModelService(properties);
         this.terminologyService = new TerminologyService(properties);
+        this.dataTrainingService = new DataTrainingService(properties);
+        this.chatService = new ChatService(properties);
         
         log.info("SQLBot主服务初始化完成");
     }
@@ -112,5 +122,23 @@ public class SQLBotStarter {
      */
     public TerminologyService getTerminology() {
         return terminologyService;
+    }
+    
+    /**
+     * 获取数据训练服务
+     *
+     * @return 数据训练服务实例
+     */
+    public DataTrainingService getDataTraining() {
+        return dataTrainingService;
+    }
+    
+    /**
+     * 获取聊天服务
+     *
+     * @return 聊天服务实例
+     */
+    public ChatService getChat() {
+        return chatService;
     }
 }
