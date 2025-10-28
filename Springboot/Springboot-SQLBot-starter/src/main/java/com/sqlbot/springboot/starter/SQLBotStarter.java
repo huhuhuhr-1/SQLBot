@@ -12,6 +12,8 @@ import com.sqlbot.springboot.starter.api.dashboard.DashboardService;
 import com.sqlbot.springboot.starter.api.mcp.McpService;
 import com.sqlbot.springboot.starter.api.table_relation.TableRelationService;
 import com.sqlbot.springboot.starter.api.demo.DemoService;
+import com.sqlbot.springboot.starter.api.settings.SettingsService;
+import com.sqlbot.springboot.starter.api.workspace.WorkspaceService;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -61,6 +63,12 @@ public class SQLBotStarter {
     @Getter
     private final DemoService demoService;
 
+    @Getter
+    private final SettingsService settingsService;
+    
+    @Getter
+    private final WorkspaceService workspaceService;
+
     /**
      * 构造SQLBot主服务
      *
@@ -81,6 +89,8 @@ public class SQLBotStarter {
         this.mcpService = new McpService(properties);
         this.tableRelationService = new TableRelationService(properties);
         this.demoService = new DemoService(properties);
+        this.settingsService = new SettingsService(properties);
+        this.workspaceService = new WorkspaceService(properties);
         
         log.info("SQLBot主服务初始化完成");
     }
@@ -191,5 +201,23 @@ public class SQLBotStarter {
      */
     public DemoService getDemo() {
         return demoService;
+    }
+    
+    /**
+     * 获取设置服务
+     *
+     * @return 设置服务实例
+     */
+    public SettingsService getSettings() {
+        return settingsService;
+    }
+    
+    /**
+     * 获取工作空间服务
+     *
+     * @return 工作空间服务实例
+     */
+    public WorkspaceService getWorkspace() {
+        return workspaceService;
     }
 }
