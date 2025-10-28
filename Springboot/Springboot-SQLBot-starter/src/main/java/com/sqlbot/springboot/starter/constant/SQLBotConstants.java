@@ -47,6 +47,51 @@ public final class SQLBotConstants {
          */
         public static final String ADD_PG = "/openapi/addPg";
 
+        /**
+         * 根据ID或名称获取数据源接口路径
+         */
+        public static final String GET_DATASOURCE_BY_ID_OR_NAME = "/openapi/getDataSourceByIdOrName";
+
+        /**
+         * 通过dbid和sql获取数据接口路径
+         */
+        public static final String GET_DATA_BY_DB_ID_AND_SQL = "/openapi/getDataByDbIdAndSql";
+
+        /**
+         * 创建记录并绑定数据源接口路径
+         */
+        public static final String CREATE_RECORD_AND_BIND_DB = "/openapi/createRecordAndBindDb";
+
+        /**
+         * 分析接口路径
+         */
+        public static final String ANALYSIS = "/openapi/analysis";
+
+        /**
+         * 预测接口路径
+         */
+        public static final String PREDICT = "/openapi/predict";
+
+        /**
+         * 上传Excel并创建数据源接口路径
+         */
+        public static final String UPLOAD_EXCEL_AND_CREATE_DATASOURCE = "/openapi/uploadExcelAndCreateDatasource";
+
+        /**
+         * 智能规划执行接口路径
+         */
+        public static final String PLAN = "/openapi/plan";
+
+        /**
+         * 删除数据源接口路径
+         */
+        public static final String DELETE_DATASOURCE = "/openapi/deleteDatasource";
+
+        /**
+         * 清空excel接口路径
+         */
+        public static final String DELETE_EXCELS = "/openapi/deleteExcels";
+
         private ApiPaths() {
         }
     }

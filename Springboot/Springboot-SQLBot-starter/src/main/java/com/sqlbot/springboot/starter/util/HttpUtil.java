@@ -472,4 +472,200 @@ public class HttpUtil {
             return response;
         }
     }
+
+    /**
+     * 执行流式POST请求 - 用于处理Server-Sent Events (SSE) 类型的响应
+     *
+     * @param url 请求路径
+     * @param requestBody 请求体对象
+     * @param dataConsumer 数据消费函数，用于处理接收到的数据
+     * @param errorConsumer 错误处理函数
+     * @param completeCallback 完成回调函数
+     */
+    public void postStream(String url, Object requestBody, 
+                          java.util.function.Consumer<String> dataConsumer,
+                          java.util.function.Consumer<Exception> errorConsumer,
+                          Runnable completeCallback) {
+        log.info("🚀 发起流式POST请求 - URL: {}", url);
+
+        RequestBody body;
+        if (requestBody != null) {
+            try {
+                String json = objectMapper.writeValueAsString(requestBody);
+                log.debug("📤 请求体 - 内容: {}", json);
+                body = RequestBody.create(json, MediaType.get("application/json; charset=utf-8"));
+            } catch (Exception e) {
+                log.error("❌ 请求参数序列化失败: {}", e.getMessage(), e);
+                if (errorConsumer != null) {
+                    errorConsumer.accept(new SQLBotClientException("请求参数序列化失败: " + e.getMessage()));
+                }
+                return;
+            }
+        } else {
+            log.debug("请求体为空");
+            body = RequestBody.create("{}", MediaType.get("application/json; charset=utf-8"));
+        }
+
+        Request.Builder requestBuilder = new Request.Builder()
+                .url(url)
+                .post(body)
+                .header("Content-Type", "application/json");
+
+        // 添加认证头
+        if (currentToken != null) {
+            requestBuilder.header("Authorization", currentToken);
+            requestBuilder.header("X-Sqlbot-Token", currentToken);
+            log.debug("已添加认证头");
+        }
+
+        Request request = requestBuilder.build();
+
+        try {
+            // 使用异步请求来处理流式响应
+            okHttpClient.newCall(request).enqueue(new okhttp3.Callback() {
+                @Override
+                public void onFailure(okhttp3.Call call, IOException e) {
+                    log.error("❌ 流式POST请求失败 - URL: {}, 错误: {}", url, e.getMessage(), e);
+                    if (errorConsumer != null) {
+                        errorConsumer.accept(new SQLBotApiException("流式请求失败: " + e.getMessage(), e));
+                    }
+                }
+
+                @Override
+                public void onResponse(okhttp3.Call call, Response response) {
+                    if (!response.isSuccessful()) {
+                        String errorMessage = "请求失败 - 状态码: " + response.code();
+                        log.error("❌ 流式POST响应失败 - URL: {}, 错误: {}", url, errorMessage);
+                        if (errorConsumer != null) {
+                            errorConsumer.accept(new SQLBotApiException(errorMessage));
+                        }
+                        return;
+                    }
+
+                    log.info("📥 开始处理流式响应 - URL: {}", url);
+
+                    try (ResponseBody responseBody = response.body()) {
+                        if (responseBody != null) {
+                            // 使用Source读取流式响应
+                            okio.BufferedSource source = responseBody.source();
+                            java.util.Scanner scanner = new java.util.Scanner(source.inputStream(), "UTF-8");
+
+                            // 每行处理
+                            while (scanner.hasNextLine()) {
+                                String line = scanner.nextLine();
+                                log.debug("流式响应行: {}", line);
+                                if (line.startsWith("data:")) {
+                                    String data = line.substring(5).trim(); // 移除 "data:" 前缀
+                                    if (dataConsumer != null) {
+                                        dataConsumer.accept(data);
+                                    }
+                                }
+                            }
+
+                            log.info("✅ 流式响应处理完成 - URL: {}", url);
+                        }
+                    } catch (Exception e) {
+                        log.error("❌ 处理流式响应时发生错误 - URL: {}, 错误: {}", url, e.getMessage(), e);
+                        if (errorConsumer != null) {
+                            errorConsumer.accept(new SQLBotApiException("处理流式响应失败: " + e.getMessage(), e));
+                        }
+                    } finally {
+                        if (completeCallback != null) {
+                            completeCallback.run();
+                        }
+                    }
+                }
+            });
+        } catch (Exception e) {
+            log.error("❌ 发起流式POST请求异常 - URL: {}, 错误: {}", url, e.getMessage(), e);
+            if (errorConsumer != null) {
+                errorConsumer.accept(new SQLBotApiException("发起流式请求失败: " + e.getMessage(), e));
+            }
+        }
+    }
+
+    /**
+     * 上传文件
+     *
+     * @param <T> 响应类型参数
+     * @param url 请求路径
+     * @param filePath 文件路径
+     * @param params 参数
+     * @param responseType 响应类型Class对象
+     * @return 解析后的响应对象
+     * @throws SQLBotApiException 当上传失败时抛出异常
+     */
+    public <T> T uploadFile(String url, String filePath, java.util.Map<String, Object> params, Class<T> responseType) {
+        log.info("🚀 发起文件上传请求 - URL: {}, 文件路径: {}", url, filePath);
+
+        try {
+            // 创建文件的RequestBody
+            java.io.File file = new java.io.File(filePath);
+            if (!file.exists()) {
+                throw new SQLBotClientException("文件不存在: " + filePath);
+            }
+            
+            RequestBody fileBody = RequestBody.create(file, MediaType.get("application/octet-stream"));
+            
+            // 构建multipart表单
+            MultipartBody.Builder multipartBuilder = new MultipartBody.Builder()
+                    .setType(MultipartBody.FORM);
+            
+            // 添加文件
+            multipartBuilder.addFormDataPart("file", file.getName(), fileBody);
+            
+            // 添加其他参数
+            if (params != null) {
+                for (java.util.Map.Entry<String, Object> entry : params.entrySet()) {
+                    multipartBuilder.addFormDataPart(entry.getKey(), String.valueOf(entry.getValue()));
+                }
+            }
+            
+            MultipartBody multipartBody = multipartBuilder.build();
+
+            Request.Builder requestBuilder = new Request.Builder()
+                    .url(url)
+                    .post(multipartBody);
+
+            // 添加认证头
+            if (currentToken != null) {
+                requestBuilder.header("Authorization", currentToken);
+                requestBuilder.header("X-Sqlbot-Token", currentToken);
+                log.debug("已添加认证头");
+            }
+
+            Request request = requestBuilder.build();
+            Response response = null;
+
+            try {
+                response = okHttpClient.newCall(request).execute();
+                log.info("📥 收到文件上传响应 - URL: {}, 状态码: {}", 
+                         url, response.code());
+
+                T result = handleResponse(response, responseType);
+                log.info("✅ 文件上传成功 - URL: {}, 响应类型: {}", 
+                         url, responseType.getSimpleName());
+                return result;
+
+            } catch (Exception e) {
+                log.error("❌ 文件上传请求失败 - URL: {}, 错误: {}", url, e.getMessage(), e);
+                throw new SQLBotApiException("文件上传失败: " + e.getMessage(), e);
+            } finally {
+                // 确保响应被正确关闭
+                if (response != null) {
+                    try {
+                        if (response.body() != null) {
+                            response.body().close();
+                        }
+                        response.close();
+                    } catch (Exception e) {
+                        log.warn("关闭上传响应时发生异常: {}", e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("❌ 文件上传失败 - URL: {}, 错误: {}", url, e.getMessage(), e);
+            throw new SQLBotApiException("文件上传失败: " + e.getMessage(), e);
+        }
+    }
 }

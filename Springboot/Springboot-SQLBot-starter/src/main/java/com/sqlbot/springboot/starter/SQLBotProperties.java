@@ -73,6 +73,84 @@ public class SQLBotProperties {
     private boolean debug = false;
     
     /**
+     * Plan接口相关配置
+     */
+    private PlanConfig plan = new PlanConfig();
+    
+    /**
+     * 分析接口相关配置
+     */
+    private AnalysisConfig analysis = new AnalysisConfig();
+    
+    /**
+     * 预测接口相关配置
+     */
+    private PredictConfig predict = new PredictConfig();
+    
+    /**
+     * Plan接口配置类
+     */
+    @Data
+    public static class PlanConfig {
+        /**
+         * 默认最大步骤数
+         */
+        @Min(value = 1, message = "最大步骤数不能小于1")
+        private int maxSteps = 10;
+        
+        /**
+         * 是否启用重试
+         */
+        private boolean enableRetry = true;
+        
+        /**
+         * 重试次数
+         */
+        @Min(value = 1, message = "重试次数不能小于1")
+        private int maxRetries = 3;
+        
+        /**
+         * 智能规划超时时间（毫秒）
+         */
+        @Min(value = 1000, message = "Plan超时时间不能小于1000毫秒")
+        private int timeout = 60000;
+    }
+    
+    /**
+     * 分析接口配置类
+     */
+    @Data
+    public static class AnalysisConfig {
+        /**
+         * 分析超时时间（毫秒）
+         */
+        @Min(value = 1000, message = "分析超时时间不能小于1000毫秒")
+        private int timeout = 30000;
+        
+        /**
+         * 是否启用详细分析
+         */
+        private boolean enableDetailedAnalysis = false;
+    }
+    
+    /**
+     * 预测接口配置类
+     */
+    @Data
+    public static class PredictConfig {
+        /**
+         * 预测超时时间（毫秒）
+         */
+        @Min(value = 1000, message = "预测超时时间不能小于1000毫秒")
+        private int timeout = 30000;
+        
+        /**
+         * 预测精度级别
+         */
+        private int predictionAccuracy = 80;
+    }
+    
+    /**
      * OkHttp配置类
      */
     @Data

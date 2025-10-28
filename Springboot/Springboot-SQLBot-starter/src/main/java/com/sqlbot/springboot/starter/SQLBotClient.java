@@ -460,4 +460,262 @@ public class SQLBotClient {
         }
     }
 
+    /**
+     * 根据ID或名称获取数据源
+     *
+     * @param request 数据源ID或名称请求
+     * @return 数据源响应
+     * @throws SQLBotException 当请求失败时抛出异常
+     */
+    public DataSourceResponse getDataSourceByIdOrName(DataSourceIdNameRequest request) throws SQLBotException {
+        log.debug("正在根据ID或名称获取数据源，请求: {}", request);
+
+        ensureAuthenticated();
+
+        if (request == null) {
+            throw new SQLBotClientException("请求对象不能为空");
+        }
+
+        try {
+            String fullUrl = properties.getUrl() + SQLBotConstants.ApiPaths.GET_DATASOURCE_BY_ID_OR_NAME;
+            DataSourceResponse response = httpUtil.post(fullUrl, request, DataSourceResponse.class);
+
+            log.info("成功获取数据源，数据源ID: {}, 名称: {}", response.getId(), response.getName());
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("获取数据源失败: {}", e.getMessage(), e);
+            throw new SQLBotException("获取数据源失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 通过dbid和sql获取数据
+     *
+     * @param request 数据源ID和SQL请求
+     * @return 数据响应
+     * @throws SQLBotException 当请求失败时抛出异常
+     */
+    public Object getDataByDbIdAndSql(DataSourceRequestWithSql request) throws SQLBotException {
+        log.debug("正在通过dbid和sql获取数据，请求: {}", request);
+
+        ensureAuthenticated();
+
+        if (request == null || request.getDbId() == null || request.getSql() == null) {
+            throw new SQLBotClientException("数据源ID和SQL不能为空");
+        }
+
+        try {
+            String fullUrl = properties.getUrl() + SQLBotConstants.ApiPaths.GET_DATA_BY_DB_ID_AND_SQL;
+            Object response = httpUtil.post(fullUrl, request, Object.class);
+
+            log.info("成功通过dbid和sql获取数据");
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("通过dbid和sql获取数据失败: {}", e.getMessage(), e);
+            throw new SQLBotException("通过dbid和sql获取数据失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 创建记录并绑定数据源
+     *
+     * @param request 数据源绑定聊天请求
+     * @return 绑定响应
+     * @throws SQLBotException 当请求失败时抛出异常
+     */
+    public Object createRecordAndBindDb(DbBindChat request) throws SQLBotException {
+        log.debug("正在创建记录并绑定数据源，请求: {}", request);
+
+        ensureAuthenticated();
+
+        if (request == null || request.getDbId() == null) {
+            throw new SQLBotClientException("数据源ID不能为空");
+        }
+
+        try {
+            String fullUrl = properties.getUrl() + SQLBotConstants.ApiPaths.CREATE_RECORD_AND_BIND_DB;
+            Object response = httpUtil.post(fullUrl, request, Object.class);
+
+            log.info("成功创建记录并绑定数据源");
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("创建记录并绑定数据源失败: {}", e.getMessage(), e);
+            throw new SQLBotException("创建记录并绑定数据源失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 分析数据
+     *
+     * @param request 分析请求
+     * @param dataConsumer 数据消费函数（用于处理流式响应）
+     * @param errorConsumer 错误处理函数
+     * @param completeCallback 完成回调函数
+     */
+    public void analysisStream(Object request, Consumer<String> dataConsumer,
+                               Consumer<Exception> errorConsumer, Runnable completeCallback) {
+        log.debug("正在分析数据，请求: {}", request);
+
+        ensureAuthenticated();
+
+        try {
+            String fullUrl = properties.getUrl() + SQLBotConstants.ApiPaths.ANALYSIS;
+            // 由于分析是流式响应，需要特殊处理
+            // 这里使用HTTP流式处理逻辑
+            httpUtil.postStream(fullUrl, request, dataConsumer, errorConsumer, completeCallback);
+
+            log.debug("分析请求发送完成");
+
+        } catch (Exception e) {
+            log.error("分析数据失败: {}", e.getMessage(), e);
+            errorConsumer.accept(new SQLBotException("分析数据失败: " + e.getMessage(), e));
+        }
+    }
+
+    /**
+     * 预测数据
+     *
+     * @param request 预测请求
+     * @param dataConsumer 数据消费函数（用于处理流式响应）
+     * @param errorConsumer 错误处理函数
+     * @param completeCallback 完成回调函数
+     */
+    public void predictStream(Object request, Consumer<String> dataConsumer,
+                              Consumer<Exception> errorConsumer, Runnable completeCallback) {
+        log.debug("正在预测数据，请求: {}", request);
+
+        ensureAuthenticated();
+
+        try {
+            String fullUrl = properties.getUrl() + SQLBotConstants.ApiPaths.PREDICT;
+            // 由于预测是流式响应，需要特殊处理
+            httpUtil.postStream(fullUrl, request, dataConsumer, errorConsumer, completeCallback);
+
+            log.debug("预测请求发送完成");
+
+        } catch (Exception e) {
+            log.error("预测数据失败: {}", e.getMessage(), e);
+            errorConsumer.accept(new SQLBotException("预测数据失败: " + e.getMessage(), e));
+        }
+    }
+
+    /**
+     * 上传Excel并创建数据源
+     *
+     * @param filePath Excel文件路径
+     * @param params 参数
+     * @return 数据源响应
+     * @throws SQLBotException 当请求失败时抛出异常
+     */
+    public DataSourceResponse uploadExcelAndCreateDatasource(String filePath, java.util.Map<String, Object> params) throws SQLBotException {
+        log.debug("正在上传Excel并创建数据源，文件路径: {}", filePath);
+
+        ensureAuthenticated();
+
+        if (filePath == null || filePath.trim().isEmpty()) {
+            throw new SQLBotClientException("Excel文件路径不能为空");
+        }
+
+        try {
+            String fullUrl = properties.getUrl() + SQLBotConstants.ApiPaths.UPLOAD_EXCEL_AND_CREATE_DATASOURCE;
+            DataSourceResponse response = httpUtil.uploadFile(fullUrl, filePath, params, DataSourceResponse.class);
+
+            log.info("成功上传Excel并创建数据源，数据源ID: {}", response.getId());
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("上传Excel并创建数据源失败: {}", e.getMessage(), e);
+            throw new SQLBotException("上传Excel并创建数据源失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 智能规划执行
+     *
+     * @param request Plan请求
+     * @param dataConsumer 数据消费函数（用于处理流式响应）
+     * @param errorConsumer 错误处理函数
+     * @param completeCallback 完成回调函数
+     */
+    public void planStream(OpenPlanQuestion request, Consumer<String> dataConsumer,
+                           Consumer<Exception> errorConsumer, Runnable completeCallback) {
+        log.debug("正在执行智能规划，请求: {}", request);
+
+        ensureAuthenticated();
+
+        if (request == null || request.getQuestion() == null || request.getQuestion().trim().isEmpty()) {
+            errorConsumer.accept(new SQLBotClientException("问题不能为空"));
+            return;
+        }
+
+        try {
+            String fullUrl = properties.getUrl() + SQLBotConstants.ApiPaths.PLAN;
+            httpUtil.postStream(fullUrl, request, dataConsumer, errorConsumer, completeCallback);
+
+            log.debug("智能规划请求发送完成");
+
+        } catch (Exception e) {
+            log.error("智能规划执行失败: {}", e.getMessage(), e);
+            errorConsumer.accept(new SQLBotException("智能规划执行失败: " + e.getMessage(), e));
+        }
+    }
+
+    /**
+     * 删除数据源
+     *
+     * @param id 数据源ID
+     * @return 删除结果
+     * @throws SQLBotException 当请求失败时抛出异常
+     */
+    public Object deleteDatasource(int id) throws SQLBotException {
+        log.debug("正在删除数据源，ID: {}", id);
+
+        ensureAuthenticated();
+
+        try {
+            String fullUrl = properties.getUrl() + SQLBotConstants.ApiPaths.DELETE_DATASOURCE;
+            Object response = httpUtil.post(fullUrl, id, Object.class);
+
+            log.info("成功删除数据源，ID: {}", id);
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("删除数据源失败: {}", e.getMessage(), e);
+            throw new SQLBotException("删除数据源失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 清空Excel
+     *
+     * @return 清空结果
+     * @throws SQLBotException 当请求失败时抛出异常
+     */
+    public Object deleteExcels() throws SQLBotException {
+        log.debug("正在清空Excel");
+
+        ensureAuthenticated();
+
+        try {
+            String fullUrl = properties.getUrl() + SQLBotConstants.ApiPaths.DELETE_EXCELS;
+            Object response = httpUtil.post(fullUrl, null, Object.class);
+
+            log.info("成功清空Excel");
+
+            return response;
+
+        } catch (Exception e) {
+            log.error("清空Excel失败: {}", e.getMessage(), e);
+            throw new SQLBotException("清空Excel失败: " + e.getMessage(), e);
+        }
+    }
+
 }
