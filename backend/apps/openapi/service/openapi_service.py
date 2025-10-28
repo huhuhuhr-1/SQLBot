@@ -553,3 +553,53 @@ async def _run_analysis_or_predict(
         )
 
     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
+
+
+async def merge_plan_streaming_chunks(stream, plan_executor: 'PlanExecutor' = None) -> AsyncGenerator[str, None]:
+    """
+    合并Plan接口流式输出的数据块
+
+    Args:
+        stream: 输入的流式数据生成器
+        plan_executor: Plan执行器实例（可选）
+
+    Yields:
+        合并后的数据块
+    """
+    async for chunk in stream:
+        try:
+            # 检查chunk的类型，如果是PlanResponse对象
+            if hasattr(chunk, 'plan_id'):  # PlanResponse对象
+                response_data = {
+                    "type": "plan_result",
+                    "plan_id": chunk.plan_id,
+                    "status": chunk.status,
+                    "steps": [step.dict() for step in chunk.steps],
+                    "result": chunk.result,
+                    "error": chunk.error
+                }
+                yield f"data:{orjson.dumps(response_data).decode()}\n\n"
+            elif isinstance(chunk, dict) and 'type' in chunk and chunk['type'] == 'step_status':
+                # 如果是步骤状态
+                step_data = {
+                    "type": "step_status",
+                    "step": chunk['step'].dict() if hasattr(chunk['step'], 'dict') else chunk['step']
+                }
+                yield f"data:{orjson.dumps(step_data).decode()}\n\n"
+            elif isinstance(chunk, str):
+                # 如果是字符串格式的chunk，直接输出
+                if chunk.startswith('data:'):
+                    yield chunk
+                else:
+                    # 包装为标准格式
+                    yield f"data:{orjson.dumps({'type': 'info', 'content': chunk}).decode()}\n\n"
+            else:
+                # 其他类型的chunk
+                yield f"data:{orjson.dumps({'type': 'chunk', 'data': str(chunk)}).decode()}\n\n"
+                
+        except Exception as e:
+            error_chunk = {
+                "type": "error",
+                "content": f"处理Plan流式数据块时出错: {str(e)}"
+            }
+            yield f"data:{orjson.dumps(error_chunk).decode()}\n\n"

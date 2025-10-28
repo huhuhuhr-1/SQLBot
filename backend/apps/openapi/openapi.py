@@ -18,9 +18,11 @@ from apps.datasource.utils.utils import aes_encrypt
 from apps.db.db import exec_sql
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat, SinglePgConfig, DataSourceRequestWithSql
+    OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, \
+    OpenPlanQuestion
 from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.openapi.service.openapi_llm import LLMService
+from apps.openapi.service.plan_service import PlanExecutor
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
     chat_identify_intent, _get_chats_to_clean, _create_clean_response, \
     _execute_cleanup, \
@@ -691,3 +693,39 @@ async def delete_excels(session: SessionDep, user: CurrentUser):
             delete_ds(session, id)
 
     return await asyncio.to_thread(inner)
+
+
+
+@router.post("/plan", summary="智能规划执行",
+             description="基于LangChain Agent架构的智能规划执行接口",
+             dependencies=[Depends(common_headers)])
+async def plan_execution(
+    current_user: CurrentUser,
+    plan_question: OpenPlanQuestion,
+    current_assistant: CurrentAssistant
+):
+    """
+    智能规划执行接口
+    基于LangChain Agent，根据用户问题自主规划和执行
+    """
+    try:
+        # 创建Plan Agent执行器
+        plan_executor = PlanExecutor(
+            user=current_user,
+            plan_question=plan_question,
+            assistant=current_assistant
+        )
+        
+        # 执行规划并返回流式响应
+        stream = plan_executor.execute_plan()
+        return StreamingResponse(
+            merge_plan_streaming_chunks(stream, plan_executor),
+            media_type="text/event-stream"
+        )
+    except Exception as e:
+        SQLBotLogUtil.error(f"Plan接口异常: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"规划执行失败: {str(e)}"
+        )

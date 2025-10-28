@@ -14,11 +14,12 @@ import datetime
 import json
 import re
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict
 from typing import List, Union, Optional
 
 from fastapi import Body, Header
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, Field
 from pydantic import field_validator
 
 from apps.chat.models.chat_model import AiModelQuestion
@@ -340,3 +341,59 @@ class SinglePgConfig(BaseModel):
 class DataSourceRequestWithSql(BaseModel):
     db_id: str = Body(..., description='数据源ID')
     sql: str = Body(..., description='SQL查询语句')
+
+
+from enum import Enum
+from typing import Any, Dict
+
+
+class OutputFormat(str, Enum):
+    """输出格式枚举"""
+    JSON = "json"
+    TABLE = "table"
+    CHART = "chart"
+    TEXT = "text"
+    MARKDOWN = "markdown"
+    EXCEL = "excel"
+    CUSTOM = "custom"
+
+
+class PlanResult(BaseModel):
+    """可扩展的计划结果模型"""
+    format: OutputFormat = Field(default=OutputFormat.JSON, description="输出格式")
+    data: Any = Field(description="实际数据内容")
+    metadata: Dict[str, Any] = Field(default={}, description="元数据信息")
+    visualization_config: Optional[Dict[str, Any]] = Field(default=None, description="可视化配置")
+    custom_properties: Dict[str, Any] = Field(default={}, description="自定义属性")
+
+
+class OpenPlanQuestion(OpenChatQuestion):
+    """
+    Plan接口问题模型
+    """
+    max_steps: int = Body(default=10, description='最大执行步骤数')
+    enable_retry: bool = Body(default=True, description='是否启用重试机制')
+    max_retries: int = Body(default=3, description='最大重试次数')
+    context: Optional[dict] = Body(default=None, description='执行上下文')
+
+
+class PlanStepStatus(BaseModel):
+    """
+    执行步骤状态模型
+    """
+    step: int
+    action: str  # 当前采取的行动
+    observation: str  # 行动结果/观察
+    timestamp: datetime
+    details: Optional[dict] = None
+
+
+class PlanResponse(BaseModel):
+    """
+    Plan接口响应模型
+    """
+    plan_id: str
+    status: str  # planning, executing, completed, failed
+    steps: List[PlanStepStatus]
+    result: Optional[dict] = None
+    error: Optional[str] = None
