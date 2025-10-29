@@ -18,11 +18,9 @@ from apps.datasource.utils.utils import aes_encrypt
 from apps.db.db import exec_sql
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, \
-    OpenPlanQuestion
+    OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat, SinglePgConfig, DataSourceRequestWithSql
 from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.openapi.service.openapi_llm import LLMService
-from apps.openapi.service.plan_service import PlanExecutor
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
     chat_identify_intent, _get_chats_to_clean, _create_clean_response, \
     _execute_cleanup, \
@@ -328,17 +326,17 @@ def _is_safe_sql(sql: str) -> bool:
     注意：这只是一个基本检查，生产环境应使用参数化查询
     """
     import re
-    
+
     # 转换为小写便于检查
     lower_sql = sql.lower().strip()
-    
+
     # 检查是否以SELECT开头（只允许查询）
     if not lower_sql.startswith('select'):
         return False
-    
+
     # 检查是否包含危险关键字（任何修改或删除数据的操作）
     dangerous_keywords = [
-        'drop', 'delete', 'insert', 'update', 'create', 'alter', 'truncate', 'exec', 
+        'drop', 'delete', 'insert', 'update', 'create', 'alter', 'truncate', 'exec',
         'execute', 'sp_', 'xp_', '0x', 'char(', 'varchar(', 'substring(', 'cast(',
         'declare', 'use', 'grant', 'revoke', 'kill', 'load', 'handler', 'call',
         'replace', 'merge', 'upsert', 'admin', 'shutdown', 'begin', 'commit',
@@ -363,11 +361,11 @@ def _is_safe_sql(sql: str) -> bool:
         'extractvalue', 'updatexml',  # XML相关函数，可能被注入利用
         'load', 'dump',  # 加载/转储操作
     ]
-    
+
     for keyword in dangerous_keywords:
         if keyword in lower_sql:
             return False
-    
+
     # 检查是否存在常见的SQL注入模式（使用正则表达式）
     injection_patterns = [
         r'--', r'/\*', r'\*/', r'union', r'waitfor delay', r'benchmark', r'sleep',
@@ -383,21 +381,21 @@ def _is_safe_sql(sql: str) -> bool:
         r'from.*sys.*',  # 系统表
         r'from.*information_',  # 信息模式表
     ]
-    
+
     for pattern in injection_patterns:
         if re.search(pattern, lower_sql):
             return False
-    
+
     # 额外验证：检查是否包含子查询修改操作
     subquery_patterns = [
-        r'select.*insert', r'select.*update', r'select.*delete', 
+        r'select.*insert', r'select.*update', r'select.*delete',
         r'select.*create', r'select.*drop', r'select.*alter'
     ]
-    
+
     for pattern in subquery_patterns:
         if re.search(pattern, lower_sql):
             return False
-    
+
     return True
 
 
@@ -693,39 +691,3 @@ async def delete_excels(session: SessionDep, user: CurrentUser):
             delete_ds(session, id)
 
     return await asyncio.to_thread(inner)
-
-
-
-@router.post("/plan", summary="智能规划执行",
-             description="基于LangChain Agent架构的智能规划执行接口",
-             dependencies=[Depends(common_headers)])
-async def plan_execution(
-    current_user: CurrentUser,
-    plan_question: OpenPlanQuestion,
-    current_assistant: CurrentAssistant
-):
-    """
-    智能规划执行接口
-    基于LangChain Agent，根据用户问题自主规划和执行
-    """
-    try:
-        # 创建Plan Agent执行器
-        plan_executor = PlanExecutor(
-            user=current_user,
-            plan_question=plan_question,
-            assistant=current_assistant
-        )
-        
-        # 执行规划并返回流式响应
-        stream = plan_executor.execute_plan()
-        return StreamingResponse(
-            merge_plan_streaming_chunks(stream, plan_executor),
-            media_type="text/event-stream"
-        )
-    except Exception as e:
-        SQLBotLogUtil.error(f"Plan接口异常: {str(e)}")
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"规划执行失败: {str(e)}"
-        )

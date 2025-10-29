@@ -10,7 +10,7 @@ OpenAPI 数据模型模块
 日期: 2025/01/30
 版本: 1.0.0
 """
-import datetime
+from datetime import datetime
 import json
 import re
 from dataclasses import dataclass
@@ -297,7 +297,7 @@ class DatasourceResponse(BaseModel):
     type: str
     type_name: str
     configuration: str
-    create_time: datetime.datetime
+    create_time: datetime
     create_by: int
     status: str
     num: str
@@ -337,7 +337,6 @@ class SinglePgConfig(BaseModel):
         }
 
 
-
 class DataSourceRequestWithSql(BaseModel):
     db_id: str = Body(..., description='数据源ID')
     sql: str = Body(..., description='SQL查询语句')
@@ -353,7 +352,7 @@ class OutputFormat(str, Enum):
     TABLE = "table"
     CHART = "chart"
     TEXT = "text"
-    MARKDOWN = "markdown"
+    MARKDOWN = "``"
     EXCEL = "excel"
     CUSTOM = "custom"
 

@@ -185,7 +185,7 @@ def _coerce_numeric(v) -> Optional[float]:
 class FieldInfo(BaseModel):
     column: str = Field(..., description="英文字段名（小写下划线）")
     name_cn: str = Field(..., description="原始中文列名")
-    type: str = Field(..., description="PG 类型，如 varchar(512)/integer/numeric(10,2)/timestamp/date")
+    type: str = Field(..., description="PG 类型，如 varchar(2048)/integer/numeric(10,2)/timestamp/date")
     comment: str = Field(..., description="简洁注释")
 
 
@@ -273,7 +273,7 @@ def _sanitize_pg_type(pg_type: str, series: Optional[pd.Series] = None) -> str:
     if t.startswith("varchar"):
         if series is not None:
             return _adjust_text_type_by_length(series)
-        return "varchar(512)"
+        return "varchar(2048)"
 
     if t.startswith("numeric") or t.startswith("decimal"):
         return "numeric(18,4)"
@@ -292,7 +292,7 @@ def _sql_literal(val: Optional[str]) -> str:
 # =========================
 # Schema 校验与自保策略
 # =========================
-def _adjust_text_type_by_length(series: pd.Series, base_type: str = "varchar(512)", max_varchar: int = 1024) -> str:
+def _adjust_text_type_by_length(series: pd.Series, base_type: str = "varchar(2048)", max_varchar: int = 1024) -> str:
     """基于实际数据长度，动态决定 varchar(N) 或 text。"""
     try:
         lengths = series.fillna("").astype(str).map(len)
@@ -466,14 +466,16 @@ def insert_pg_by_ai(df: pd.DataFrame, table_name: str, engine, sample_size: int 
     headers = list(df.columns)
     try:
         # 1) 样本
-        sample_df = df.head(sample_size).convert_dtypes().copy()
-        for col in sample_df.columns:
-            if pd.api.types.is_datetime64_any_dtype(sample_df[col]):
-                sample_df[col] = sample_df[col].astype(str)
-        sample_preview = json.dumps(sample_df.to_dict(orient="records"), ensure_ascii=False)
-
-        SQLBotLogUtil.info(f"🧩 [AI建表] 表 {table_name} 样本数据预览: {sample_preview[:1200]}...")
-
+        try:
+            sample_df = df.head(sample_size).convert_dtypes().copy()
+            for col in sample_df.columns:
+                if pd.api.types.is_datetime64_any_dtype(sample_df[col]):
+                    sample_df[col] = sample_df[col].astype(str)
+            sample_preview = json.dumps(sample_df.to_dict(orient="records"), ensure_ascii=False)
+            SQLBotLogUtil.info(f"🧩 [AI建表] 表 {table_name} 样本数据预览: {sample_preview[:1200]}...")
+        except:
+            SQLBotLogUtil.warning(f"🧩 [AI建表] 表 {table_name} 样本数据预览失败")
+            sample_preview = []
         # 2) 调用 LLM
         loop = ensure_event_loop()
         llm = loop.run_until_complete(LLMManager.get_default_llm())
@@ -494,7 +496,7 @@ def insert_pg_by_ai(df: pd.DataFrame, table_name: str, engine, sample_size: int 
             1) fields 数组长度与 headers 完全一致、顺序一致。
             2) column：英文小写，下划线；语义清晰。
             3) type：常用 PG 类型（varchar(N)/text/integer/bigint/numeric(10,2)/timestamp/date/boolean）。
-            4) comment：简洁的语义描述（避免单位/范围/格式）。
+            4) comment：使用headers提供的是中文则使用原文。如果不是中文则自定义（简洁的语义描述）。
             5) 生成 table_comment（如“设备采集记录表”）。
         """)
 
