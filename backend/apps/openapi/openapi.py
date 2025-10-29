@@ -320,83 +320,38 @@ def get_data_by_db_id_and_sql(current_user: CurrentUser, request: DataSourceRequ
             raise SQLBotDBError(err)
 
 
-def _is_safe_sql(sql: str) -> bool:
+def is_safe_sql(sql: str) -> bool:
     """
-    严格的SQL安全检查，只允许安全的查询操作
-    注意：这只是一个基本检查，生产环境应使用参数化查询
+    仅禁止执行删除或修改数据的 SQL。
+    允许 SELECT、SHOW、DESCRIBE、EXPLAIN 等安全语句。
     """
     import re
-
-    # 转换为小写便于检查
-    lower_sql = sql.lower().strip()
-
-    # 检查是否以SELECT开头（只允许查询）
-    if not lower_sql.startswith('select'):
+    if not sql or not isinstance(sql, str):
         return False
 
-    # 检查是否包含危险关键字（任何修改或删除数据的操作）
-    dangerous_keywords = [
-        'drop', 'delete', 'insert', 'update', 'create', 'alter', 'truncate', 'exec',
-        'execute', 'sp_', 'xp_', '0x', 'char(', 'varchar(', 'substring(', 'cast(',
-        'declare', 'use', 'grant', 'revoke', 'kill', 'load', 'handler', 'call',
-        'replace', 'merge', 'upsert', 'admin', 'shutdown', 'begin', 'commit',
-        'rollback', 'transaction', 'savepoint', 'lock', 'unlock',
-        'analyze', 'vacuum', 'reindex', 'optimize', 'repair', 'flush', 'purge',
-        'rename', 'detach', 'attach', 'import', 'export', 'unload', 'copy',
-        'with',  # 部分CTE可能被滥用，谨慎处理
-        'into',  # 防止 INTO 关键字用于写入数据
-        'outfile', 'infile', 'dumpfile',  # 文件操作
-        'load_file', 'sys', 'system', 'exec', 'execute',  # 系统操作
-        'procedure', 'function', 'trigger', 'event',  # 存储过程等
-        'grant', 'revoke', 'reassign', 'set',  # 权限修改
-        'comment',  # 某些数据库的注释操作可能有风险
-        'merge', 'call', 'do',  # MySQL的存储过程相关
-        '_', 'nchar', 'nvarchar', 'varbinary',  # 特殊字符/二进制操作
-        'unhex', 'decode', 'encode',  # 编码解码函数
-        'benchmark', 'sleep', 'waitfor',  # 延时函数
-        'pg_sleep', 'dbms_pipe', 'utl_http',  # 休眠和其他危险函数
-        'current_user', 'session_user',  # 用户信息获取
-        'database', 'schema', 'version', 'user',  # 信息获取函数
-        'connection_id', 'last_insert_id',  # 会话相关信息
-        'extractvalue', 'updatexml',  # XML相关函数，可能被注入利用
-        'load', 'dump',  # 加载/转储操作
-    ]
+    sql_lower = sql.strip().lower()
 
-    for keyword in dangerous_keywords:
-        if keyword in lower_sql:
-            return False
-
-    # 检查是否存在常见的SQL注入模式（使用正则表达式）
-    injection_patterns = [
-        r'--', r'/\*', r'\*/', r'union', r'waitfor delay', r'benchmark', r'sleep',
-        r'order by', r'group by',  # 这些可能会被用来探测数据库结构
-        r'union select', r'union all select',  # 明确禁止联合查询
-        r'procedure analyse',  # MYSQL函数，可能暴露结构信息
-        r'into outfile', r'into dumpfile',  # 文件写入操作
-        r'load_file',  # 文件读取操作
-        r'@@',  # MySQL系统变量
-        r'select.*select',  # 嵌套查询可能被滥用
-        r'from.*information_schema',  # 获取数据库结构
-        r'from.*pg_.*',  # PostgreSQL系统表
-        r'from.*sys.*',  # 系统表
-        r'from.*information_',  # 信息模式表
-    ]
-
-    for pattern in injection_patterns:
-        if re.search(pattern, lower_sql):
-            return False
-
-    # 额外验证：检查是否包含子查询修改操作
-    subquery_patterns = [
-        r'select.*insert', r'select.*update', r'select.*delete',
-        r'select.*create', r'select.*drop', r'select.*alter'
-    ]
-
-    for pattern in subquery_patterns:
-        if re.search(pattern, lower_sql):
-            return False
-
-    return True
+    # 允许的安全命令（白名单）
+    safe_prefixes = ('select', 'show', 'describe', 'explain', 'with')
+    if sql_lower.startswith(safe_prefixes):
+        # 检查是否出现明显的破坏性关键字
+        forbidden = [
+            r'\bdelete\b',
+            r'\bupdate\b',
+            r'\binsert\b',
+            r'\bdrop\b',
+            r'\btruncate\b',
+            r'\balter\b',
+            r'\bcreate\b',
+            r'\breplace\b',
+        ]
+        for pattern in forbidden:
+            if re.search(pattern, sql_lower):
+                return False
+        return True
+    else:
+        # 不是安全命令开头的，默认不允许
+        return False
 
 
 @router.post("/createRecordAndBindDb")
