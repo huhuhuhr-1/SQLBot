@@ -596,10 +596,44 @@ async def merge_plan_streaming_chunks(stream, plan_executor: 'PlanExecutor' = No
             else:
                 # 其他类型的chunk
                 yield f"data:{orjson.dumps({'type': 'chunk', 'data': str(chunk)}).decode()}\n\n"
-                
+
         except Exception as e:
             error_chunk = {
                 "type": "error",
                 "content": f"处理Plan流式数据块时出错: {str(e)}"
             }
             yield f"data:{orjson.dumps(error_chunk).decode()}\n\n"
+
+
+def is_safe_sql(sql: str) -> bool:
+    """
+    仅禁止执行删除或修改数据的 SQL。
+    允许 SELECT、SHOW、DESCRIBE、EXPLAIN 等安全语句。
+    """
+    import re
+    if not sql or not isinstance(sql, str):
+        return False
+
+    sql_lower = sql.strip().lower()
+
+    # 允许的安全命令（白名单）
+    safe_prefixes = ('select', 'show', 'describe', 'explain', 'with')
+    if sql_lower.startswith(safe_prefixes):
+        # 检查是否出现明显的破坏性关键字
+        forbidden = [
+            r'\bdelete\b',
+            r'\bupdate\b',
+            r'\binsert\b',
+            r'\bdrop\b',
+            r'\btruncate\b',
+            r'\balter\b',
+            r'\bcreate\b',
+            r'\breplace\b',
+        ]
+        for pattern in forbidden:
+            if re.search(pattern, sql_lower):
+                return False
+        return True
+    else:
+        # 不是安全命令开头的，默认不允许
+        return False

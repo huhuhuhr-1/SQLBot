@@ -240,7 +240,6 @@ _TYPE_NUMERIC_RE = re.compile(r"^numeric\((\d+)\s*,\s*(\d+)\)$", re.I)
 def _sanitize_pg_type(pg_type: str, series: Optional[pd.Series] = None) -> str:
     """
     类型白名单与限幅：
-    - varchar(1..1024) 超出 → text
     - numeric(p,s)：p<=38, s<=10，超出限幅
     - integer/bigint/smallint/boolean/timestamp/date/time/text 保留
     - 其它/未知类型 → text
@@ -255,13 +254,6 @@ def _sanitize_pg_type(pg_type: str, series: Optional[pd.Series] = None) -> str:
     }:
         return "timestamp" if t == "timestamp" else ("date" if t == "date" else ("time" if t == "time" else t))
 
-    m = _TYPE_VARCHAR_RE.match(t)
-    if m:
-        n = int(m.group(1))
-        if 1 <= n <= 1024:
-            return f"varchar({n})"
-        return "text"
-
     m = _TYPE_NUMERIC_RE.match(t)
     if m:
         p = min(int(m.group(1)), 38)
@@ -269,11 +261,6 @@ def _sanitize_pg_type(pg_type: str, series: Optional[pd.Series] = None) -> str:
         if s > p:
             s = max(0, min(4, p))  # 简单修正
         return f"numeric({p},{s})"
-
-    if t.startswith("varchar"):
-        if series is not None:
-            return _adjust_text_type_by_length(series)
-        return "varchar(2048)"
 
     if t.startswith("numeric") or t.startswith("decimal"):
         return "numeric(18,4)"
@@ -495,7 +482,7 @@ def insert_pg_by_ai(df: pd.DataFrame, table_name: str, engine, sample_size: int 
             规则：
             1) fields 数组长度与 headers 完全一致、顺序一致。
             2) column：英文小写，下划线；语义清晰。
-            3) type：常用 PG 类型（varchar(N)/text/integer/bigint/numeric(10,2)/timestamp/date/boolean）。
+            3) type：常用 PG 类型text/integer/bigint/numeric(10,2)/timestamp/date/boolean）。
             4) comment：使用headers提供的是中文则使用原文。如果不是中文则自定义（简洁的语义描述）。
             5) 生成 table_comment（如“设备采集记录表”）。
         """)

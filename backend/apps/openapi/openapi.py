@@ -24,7 +24,7 @@ from apps.openapi.service.openapi_llm import LLMService
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
     chat_identify_intent, _get_chats_to_clean, _create_clean_response, \
     _execute_cleanup, \
-    _run_analysis_or_predict
+    _run_analysis_or_predict, is_safe_sql
 from apps.system.crud.user import authenticate
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.config import settings
@@ -283,7 +283,7 @@ def get_data_by_db_id_and_sql(current_user: CurrentUser, request: DataSourceRequ
 
     # 增加SQL注入防护：检查SQL语句中是否包含危险操作
     sanitized_sql = request.sql.strip()
-    if not _is_safe_sql(sanitized_sql):
+    if not is_safe_sql(sanitized_sql):
         raise HTTPException(
             status_code=400,
             detail="SQL语句包含不安全的操作"
@@ -318,40 +318,6 @@ def get_data_by_db_id_and_sql(current_user: CurrentUser, request: DataSourceRequ
         else:
             err = traceback.format_exc(limit=1, chain=True)
             raise SQLBotDBError(err)
-
-
-def is_safe_sql(sql: str) -> bool:
-    """
-    仅禁止执行删除或修改数据的 SQL。
-    允许 SELECT、SHOW、DESCRIBE、EXPLAIN 等安全语句。
-    """
-    import re
-    if not sql or not isinstance(sql, str):
-        return False
-
-    sql_lower = sql.strip().lower()
-
-    # 允许的安全命令（白名单）
-    safe_prefixes = ('select', 'show', 'describe', 'explain', 'with')
-    if sql_lower.startswith(safe_prefixes):
-        # 检查是否出现明显的破坏性关键字
-        forbidden = [
-            r'\bdelete\b',
-            r'\bupdate\b',
-            r'\binsert\b',
-            r'\bdrop\b',
-            r'\btruncate\b',
-            r'\balter\b',
-            r'\bcreate\b',
-            r'\breplace\b',
-        ]
-        for pattern in forbidden:
-            if re.search(pattern, sql_lower):
-                return False
-        return True
-    else:
-        # 不是安全命令开头的，默认不允许
-        return False
 
 
 @router.post("/createRecordAndBindDb")
