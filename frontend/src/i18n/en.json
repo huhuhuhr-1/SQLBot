@@ -8,6 +8,7 @@
     "Details": "Details"
   },
   "prompt": {
+    "default_password": "Default password:{msg}",
     "no_prompt_words": "No prompt words",
     "customize_prompt_words": "Customize prompt words",
     "ask_sql": "Ask SQL",

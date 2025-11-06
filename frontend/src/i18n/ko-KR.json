@@ -8,6 +8,7 @@
     "Details": "세부"
   },
   "prompt": {
+    "default_password:": "기본 비밀번호:{msg}",
     "no_prompt_words": "프롬프트가 없습니다",
     "customize_prompt_words": "사용자 정의 프롬프트",
     "ask_sql": "데이터 조회 SQL",
