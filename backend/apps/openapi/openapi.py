@@ -207,9 +207,18 @@ async def getChat(
 
         # 如果存在意图，则使用意图作为问题
         if payload is not None and payload.search != "":
-            llm_service.chat_question.question = payload.search
+            original_question = payload.search
         else:
+            original_question = chat_question.question
             payload = None
+
+        # 进行语义扩展
+        expanded_question = llm_service.expand_query_semantically(original_question)
+        llm_service.chat_question.question = expanded_question
+
+        # 如果扩展后的查询与原查询不同，记录日志
+        if expanded_question != original_question:
+            SQLBotLogUtil.info(f"语义扩展 - 原始: '{original_question}', 扩展后: '{expanded_question}'")
 
         # 初始化聊天记录
         llm_service.init_record()

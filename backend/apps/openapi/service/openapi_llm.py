@@ -36,8 +36,15 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
     ChatFinishStep
 from sqlbot_xpack.license.license_manage import SQLBotLicenseUtil
-from sqlbot_xpack.custom_prompt.curd.custom_prompt import find_custom_prompts
-from sqlbot_xpack.custom_prompt.models.custom_prompt_model import CustomPromptTypeEnum
+try:
+    from sqlbot_xpack.custom_prompt.curd.custom_prompt import find_custom_prompts
+    from sqlbot_xpack.custom_prompt.models.custom_prompt_model import CustomPromptTypeEnum
+except ImportError:
+    # 如果xpack不可用，提供空的实现
+    def find_custom_prompts(*args, **kwargs):
+        return ''
+    class CustomPromptTypeEnum:
+        GENERATE_SQL = 'GENERATE_SQL'
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
@@ -48,7 +55,7 @@ from apps.db.db import exec_sql, get_version, check_connection
 from apps.openapi.dao.openapiDao import select_one, get_datasource_by_name_or_id
 from apps.openapi.models.openapiModels import AnalysisIntentPayload, DataSourceRequest
 from apps.openapi.models.openapiModels import OpenChatQuestion
-from apps.openapi.service.openapi_prompt import analysis_question
+from apps.openapi.service.openapi_prompt import analysis_question, get_semantic_expansion_template
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
@@ -1695,6 +1702,117 @@ class LLMService:
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
 
     # modify by huhuhuhr
+    def expand_query_semantically(self, original_query: str) -> str:
+        """
+        语义扩展：将简短的自然语言查询扩展为语义完整的描述
+
+        结合术语、示例、schema信息，将用户的简短查询扩展为包含以下要素的完整描述：
+        - 查询对象（数据实体）
+        - 分析角度（维度）
+        - 计算内容（指标）
+        - 限定条件（过滤）
+        - 排序或显示方式
+
+        Args:
+            original_query: 原始简短查询
+
+        Returns:
+            str: 扩展后的完整语义描述
+        """
+        # 如果语义扩展开关关闭，直接返回原查询
+        if not getattr(settings, 'ENABLE_SEMANTIC_EXPANSION', False):
+            return original_query
+
+        # 确保上下文信息已加载 - 参照run_task方法的实现
+        if self.ds:
+            oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
+            ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+
+            # 加载术语信息 - 通过向量筛表获取相关术语
+            if not hasattr(self.chat_question, 'terminologies') or not self.chat_question.terminologies:
+                self.chat_question.terminologies = get_terminology_template(
+                    self.session, original_query, oid, ds_id
+                )
+
+            # 加载示例信息 - 通过向量筛表获取数据集例子
+            if not hasattr(self.chat_question, 'data_training') or not self.chat_question.data_training:
+                self.chat_question.data_training = get_training_template(
+                    self.session, original_query, ds_id, oid
+                )
+
+            # 加载schema信息 - 通过向量筛表获取表字段的元信息
+            if not hasattr(self.chat_question, 'db_schema') or not self.chat_question.db_schema:
+                if self.out_ds_instance:
+                    self.chat_question.db_schema = self.out_ds_instance.get_db_schema(self.ds.id)
+                else:
+                    self.chat_question.db_schema = get_table_schema(
+                        session=self.session,
+                        current_user=self.current_user,
+                        ds=self.ds,
+                        question=original_query,
+                        embedding=True  # 启用向量筛表
+                    )
+
+            # 加载自定义提示词（如果有）
+            if SQLBotLicenseUtil.valid():
+                if not hasattr(self.chat_question, 'custom_prompt') or not self.chat_question.custom_prompt:
+                    self.chat_question.custom_prompt = find_custom_prompts(
+                        self.session, CustomPromptTypeEnum.GENERATE_SQL, oid, ds_id
+                    )
+
+        # 构建语义扩展的消息
+        expansion_messages = [
+            SystemMessage(content=self.get_semantic_expansion_prompt(original_query))
+        ]
+
+        try:
+            # 调用LLM进行语义扩展
+            response = self.llm.invoke(expansion_messages)
+            expanded_query = response.content.strip()
+
+            # 记录扩展结果
+            SQLBotLogUtil.info(f"语义扩展完成 - 原始: '{original_query}', 扩展后: '{expanded_query}'")
+
+            return expanded_query
+        except Exception as e:
+            SQLBotLogUtil.error(f"语义扩展失败: {str(e)}")
+            # 扩展失败时返回原查询
+            return original_query
+
+    def get_semantic_expansion_prompt(self, original_query: str) -> str:
+        """
+        构建语义扩展的系统提示词
+
+        Args:
+            original_query: 原始查询
+
+        Returns:
+            str: 语义扩展的系统提示词
+        """
+        # 获取语义扩展模板
+        semantic_template = get_semantic_expansion_template()
+
+        # 获取上下文信息
+        terminologies = getattr(self.chat_question, 'terminologies', '') or ''
+        db_schema = getattr(self.chat_question, 'db_schema', '') or ''
+        data_training = getattr(self.chat_question, 'data_training', '') or ''
+        custom_prompt = getattr(self.chat_question, 'custom_prompt', '') or ''
+
+        # 格式化模板
+        formatted_prompt = semantic_template.format(
+            lang=getattr(self.chat_question, 'lang', '简体中文') or '简体中文',
+            original_query=original_query,
+            terminologies=terminologies,
+            schema=db_schema,
+            data_training=data_training
+        )
+
+        # 如果有自定义提示词，添加到末尾
+        if custom_prompt and custom_prompt.strip():
+            formatted_prompt += f"\n\n{custom_prompt}"
+
+        return formatted_prompt
+
     def print_Message(self, messages=None):
         if messages is None:
             messages = self.sql_message

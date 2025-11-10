@@ -1,9 +1,29 @@
 from apps.template.template import get_base_template
+from pathlib import Path
+from functools import cache
 
 
 def get_myself_template():
     template = get_base_template()
     return template['template']['myself']
+
+
+@cache
+def _load_semantic_expansion_template():
+    """加载语义扩展模板"""
+    semantic_template_path = Path(__file__).parent.parent.parent / 'templates' / 'semantic_expansion.yaml'
+    try:
+        with open(semantic_template_path, 'r', encoding='utf-8') as f:
+            import yaml
+            return yaml.safe_load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Semantic expansion template file not found at {semantic_template_path}")
+
+
+def get_semantic_expansion_template():
+    """获取语义扩展模板"""
+    template = _load_semantic_expansion_template()
+    return template['template']['semantic-expansion']
 
 
 def chat_sys_intention():
