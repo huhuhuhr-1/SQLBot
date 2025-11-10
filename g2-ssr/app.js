@@ -14,6 +14,7 @@ http.createServer((req, res) => {
     if (req.method === 'GET') {
         toGet(req, res);
     } else if (req.method === 'POST') {
+        console.log('POST123')
         toPost(req, res);
     }
 }).listen(port, () => {
