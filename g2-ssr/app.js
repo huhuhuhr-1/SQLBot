@@ -52,11 +52,9 @@ function getOptions(type, axis, data) {
 async function GenerateCharts(obj) {
     const options = getOptions(obj.type, JSON.parse(obj.axis), JSON.parse(obj.data));
     const chart = await createChart(options);
-
     // 导出
     chart.exportToFile(obj.path || 'chart');
     // -> chart.png
-
     chart.toBuffer();
 }
 
@@ -71,8 +69,12 @@ function toGet(req, res) {
 
 //获取POST请求内容、cookie
 function toPost(req, res) {
-    req.on('data', async function (chunk) {
-        await GenerateCharts(JSON.parse(chunk))
+    const bodyChunks = []
+    req.on('data', function (chunk) {
+        bodyChunks.push(chunk)
+    }).on('end', async () => {
+        const completeBodyBuffer = Buffer.concat(bodyChunks);
+        await GenerateCharts(JSON.parse(completeBodyBuffer.toString('utf8')))
         res.end('complete');
     });
 }
