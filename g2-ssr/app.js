@@ -74,10 +74,15 @@ function toGet(req, res) {
 
 //获取POST请求内容、cookie
 function toPost(req, res) {
-    req.on('data', async function (chunk) {
-        console.log('data', chunk)
-        await GenerateCharts(JSON.parse(chunk))
-        console.log('toBuffer')
-        res.end('complete');
+    const bodyChunks = []
+    req.on('data', function (chunk) {
+        console.log('data')
+        bodyChunks.push(chunk)
+        console.log('tobuffer')
+    });
+    res.end('complete', async () => {
+        const completeBodyBuffer = Buffer.concat(bodyChunks);
+        console.log('toBuffer', completeBodyBuffer.toString('utf8'))
+        await GenerateCharts(JSON.parse(completeBodyBuffer.toString('utf8')))
     });
 }
