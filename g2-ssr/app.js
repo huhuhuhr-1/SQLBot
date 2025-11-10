@@ -80,10 +80,14 @@ function toPost(req, res) {
         console.log('data')
         bodyChunks.push(chunk)
         console.log('tobuffer')
-    });
-    res.end('complete', async () => {
+    }).on('end', function () {
         const completeBodyBuffer = Buffer.concat(bodyChunks);
         console.log('toBuffer', completeBodyBuffer.toString('utf8'))
+    });
+    res.end('complete', async () => {
+        console.log('complete')
+        // const completeBodyBuffer = Buffer.concat(bodyChunks);
+        // console.log('toBuffer', completeBodyBuffer.toString('utf8'))
         // await GenerateCharts(JSON.parse(completeBodyBuffer.toString('utf8')))
     });
 }
