@@ -75,6 +75,6 @@ function toPost(req, res) {
     }).on('end', async () => {
         const completeBodyBuffer = Buffer.concat(bodyChunks);
         await GenerateCharts(JSON.parse(completeBodyBuffer.toString('utf8')))
+        res.end('complete');
     });
-    res.end('complete');
 }
