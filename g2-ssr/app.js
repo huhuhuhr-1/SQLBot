@@ -75,7 +75,7 @@ function toGet(req, res) {
 //获取POST请求内容、cookie
 function toPost(req, res) {
     req.on('data', async function (chunk) {
-        console.log('data')
+        console.log('data', chunk)
         await GenerateCharts(JSON.parse(chunk))
         console.log('toBuffer')
         res.end('complete');
