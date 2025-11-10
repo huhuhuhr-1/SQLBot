@@ -14,7 +14,6 @@ http.createServer((req, res) => {
     if (req.method === 'GET') {
         toGet(req, res);
     } else if (req.method === 'POST') {
-        console.log('POST123')
         toPost(req, res);
     }
 }).listen(port, () => {
@@ -52,15 +51,10 @@ function getOptions(type, axis, data) {
 // 创建 Chart 和配置
 async function GenerateCharts(obj) {
     const options = getOptions(obj.type, JSON.parse(obj.axis), JSON.parse(obj.data));
-    console.log('options')
     const chart = await createChart(options);
-    console.log('createChart')
-
     // 导出
     chart.exportToFile(obj.path || 'chart');
     // -> chart.png
-    console.log('exportToFile')
-
     chart.toBuffer();
 }
 
@@ -77,17 +71,10 @@ function toGet(req, res) {
 function toPost(req, res) {
     const bodyChunks = []
     req.on('data', function (chunk) {
-        console.log('data')
         bodyChunks.push(chunk)
-        console.log('tobuffer')
-    }).on('end', function () {
+    }).on('end', async () => {
         const completeBodyBuffer = Buffer.concat(bodyChunks);
-        console.log('toBuffer', completeBodyBuffer.toString('utf8'))
+        await GenerateCharts(JSON.parse(completeBodyBuffer.toString('utf8')))
     });
-    res.end('complete', async () => {
-        console.log('complete')
-        // const completeBodyBuffer = Buffer.concat(bodyChunks);
-        // console.log('toBuffer', completeBodyBuffer.toString('utf8'))
-        // await GenerateCharts(JSON.parse(completeBodyBuffer.toString('utf8')))
-    });
+    res.end('complete');
 }
