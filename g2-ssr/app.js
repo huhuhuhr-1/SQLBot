@@ -51,11 +51,14 @@ function getOptions(type, axis, data) {
 // 创建 Chart 和配置
 async function GenerateCharts(obj) {
     const options = getOptions(obj.type, JSON.parse(obj.axis), JSON.parse(obj.data));
+    console.log('options')
     const chart = await createChart(options);
+    console.log('createChart')
 
     // 导出
     chart.exportToFile(obj.path || 'chart');
     // -> chart.png
+    console.log('exportToFile')
 
     chart.toBuffer();
 }
@@ -72,7 +75,9 @@ function toGet(req, res) {
 //获取POST请求内容、cookie
 function toPost(req, res) {
     req.on('data', async function (chunk) {
+        console.log('data')
         await GenerateCharts(JSON.parse(chunk))
+        console.log('toBuffer')
         res.end('complete');
     });
 }
