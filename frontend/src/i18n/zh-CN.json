@@ -8,6 +8,7 @@
     "Details": "详情"
   },
   "prompt": {
+    "default_password": "默认密码：{msg}",
     "no_prompt_words": "暂无提示词",
     "customize_prompt_words": "自定义提示词",
     "ask_sql": "问数 SQL",
@@ -664,6 +665,7 @@
   "system": {
     "system_settings": "系统设置",
     "appearance_settings": "外观设置",
+    "authentication_settings": "登录认证",
     "platform_display_theme": "平台显示主题",
     "default_turquoise": "默认 (松石绿)",
     "tech_blue": "科技蓝",
@@ -692,5 +694,43 @@
     "save_and_apply": "保存并应用",
     "setting_successfully": "设置成功",
     "customize_theme_color": "自定义主题色"
+  },
+  "authentication": {
+    "invalid": "无效",
+    "valid": "有效",
+    "cas_settings": "CAS 设置",
+    "callback_domain_name": "回调地址",
+    "field_mapping": "用户属性映射",
+    "field_mapping_placeholder": "例如：{'{'}\"account\": \"saml2Account\", \"name\": \"saml2Name\", \"email\": \"email\"{'}'}",
+    "incorrect_please_re_enter": "格式错误，请重新填写",
+    "in_json_format": "请输入json格式"
+  },
+  "login": {
+    "default_login": "默认",
+    "ldap_login": "LDAP 登录",
+    "account_login": "账号登录",
+    "other_login": "其他登录方式",
+    "pwd_invalid_error": "密码已过期请联系管理员修改或重置",
+    "pwd_exp_tips": "密码在 {0} 天后过期，请尽快修改密码",
+    "qr_code": "二维码",
+    "platform_disable": "{0}设置未开启！",
+    "input_account": "请输入账号",
+    "redirect_2_auth": "正在跳转至 {0} 认证，{1} 秒..."
+  },
+  "supplier": {
+    "alibaba_cloud_bailian": "阿里云百炼",
+    "qianfan_model": "千帆大模型",
+    "deepseek": "DeepSeek",
+    "tencent_hunyuan": "腾讯混元",
+    "iflytek_spark": "讯飞星火",
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "kimi": "Kimi",
+    "tencent_cloud": "腾讯云",
+    "volcano_engine": "火山引擎",
+    "generic_openai": "通用OpenAI"
+  },
+  "modelType": {
+    "llm": "大语言模型"
   }
 }
