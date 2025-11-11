@@ -105,7 +105,7 @@ USER sqlbot
 WORKDIR ${SQLBOT_HOME}/app
 
 # Copy entrypoint script (will run ssh and app; defined below)
-COPY start-container.sh /opt/sqlbot/app/start-container.sh
+COPY build/dev/start-container.sh /opt/sqlbot/app/start-container.sh
 RUN chmod +x /opt/sqlbot/app/start-container.sh
 
 # Healthcheck (runs as container runtime user; using curl - if missing, skip)
