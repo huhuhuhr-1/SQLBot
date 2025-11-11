@@ -1,0 +1,117 @@
+# SQLBot PyCharm开发环境 - 内网环境专用
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
+
+# 设置环境变量
+ENV PYTHONUNBUFFERED=1
+ENV SQLBOT_HOME=/opt/sqlbot
+ENV PYTHONPATH=${SQLBOT_HOME}/app
+ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
+ENV UI_HOME=${SQLBOT_HOME}/frontend
+
+# 设置编码
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# 配置时区
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+# 配置内网源 (构建时可覆盖)
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+ARG PIP_TIMEOUT=120
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
+RUN mkdir -p ~/.pip && \
+    echo "[global]" > ~/.pip/pip.conf && \
+    echo "index-url = ${PIP_INDEX_URL}" >> ~/.pip/pip.conf && \
+    echo "trusted-host = ${PIP_TRUSTED_HOST}" >> ~/.pip/pip.conf && \
+    echo "timeout = ${PIP_TIMEOUT}" >> ~/.pip/pip.conf
+
+RUN npm config set registry ${NPM_REGISTRY} && \
+    npm config set fund false && \
+    npm config set audit false
+
+# 安装开发工具和SSH服务
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    vim \
+    curl \
+    wget \
+    htop \
+    tree \
+    unzip \
+    build-essential \
+    python3 pkg-config \
+    libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev \
+    libpixman-1-dev libfreetype6-dev \
+    net-tools \
+    dnsutils \
+    iputils-ping \
+    netcat-openbsd \
+    tcpdump \
+    openssh-server \
+    && mkdir -p /var/run/sshd \
+    && echo 'root:pycharm_dev' | chpasswd \
+    && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config \
+    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装uv最新版本
+RUN pip install uv
+
+# 复制项目文件到临时目录
+COPY . /tmp/sqlbot
+
+# 安装后端依赖
+WORKDIR /workspace/sqlbot/backend
+RUN python -m venv .venv && \
+    .venv/bin/pip install --upgrade pip && \
+    cp /tmp/sqlbot/backend/pyproject.toml . && \
+    .venv/bin/pip install --index-url ${PIP_INDEX_URL} --no-deps -e /tmp/sqlbot/backend
+
+# 安装核心依赖包（不使用额外依赖组，避免错误）
+RUN .venv/bin/pip install --index-url ${PIP_INDEX_URL} \
+    fastapi \
+    pydantic \
+    python-multipart \
+    passlib \
+    bcrypt \
+    alembic \
+    httpx \
+    psycopg \
+    sqlmodel \
+    pydantic-settings \
+    pyjwt \
+    pycryptodome \
+    pyyaml \
+    redis \
+    requests \
+    uvicorn
+
+# 创建空的前端和g2-ssr目录供PyCharm映射使用
+RUN mkdir -p /workspace/sqlbot/frontend /workspace/sqlbot/g2-ssr
+
+# 设置bash配置
+RUN echo 'export PS1="\[\033[01;32m\]\u@sqlbot-pycharm-dev\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> ~/.bashrc && \
+    echo 'cd /workspace/sqlbot' >> ~/.bashrc && \
+    echo 'source /workspace/sqlbot/backend/.venv/bin/activate' >> ~/.bashrc
+
+# 暴露SSH端口
+EXPOSE 22
+
+# 启动SSH服务的脚本
+RUN echo '#!/bin/bash\n\
+echo "=== SQLBot PyCharm 开发环境启动 ==="\n\
+echo "Python版本: $(python --version)"\n\
+echo "Node.js版本: $(node --version)"\n\
+echo "虚拟环境路径: /workspace/sqlbot/backend/.venv"\n\
+echo ""\n\
+echo "启动SSH服务..."\n\
+/usr/sbin/sshd -D\n\
+' > /usr/local/bin/start-ssh.sh && \
+    chmod +x /usr/local/bin/start-ssh.sh
+
+# 设置默认命令
+CMD ["/usr/local/bin/start-ssh.sh"]

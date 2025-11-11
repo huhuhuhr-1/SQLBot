@@ -1,0 +1,213 @@
+# SQLBot增强开发环境 - 支持自定义源和端口
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
+
+# 设置环境变量
+ENV PYTHONUNBUFFERED=1
+ENV SQLBOT_HOME=/opt/sqlbot
+ENV PYTHONPATH=${SQLBOT_HOME}/app
+ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
+
+# 设置编码
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# 配时区
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+# 可配置的pip源 - 支持环境变量覆盖
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+ARG PIP_TIMEOUT=120
+
+RUN mkdir -p ~/.pip && \
+    echo "[global]" > ~/.pip/pip.conf && \
+    echo "index-url = ${PIP_INDEX_URL}" >> ~/.pip/pip.conf && \
+    echo "trusted-host = ${PIP_TRUSTED_HOST}" >> ~/.pip/pip.conf && \
+    echo "timeout = ${PIP_TIMEOUT}" >> ~/.pip/pip.conf
+
+# 可配置的npm源 - 支持环境变量覆盖
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
+RUN npm config set registry ${NPM_REGISTRY} && \
+    npm config set fund false && \
+    npm config set audit false
+
+# 创建工作目录
+WORKDIR /workspace
+
+# 安装开发工具
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    vim \
+    curl \
+    wget \
+    htop \
+    tree \
+    unzip \
+    build-essential \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装uv最新版本
+RUN pip install uv
+
+# 创建源配置管理脚本
+RUN echo '#!/bin/bash\n\
+# Python源配置管理\n\
+set_pip_source() {\n\
+    local source_url=\"$1\"\n\
+    local trusted_host=\"$2\"\n\
+    if [ -z \"$source_url\" ]; then\n\
+        echo \"用法: set_pip_source <源URL> [可信主机]\"\n\
+        echo \"示例: set_pip_source https://pypi.tuna.tsinghua.edu.cn/simple/ pypi.tuna.tsinghua.edu.cn\"\n\
+        return 1\n\
+    fi\n\
+    mkdir -p ~/.pip\n\
+    echo \"[global]\" > ~/.pip/pip.conf\n\
+    echo \"index-url = $source_url\" >> ~/.pip/pip.conf\n\
+    echo \"timeout = 120\" >> ~/.pip/pip.conf\n\
+    if [ -n \"$trusted_host\" ]; then\n\
+        echo \"trusted-host = $trusted_host\" >> ~/.pip/pip.conf\n\
+    fi\n\
+    echo \"pip源已更新为: $source_url\"\n\
+}\n\
+\n\
+# Node.js源配置管理\n\
+set_npm_source() {\n\
+    local registry=\"$1\"\n\
+    if [ -z \"$registry\" ]; then\n\
+        echo \"用法: set_npm_source <registry>\"\n\
+        echo \"示例: set_npm_source https://registry.npmmirror.com\"\n\
+        echo \"示例: set_npm_source https://registry.npm.taobao.org\"\n\
+        return 1\n\
+    fi\n\
+    npm config set registry \"$registry\"\n\
+    echo \"npm源已更新为: $registry\"\n\
+}\n\
+\n\
+# 显示当前源配置\n\
+show_sources() {\n\
+    echo \"=== 当前源配置 ===\"\n\
+    echo \"pip源:\"\n\
+    if [ -f ~/.pip/pip.conf ]; then\n\
+        grep \"index-url\" ~/.pip/pip.conf || echo \"  未配置\"\n\
+    else\n\
+        echo \"  未配置\"\n\
+    fi\n\
+    echo \"npm源:\"\n\
+    npm config get registry\n\
+}\n\
+\n\
+# 预设源配置\n\
+use_aliyun_sources() {\n\
+    set_pip_source \"https://mirrors.aliyun.com/pypi/simple/\" \"mirrors.aliyun.com\"\n\
+    set_npm_source \"https://registry.npmmirror.com\"\n\
+}\n\
+\n\
+use_tsinghua_sources() {\n\
+    set_pip_source \"https://pypi.tuna.tsinghua.edu.cn/simple/\" \"pypi.tuna.tsinghua.edu.cn\"\n\
+    set_npm_source \"https://registry.npmmirror.com\"\n\
+}\n\
+\n\
+use_official_sources() {\n\
+    set_pip_source \"https://pypi.org/simple/\"\n\
+    set_npm_source \"https://registry.npmjs.org\"\n\
+}\n\
+' > /usr/local/bin/source-manager.sh && \
+    chmod +x /usr/local/bin/source-manager.sh
+
+# 创建端口管理脚本
+RUN echo '#!/bin/bash\n\
+# 端口检查和管理\n\
+check_port() {\n\
+    local port=$1\n\
+    if netstat -tuln | grep -q \":$port \"; then\n\
+        echo \"端口 $port 已被占用\"\n\
+        netstat -tuln | grep \":$port \"\n\
+        return 1\n\
+    else\n\
+        echo \"端口 $port 可用\"\n\
+        return 0\n\
+    fi\n\
+}\n\
+\n\
+# 显示SQLBot服务端口\n\
+show_sqlbot_ports() {\n\
+    echo \"=== SQLBot服务端口 ===\"\n\
+    echo \"后端API: 8000 (FastAPI)\"\n\
+    echo \"前端页面: 3000 (Vite Dev Server)\"\n\
+    echo \"G2-SSR: 8001 (Node.js)\"\n\
+    echo \"\"\n\
+    echo \"检查端口状态:\"\n\
+    check_port 8000\n\
+    check_port 3000\n\
+    check_port 8001\n\
+}\n\
+' > /usr/local/bin/port-manager.sh && \
+    chmod +x /usr/local/bin/port-manager.sh
+
+# 复制SQLBot项目文件
+COPY . /workspace/sqlbot
+
+# 创建虚拟环境并安装Python依赖
+WORKDIR /workspace/sqlbot/backend
+RUN uv venv /workspace/sqlbot/backend/.venv && \
+    uv pip install --index-url ${PIP_INDEX_URL} -e .
+
+# 安装前端依赖
+WORKDIR /workspace/sqlbot/frontend
+RUN npm install
+
+# 安装g2-ssr依赖
+WORKDIR /workspace/sqlbot/g2-ssr
+RUN npm install
+
+# 设置bash配置
+RUN echo 'export PS1="\[\033[01;32m\]\u@sqlbot-dev\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> ~/.bashrc && \
+    echo 'cd /workspace/sqlbot' >> ~/.bashrc && \
+    echo 'source /workspace/sqlbot/backend/.venv/bin/activate' >> ~/.bashrc && \
+    echo '# 源管理别名' >> ~/.bashrc && \
+    echo 'alias sources=\"source-manager.sh\"' >> ~/.bashrc && \
+    echo 'alias ports=\"port-manager.sh\"' >> ~/.bashrc && \
+    echo '# 快速切换源' >> ~/.bashrc && \
+    echo 'alias aliyun=\"source-manager.sh use_aliyun_sources\"' >> ~/.bashrc && \
+    echo 'alias tsinghua=\"source-manager.sh use_tsinghua_sources\"' >> ~/.bashrc && \
+    echo 'alias official=\"source-manager.sh use_official_sources\"' >> ~/.bashrc
+
+# 创建开发启动脚本（支持自定义端口）
+RUN echo '#!/bin/bash\n\
+echo \"SQLBot开发环境启动脚本 (支持自定义端口)\"\n\
+echo \"\"\n\
+# 检查端口参数\n\
+BACKEND_PORT=${BACKEND_PORT:-8000}\n\
+FRONTEND_PORT=${FRONTEND_PORT:-3000}\n\
+SSR_PORT=${SSR_PORT:-8001}\n\
+\n\
+echo \"配置的端口:\"\n\
+echo \"  后端API: $BACKEND_PORT\"\n\
+echo \"  前端页面: $FRONTEND_PORT\"\n\
+echo \"  G2-SSR: $SSR_PORT\"\n\
+echo \"\"\n\
+echo \"当前源配置:\"\n\
+source-manager.sh show_sources\n\
+echo \"\"\n\
+echo \"启动命令:\"\n\
+echo \"启动后端: cd backend && uvicorn main:app --host 0.0.0.0 --port $BACKEND_PORT --reload\"\n\
+echo \"启动前端: cd frontend && npm run dev -- --port $FRONTEND_PORT\"\n\
+echo \"启动G2-SSR: cd g2-ssr && PORT=$SSR_PORT npm start\"\n\
+echo \"\"\n\
+echo \"端口管理:\"\n\
+echo \"检查端口: port-manager.sh show_sqlbot_ports\"\n\
+echo \"检查特定端口: port-manager.sh check_port <端口号>\"\n\
+' > /workspace/sqlbot/dev-start-enhanced.sh && \
+    chmod +x /workspace/sqlbot/dev-start-enhanced.sh
+
+# 设置启动目录
+WORKDIR /workspace/sqlbot
+
+# 暴露端口（默认端口，可被docker run -p覆盖）
+EXPOSE 3000 8000 8001
+
+# 设置默认命令
+CMD ["/bin/bash"]
