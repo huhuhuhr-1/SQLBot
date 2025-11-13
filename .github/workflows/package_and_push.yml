@@ -49,19 +49,6 @@ jobs:
           ALIYUN_OSS_ACCESS_SECRET: ${{ secrets.ALIYUN_OSS_ACCESS_SECRET }}
           PACKAGE_EE: ${{ github.event.inputs.packageEE }}
         run: |
-          DOCKER_IMAGE=${ALIYUN_REGISTRY_HOST}/dataease/sqlbot
-          cd installer
-          
-          echo ${TAG_NAME} > ./sqlbot/templates/version
-          sed -i -e "s/SQLBOT_TAG/${TAG_NAME}/g" sqlbot/docker-compose.yml
-          mkdir images
-          for image in $(grep  "image: " sqlbot/docker*.yml | awk -F 'image:' '{print $2}'); do
-            image_path=$(eval echo $image)
-            image_name=$(echo ${image_path##*/})
-            docker pull $image_path
-            docker save $image_path  | gzip > images/$image_name.tar.gz
-          done
-
           platform=""
           ARCH="x86_64"
           OS_type="$(uname -m)"
@@ -79,6 +66,24 @@ jobs:
               exit 2
               ;;
           esac
+
+          if [[ $ARCH == 'aarch64' ]] && [[ ${PACKAGE_EE} != 'true' ]]; then
+              echo 'No need to pack'
+              exit 2
+          fi
+
+          DOCKER_IMAGE=${ALIYUN_REGISTRY_HOST}/dataease/sqlbot
+          cd installer
+          
+          echo ${TAG_NAME} > ./sqlbot/templates/version
+          sed -i -e "s/SQLBOT_TAG/${TAG_NAME}/g" sqlbot/docker-compose.yml
+          mkdir images
+          for image in $(grep  "image: " sqlbot/docker*.yml | awk -F 'image:' '{print $2}'); do
+            image_path=$(eval echo $image)
+            image_name=$(echo ${image_path##*/})
+            docker pull $image_path
+            docker save $image_path  | gzip > images/$image_name.tar.gz
+          done
           
           DOCKER_VERSION="docker-27.2.0"
           DOCKER_COMPOSE_VERSION="v2.29.2"
@@ -131,4 +136,5 @@ jobs:
             ossutil cp -rf ${package_offline} oss://$ALIYUN_OSS_BUCKET/sqlbot/${package_offline} --access-key-id=$ALIYUN_OSS_ACCESS_KEY --access-key-secret=$ALIYUN_OSS_ACCESS_SECRET --endpoint=${ALIYUN_OSS_BUCKET_ENDPOINT}          
             ossutil cp -rf ${package_online} oss://$ALIYUN_OSS_BUCKET/sqlbot/${package_online} --access-key-id=$ALIYUN_OSS_ACCESS_KEY --access-key-secret=$ALIYUN_OSS_ACCESS_SECRET --endpoint=${ALIYUN_OSS_BUCKET_ENDPOINT}
           fi
+
 
