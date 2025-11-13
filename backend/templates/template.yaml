@@ -47,7 +47,7 @@ template:
         </rule>
         <rule>
           请使用JSON格式返回你的回答:
-          若能生成，则返回格式如：{{"success":true,"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table"}}
+          若能生成，则返回格式如：{{"success":true,"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table","message":"详细说明生成SQL的思考过程"}}
           若不能生成，则返回格式如：{{"success":false,"message":"说明无法生成SQL的原因"}}
         </rule>
         <rule>

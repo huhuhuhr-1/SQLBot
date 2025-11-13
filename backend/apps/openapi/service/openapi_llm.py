@@ -1,6 +1,7 @@
 import concurrent
 import json
 import os
+import time
 import traceback
 import urllib.parse
 import warnings
@@ -902,6 +903,26 @@ class LLMService:
 
         return chart_type
 
+    @staticmethod
+    def get_message_from_sql_answer(res: str) -> Optional[str]:
+        json_str = extract_nested_json(res)
+        if json_str is None:
+            return None
+
+        chart_type: Optional[str]
+        data: dict
+        try:
+            data = orjson.loads(json_str)
+
+            if data['success']:
+                chart_type = data['message']
+            else:
+                return None
+        except Exception:
+            return None
+
+        return chart_type
+
     def check_save_sql(self, res: str) -> str:
         sql, *_ = self.check_sql(res=res)
         save_sql(session=self.session, sql=sql, record_id=self.record.id)
@@ -1042,11 +1063,45 @@ class LLMService:
         for chunk in self.run_task(in_chat, stream, finish_step):
             self.chunk_list.append(chunk)
 
+
+    def typewriter_effect(self, text: str, delay: float = 0.02, output_type: str = 'analysis-result') -> Iterator[
+        Dict[str, Any]]:
+        """
+        模拟打字机效果，逐字输出文本内容
+
+        Args:
+            text: 需要逐字输出的文本
+            delay: 每个字符之间的延迟时间（秒），默认0.05秒
+            output_type: 输出内容的类型，默认为'analysis-result'
+
+        Yields:
+            包含当前输出内容的字典
+        """
+        for char in text:
+            time.sleep(delay)  # 添加延迟效果
+            yield 'data: ' + orjson.dumps(
+                {
+                    'content': '',
+                    'reasoning_content': char,
+                    'type': 'analysis-result'  # 使用可变类型而不是固定的
+                }
+            ).decode() + '\n\n'
+
     def run_task(self, in_chat: bool = True, stream: bool = True,
                  finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART):
         json_result: Dict[str, Any] = {'success': True}
         try:
+            SQLBotLogUtil.info("开始执行 run_task 方法")
+            yield from self.typewriter_effect("任务规划：查看数据源信息->生成查询语句->查询数据->生成图表。")
+            yield 'data: ' + orjson.dumps(
+                {
+                    'content': '',
+                    'reasoning_content': '\n\n',
+                    'type': 'analysis-result'  # 使用可变类型而不是固定的
+                }
+            ).decode() + '\n\n'
             if self.ds:
+                SQLBotLogUtil.info("处理数据源相关信息")
                 oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
                 ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
                 self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
@@ -1057,17 +1112,21 @@ class LLMService:
                     self.chat_question.custom_prompt = find_custom_prompts(self.session,
                                                                            CustomPromptTypeEnum.GENERATE_SQL,
                                                                            oid, ds_id)
-
+                yield from self.typewriter_effect(
+                    f"1:现在开始，查看数据源信息，数据源名称:{self.ds.name},即将生成SQL。")
             self.init_messages()
+            SQLBotLogUtil.info("初始化消息完成")
 
             # return id
             if in_chat:
+                SQLBotLogUtil.info("返回记录ID")
                 yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
             if not stream:
                 json_result['record_id'] = self.get_record().id
 
             # return title
             if self.change_title:
+                SQLBotLogUtil.info("更新聊天标题")
                 if self.chat_question.question or self.chat_question.question.strip() != '':
                     brief = rename_chat(session=self.session,
                                         rename_object=RenameChat(id=self.get_record().chat_id,
@@ -1079,6 +1138,7 @@ class LLMService:
 
                 # select datasource if datasource is none
             if not self.ds:
+                SQLBotLogUtil.info("选择数据源")
                 ds_res = self.select_datasource()
 
                 for chunk in ds_res:
@@ -1098,17 +1158,21 @@ class LLMService:
                                                                               ds=self.ds,
                                                                               question=self.chat_question.question)
             else:
+                SQLBotLogUtil.info("验证历史数据源")
                 self.validate_history_ds()
 
             # check connection
+            SQLBotLogUtil.info("检查数据库连接")
             connected = check_connection(ds=self.ds, trans=None)
             if not connected:
                 raise SQLBotDBConnectionError('Connect DB failed')
 
             # modify by huhuhuhr
             if self.chat_question.my_sql is not None and self.chat_question.my_sql.strip() != '':
+                SQLBotLogUtil.info("使用自定义SQL生成SQL")
                 sql_res = self.generate_sql_with_sql()
             else:
+                SQLBotLogUtil.info("生成SQL")
                 sql_res = self.generate_sql()
 
             full_sql_text = ''
@@ -1121,7 +1185,7 @@ class LLMService:
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
             # filter sql
-            SQLBotLogUtil.info(full_sql_text)
+            SQLBotLogUtil.info(f"生成的SQL: {full_sql_text}")
 
             chart_type = self.get_chart_type_from_sql_answer(full_sql_text)
 
@@ -1133,31 +1197,40 @@ class LLMService:
             # todo row permission
             if ((not self.current_assistant or is_page_embedded) and is_normal_user(
                     self.current_user)) or use_dynamic_ds:
+                SQLBotLogUtil.info("检查并处理SQL")
                 sql, tables = self.check_sql(res=full_sql_text)
                 sql_result = None
 
                 if use_dynamic_ds:
+                    SQLBotLogUtil.info("生成动态SQL")
                     dynamic_sql_result = self.generate_assistant_dynamic_sql(sql, tables)
                     sqlbot_temp_sql_text = dynamic_sql_result.get(
                         'sqlbot_temp_sql_text') if dynamic_sql_result else None
                     # sql_result = self.generate_assistant_filter(sql, tables)
                 else:
+                    SQLBotLogUtil.info("生成过滤条件")
                     sql_result = self.generate_filter(sql, tables)  # maybe no sql and tables
 
                 if sql_result:
-                    SQLBotLogUtil.info(sql_result)
+                    SQLBotLogUtil.info(f"应用过滤条件: {sql_result}")
                     sql = self.check_save_sql(res=sql_result)
                 elif dynamic_sql_result and sqlbot_temp_sql_text:
+                    SQLBotLogUtil.info("保存动态SQL")
                     assistant_dynamic_sql = self.check_save_sql(res=sqlbot_temp_sql_text)
                 else:
+                    SQLBotLogUtil.info("保存原始SQL")
                     sql = self.check_save_sql(res=full_sql_text)
             else:
                 # modify by huhuhuhr
-                SQLBotLogUtil.info(full_sql_text)
+                SQLBotLogUtil.info(f"直接使用生成的SQL: {full_sql_text}")
                 sql = self.check_save_sql(res=full_sql_text)
 
-            SQLBotLogUtil.info('sql: ' + sql)
-
+            SQLBotLogUtil.info('最终执行的SQL: ' + sql)
+            message_answer = self.get_message_from_sql_answer(full_sql_text)
+            if message_answer is None:
+                message_answer = f'根据SQL->[{sql}]查询数据'
+            yield from self.typewriter_effect(
+                text=f"2:现在开始，{message_answer}", delay=0.001)
             if not stream:
                 json_result['sql'] = sql
 
@@ -1169,8 +1242,10 @@ class LLMService:
                     yield f'```sql\n{format_sql}\n```\n\n'
 
             # execute sql
+            SQLBotLogUtil.info("准备执行SQL")
             real_execute_sql = sql
             if sqlbot_temp_sql_text and assistant_dynamic_sql:
+                SQLBotLogUtil.info("处理动态SQL替换")
                 dynamic_sql_result.pop('sqlbot_temp_sql_text')
                 for origin_table, subsql in dynamic_sql_result.items():
                     assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}',
@@ -1178,20 +1253,24 @@ class LLMService:
                 real_execute_sql = assistant_dynamic_sql
 
             if finish_step.value <= ChatFinishStep.GENERATE_SQL.value:
+                SQLBotLogUtil.info("任务在SQL生成阶段结束")
                 if in_chat:
                     yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
                 if not stream:
                     yield json_result
                 return
 
+            SQLBotLogUtil.info("执行SQL查询")
             result = self.execute_sql(sql=real_execute_sql)
             self.save_sql_data(data_obj=result)
+            yield from self.typewriter_effect(f"3:现在执行数据查询，共查询到数据{len(result.get('data'))}行。")
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
             if not stream:
                 json_result['data'] = result.get('data')
 
             if finish_step.value <= ChatFinishStep.QUERY_DATA.value:
+                SQLBotLogUtil.info("任务在数据查询阶段结束")
                 if stream:
                     if in_chat:
                         yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
@@ -1217,8 +1296,9 @@ class LLMService:
                 else:
                     yield json_result
                 return
-
+            yield from self.typewriter_effect(f"4:现在开始，生成图表，图表类型:{chart_type}。")
             # generate chart
+            SQLBotLogUtil.info("生成图表")
             chart_res = self.generate_chart(chart_type)
             full_chart_text = ''
             for chunk in chart_res:
@@ -1231,9 +1311,9 @@ class LLMService:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
             # filter chart
-            SQLBotLogUtil.info(full_chart_text)
+            SQLBotLogUtil.info(f"生成的图表配置: {full_chart_text}")
             chart = self.check_save_chart(res=full_chart_text)
-            SQLBotLogUtil.info(chart)
+            SQLBotLogUtil.info(f"最终图表配置: {chart}")
 
             if not stream:
                 json_result['chart'] = chart
@@ -1281,8 +1361,9 @@ class LLMService:
                 # todo generate picture
                 if chart['type'] != 'table':
                     yield '### generated chart picture\n\n'
+                    SQLBotLogUtil.info("请求生成图表图片")
                     image_url = request_picture(self.record.chat_id, self.record.id, chart, result)
-                    SQLBotLogUtil.info(image_url)
+                    SQLBotLogUtil.info(f"图表图片URL: {image_url}")
                     if stream:
                         yield f'![{chart["type"]}]({image_url})'
                     else:
@@ -1292,6 +1373,7 @@ class LLMService:
                 yield json_result
 
         except Exception as e:
+            SQLBotLogUtil.error(f"执行任务时发生异常: {str(e)}", exc_info=True)
             traceback.print_exc()
             error_msg: str
             if isinstance(e, SingleMessageError):
@@ -1315,6 +1397,7 @@ class LLMService:
                     json_result['message'] = error_msg
                     yield json_result
         finally:
+            SQLBotLogUtil.info("完成任务执行")
             self.finish()
 
     def run_recommend_questions_task_async(self):
