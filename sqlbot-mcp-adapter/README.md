@@ -1,52 +1,61 @@
 # SQLBot MCP Adapter
 
-一个用于将 SQLBot 集成到 AI 助手的 Model Context Protocol (MCP) 适配器。
+轻量级的 SQLBot MCP 适配器，将 SQLBot 服务与 Claude 的 Model Context Protocol (MCP) 集成。
 
-## 🎯 项目概览
+## 快速开始
 
-SQLBot MCP Adapter 提供了一个标准的 MCP 接口，让 AI 助手（如 Qwen Code）能够访问 SQLBot 的数据源和功能。
+### 先决条件
 
-### 📁 项目结构
+- Python 3.11+
+- uv (推荐)
 
+### 配置
+
+1. 复制环境变量文件:
+   ```bash
+   cp .env.example .env
+   # 编辑 .env 文件，配置 SQLBot 凭据
+   ```
+
+### 运行
+
+```bash
+# 启动服务
+uv run python main.py
 ```
-sqlbot-mcp-adapter/
-├── src/sqlbot_mcp_adapter/
-│   ├── __init__.py          # 包初始化
-│   ├── main.py              # 主入口 - 支持 HTTP/Stdio 模式
-│   ├── config.py            # 配置管理 - 环境变量验证
-│   ├── mcp_server.py        # MCP 服务器 - 工具注册和请求处理
-│   ├── sqlbot_client.py     # SQLBot API 客户端 - 令牌管理和API调用
-│   └── models.py            # 数据模型 - Pydantic 模型定义
-├── .env.example             # 环境变量模板
-├── requirements.txt         # Python 依赖
-├── pyproject.toml          # 项目配置
-├── start.sh                # 一键启动脚本
-└── README.md               # 使用文档
+
+## 核心功能
+
+### 工具列表
+
+#### get_token
+- **描述**: 获取 SQLBot 访问令牌
+- **参数**: `create_chat` (boolean, 是否创建聊天会话)
+- **返回**: 令牌信息对象
+
+#### get_database_list  
+- **描述**: 获取数据源列表
+- **参数**: 无 (通过 X-Sqlbot-Token 头传递认证)
+- **返回**: 数据源列表
+
+## 配置
+
+### 环境变量
+
+| 变量 | 描述 | 默认 |
+|------|------|------|
+| `SQLBOT_BASE_URL` | SQLBot API 基础 URL | `http://localhost:8000` |
+| `SQLBOT_USERNAME` | SQLBot 用户名 | - |
+| `SQLBOT_PASSWORD` | SQLBot 密码 | - |
+
+### 示例 .env
+
+```env
+# SQLBot API 配置
+SQLBOT_BASE_URL=http://localhost:8000
+SQLBOT_USERNAME=your_username
+SQLBOT_PASSWORD=your_password
 ```
-
-### 🛠️ 核心功能
-
-#### 1. 两个 MCP 工具
-
-- **get_token** - 获取 SQLBot 访问令牌
-- **get_database_list** - 获取数据源列表
-
-#### 2. 自动令牌管理
-
-- ✅ 令牌自动缓存
-- ✅ 过期自动刷新
-- ✅ 安全的错误处理
-
-#### 3. 双模式支持
-
-- ✅ **HTTP 模式** - 推荐，支持远程部署
-- ✅ **Stdio 模式** - 本地开发，性能好
-
-#### 4. 支持设置用户名密码
-
-通过环境变量设置：
-- `SQLBOT_USERNAME`
-- `SQLBOT_PASSWORD`
 
 ## 🚀 快速开始
 
