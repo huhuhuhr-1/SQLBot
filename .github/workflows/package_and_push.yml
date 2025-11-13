@@ -37,7 +37,7 @@ jobs:
           ref: ${{ github.ref_name }}
       - name: Install ossutil
         run: |
-          curl https://gosspublic.alicdn.com/ossutil/install.sh | sh
+          curl https://gosspublic.alicdn.com/ossutil/install.sh | bash
       - name: Prepare package files
         env:
           TAG_NAME: ${{ github.event.inputs.dockerImageTag }}
@@ -136,5 +136,6 @@ jobs:
             ossutil cp -rf ${package_offline} oss://$ALIYUN_OSS_BUCKET/sqlbot/${package_offline} --access-key-id=$ALIYUN_OSS_ACCESS_KEY --access-key-secret=$ALIYUN_OSS_ACCESS_SECRET --endpoint=${ALIYUN_OSS_BUCKET_ENDPOINT}          
             ossutil cp -rf ${package_online} oss://$ALIYUN_OSS_BUCKET/sqlbot/${package_online} --access-key-id=$ALIYUN_OSS_ACCESS_KEY --access-key-secret=$ALIYUN_OSS_ACCESS_SECRET --endpoint=${ALIYUN_OSS_BUCKET_ENDPOINT}
           fi
+
 
 
