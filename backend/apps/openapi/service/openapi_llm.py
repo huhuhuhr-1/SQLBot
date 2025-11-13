@@ -1063,8 +1063,7 @@ class LLMService:
         for chunk in self.run_task(in_chat, stream, finish_step):
             self.chunk_list.append(chunk)
 
-
-    def typewriter_effect(self, text: str, delay: float = 0.02, output_type: str = 'analysis-result') -> Iterator[
+    def typewriter_effect(self, text: str, delay: float = 0.01, output_type: str = 'analysis-result') -> Iterator[
         Dict[str, Any]]:
         """
         模拟打字机效果，逐字输出文本内容
@@ -1087,19 +1086,23 @@ class LLMService:
                 }
             ).decode() + '\n\n'
 
+    def enter_line(self) -> Iterator[
+        Dict[str, Any]]:
+        yield 'data: ' + orjson.dumps(
+            {
+                'content': '',
+                'reasoning_content': '\n\n',
+                'type': 'enter-line'  # 使用可变类型而不是固定的
+            }
+        ).decode() + '\n\n'
+
     def run_task(self, in_chat: bool = True, stream: bool = True,
                  finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART):
         json_result: Dict[str, Any] = {'success': True}
         try:
             SQLBotLogUtil.info("开始执行 run_task 方法")
             yield from self.typewriter_effect("任务规划：查看数据源信息->生成查询语句->查询数据->生成图表。")
-            yield 'data: ' + orjson.dumps(
-                {
-                    'content': '',
-                    'reasoning_content': '\n\n',
-                    'type': 'analysis-result'  # 使用可变类型而不是固定的
-                }
-            ).decode() + '\n\n'
+            yield from self.enter_line()
             if self.ds:
                 SQLBotLogUtil.info("处理数据源相关信息")
                 oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
@@ -1113,7 +1116,8 @@ class LLMService:
                                                                            CustomPromptTypeEnum.GENERATE_SQL,
                                                                            oid, ds_id)
                 yield from self.typewriter_effect(
-                    f"1:现在开始，查看数据源信息，数据源名称:{self.ds.name},即将生成SQL。")
+                    f"1:现在开始，查看数据源信息，数据源名称:{self.ds.name}。即将生成SQL,此步骤耗时比较长，请耐心等待。")
+                yield from self.enter_line()
             self.init_messages()
             SQLBotLogUtil.info("初始化消息完成")
 
@@ -1231,6 +1235,7 @@ class LLMService:
                 message_answer = f'根据SQL->[{sql}]查询数据'
             yield from self.typewriter_effect(
                 text=f"2:现在开始，{message_answer}", delay=0.001)
+            yield from self.enter_line()
             if not stream:
                 json_result['sql'] = sql
 
@@ -1264,6 +1269,7 @@ class LLMService:
             result = self.execute_sql(sql=real_execute_sql)
             self.save_sql_data(data_obj=result)
             yield from self.typewriter_effect(f"3:现在执行数据查询，共查询到数据{len(result.get('data'))}行。")
+            yield from self.enter_line()
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
             if not stream:
@@ -1297,6 +1303,7 @@ class LLMService:
                     yield json_result
                 return
             yield from self.typewriter_effect(f"4:现在开始，生成图表，图表类型:{chart_type}。")
+            yield from self.enter_line()
             # generate chart
             SQLBotLogUtil.info("生成图表")
             chart_res = self.generate_chart(chart_type)
