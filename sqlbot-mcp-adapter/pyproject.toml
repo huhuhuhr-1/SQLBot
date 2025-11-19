@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-sqlbot-mcp = "sqlbot_mcp_adapter.main:main"
+sqlbot-mcp = "src.sqlbot_mcp_adapter.main:main"
 
 [project.urls]
 Homepage = "https://github.com/sqlbot/sqlbot-mcp-adapter"
@@ -51,11 +51,11 @@ dev-dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = ["src"]
 
 [tool.ruff]
 target-version = "py311"
-exclude = ["alembic"]
+exclude = ["alembic", "logs", ".venv"]
 
 [tool.ruff.lint]
 select = [
