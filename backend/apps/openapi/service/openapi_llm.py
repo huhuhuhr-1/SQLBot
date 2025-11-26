@@ -98,27 +98,18 @@ class LLMService:
     last_execute_sql_error: str = None
 
     # modify by huhuhuhr 20250925 新增embedding
-    def __init__(self, session: Session, current_user: CurrentUser, chat_question: OpenChatQuestion,
+    def __init__(self, session: Session, current_user: CurrentUser,
+                 chat_question: OpenChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
                  embedding: bool = False, config: LLMConfig = None):
         # ✅ 确保是字符串，并设置环境变量 modify huhuhuhr
         os.environ["TIKTOKEN_CACHE_DIR"] = str(settings.TIKTOKEN_CACHE_DIR)
         self._encoder = tiktoken.get_encoding("o200k_base")
         self.chunk_list = []
-        # modify by huhuhuhr为当前实例创建独立的数据库会话
-        self.session = session_maker()
-        self.session.exec = self.session.exec if hasattr(self.session, "exec") else self.session.execute
         self.current_user = current_user
         self.current_assistant = current_assistant
         chat_id = chat_question.chat_id
-        # modify by huhuhuhr
-        try:
-            chat: Chat | None = self.session.get(Chat, chat_id)
-        except PendingRollbackError:
-            # 重置会话事务
-            self.session.rollback()
-            # 重新尝试查询
-            chat = None
+        chat: Chat | None = session.get(Chat, chat_id)
         if not chat:
             raise SingleMessageError(f"Chat with id {chat_id} not found")
         ds: CoreDatasource | AssistantOutDsSchema | None = None
@@ -199,7 +190,8 @@ class LLMService:
         except Exception as e:
             return True
 
-    def init_messages(self):
+    # modify by huhuhuhr
+    def init_messages(self, _session: Session):
         # modify by huhuhuhr chat的history开关
         if self.chat_question.history_open is False:
             last_sql_messages = []
@@ -214,7 +206,7 @@ class LLMService:
         if self.chat_question.my_promote is not None and self.chat_question.my_promote.strip() != '':
             self.sql_message.append(SystemMessage(
                 content=self.chat_question.sql_sys_question(self.ds.type, settings.GENERATE_SQL_QUERY_LIMIT_ENABLED)))
-            sys_promote = self.get_my_sys_prompt(payload=None)
+            sys_promote = self.get_my_sys_prompt(payload=None, _session=_session)
             self.sql_message.append(SystemMessage(content=sys_promote))
         else:
             if self.chat_question.my_schema is not None:
@@ -297,6 +289,7 @@ class LLMService:
         max_token_chars = settings.MAX_TOKEN_CHUNK  # 设置字符阈值，可根据需要调整
         self.chat_question.data = orjson.dumps(raw_data).decode()
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
+
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
         self.chat_question.terminologies = get_terminology_template(_session, self.chat_question.question,
                                                                     self.current_user.oid, ds_id)
@@ -360,7 +353,7 @@ class LLMService:
             # 输入 field + data modify by huhuhuhr
             analysis_msg.append(HumanMessage(content=human_prompt))
 
-        self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
+        self.current_logs[OperationEnum.ANALYSIS] = start_log(session=_session,
                                                               ai_modal_id=self.chat_question.ai_modal_id,
                                                               ai_modal_name=self.chat_question.ai_modal_name,
                                                               operate=OperationEnum.ANALYSIS,
@@ -647,7 +640,7 @@ class LLMService:
                 self.chat_question.custom_prompt = find_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL,
                                                                        oid, ds_id)
 
-            self.init_messages()
+            self.init_messages(_session=_session)
 
         if _error:
             raise _error
@@ -655,7 +648,8 @@ class LLMService:
     def generate_sql(self, _session: Session):
         # append current question
         self.sql_message.append(HumanMessage(
-            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),change_title = self.change_title)))
+            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                 change_title=self.change_title)))
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -1073,7 +1067,7 @@ class LLMService:
                     self.chat_question.custom_prompt = find_custom_prompts(_session,
                                                                            CustomPromptTypeEnum.GENERATE_SQL,
                                                                            oid, ds_id)
-                self.init_messages()
+                self.init_messages(_session=_session)
 
             # return id
             if in_chat:
@@ -1110,11 +1104,11 @@ class LLMService:
             if not connected:
                 raise SQLBotDBConnectionError('Connect DB failed')
 
-            # modify by huhuhuhr
+            # modify by huhuhuhr todo
             if self.chat_question.my_sql is not None and self.chat_question.my_sql.strip() != '':
-                sql_res = self.generate_sql_with_sql()
+                sql_res = self.generate_sql_with_sql(_session=_session)
             else:
-                sql_res = self.generate_sql()
+                sql_res = self.generate_sql(_session=_session)
 
             full_sql_text = ''
             for chunk in sql_res:
@@ -1133,8 +1127,10 @@ class LLMService:
             # return title
             if self.change_title:
                 llm_brief = self.get_brief_from_sql_answer(full_sql_text)
-                if (llm_brief and llm_brief != '')  or (self.chat_question.question and self.chat_question.question.strip() != ''):
-                    save_brief = llm_brief if (llm_brief and llm_brief != '') else self.chat_question.question.strip()[:20]
+                if (llm_brief and llm_brief != '') or (
+                        self.chat_question.question and self.chat_question.question.strip() != ''):
+                    save_brief = llm_brief if (llm_brief and llm_brief != '') else self.chat_question.question.strip()[
+                        :20]
                     brief = rename_chat(session=_session,
                                         rename_object=RenameChat(id=self.get_record().chat_id,
                                                                  brief=save_brief))
@@ -1222,7 +1218,8 @@ class LLMService:
                         for field in result.get('fields'):
                             _column_list.append(AxisObj(name=field, value=field))
 
-                        md_data, _fields_list = DataFormat.convert_object_array_for_pandas(_column_list, result.get('data'))
+                        md_data, _fields_list = DataFormat.convert_object_array_for_pandas(_column_list,
+                                                                                           result.get('data'))
 
                         # data, _fields_list, col_formats = self.format_pd_data(_column_list, result.get('data'))
 
@@ -1341,8 +1338,6 @@ class LLMService:
             self.finish(_session)
             session_maker.remove()
 
-
-
     def run_recommend_questions_task_async(self):
         self.future = executor.submit(self.run_recommend_questions_task_cache)
 
@@ -1368,6 +1363,7 @@ class LLMService:
             traceback.print_exc()
         finally:
             session_maker.remove()
+
     # modify by huhuhuhr
     def run_analysis_or_predict_task_async(self, session: Session, action_type: str, base_record: ChatRecord
                                            , dataStr: str = None, payload: AnalysisIntentPayload = None):
@@ -1385,11 +1381,11 @@ class LLMService:
     # modify by huhuhuhr
     def run_analysis_or_predict_task(self, action_type: str
                                      , dataStr: str = None, payload: AnalysisIntentPayload = None):
+        _session = None
         try:
             _session = session_maker()
             yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
 
-            # modify by huhuhuhr
             if action_type == 'analysis':
                 analysis_res = self.generate_analysis(dataStr=dataStr, payload=payload, _session=_session)
                 for chunk in analysis_res:
@@ -1488,10 +1484,10 @@ class LLMService:
         return sys_prompt
 
     # modify by huhuhuhr
-    def get_my_sys_prompt(self, payload):
+    def get_my_sys_prompt(self, payload, _session: Session):
         # 术语 modify by huhuhuhr
         if self.chat_question is not None and self.chat_question.terminologies is not None and self.chat_question.terminologies != '':
-            self.chat_question.terminologies = get_terminology_template(self.session,
+            self.chat_question.terminologies = get_terminology_template(_session,
                                                                         self.chat_question.question,
                                                                         self.current_user.oid)
         template_vars = {
@@ -1681,7 +1677,7 @@ class LLMService:
             }
 
     # modify by huhuhuhr
-    def generate_sql_with_sql(self):
+    def generate_sql_with_sql(self, _session: Session):
         # append current question
         self.sql_message.append(HumanMessage(
             self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))))
@@ -1694,7 +1690,7 @@ class LLMService:
         # add at 20250619 huhuhuhr
         self.print_Message(self.sql_message)
 
-        self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=self.session,
+        self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
                                                                   ai_modal_name=self.chat_question.ai_modal_name,
                                                                   operate=OperationEnum.GENERATE_SQL,
@@ -1716,14 +1712,14 @@ class LLMService:
 
         self.sql_message.append(AIMessage(full_sql_text))
 
-        self.current_logs[OperationEnum.GENERATE_SQL] = end_log(session=self.session,
+        self.current_logs[OperationEnum.GENERATE_SQL] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.GENERATE_SQL],
                                                                 full_message=[
                                                                     {'type': msg.type, 'content': msg.content}
                                                                     for msg in self.sql_message],
                                                                 reasoning_content=full_thinking_text,
                                                                 token_usage=token_usage)
-        self.record = save_sql_answer(session=self.session, record_id=self.record.id,
+        self.record = save_sql_answer(session=_session, record_id=self.record.id,
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
 
     # modify by huhuhuhr
@@ -1737,14 +1733,6 @@ class LLMService:
                 SQLBotLogUtil.info(f"\nHuman prompt [{i}]:\n {msg.content}\n")
             elif isinstance(msg, AIMessage):
                 SQLBotLogUtil.info(f"\nAI prompt [{i}]:\n {msg.content}\n\n")
-
-    def __del__(self):
-        # 确保在对象销毁时关闭数据库会话
-        try:
-            if hasattr(self, 'session') and self.session:
-                self.session.close()
-        except Exception as e:
-            SQLBotLogUtil.error(f"Error closing session in LLMService: {str(e)}")
 
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:

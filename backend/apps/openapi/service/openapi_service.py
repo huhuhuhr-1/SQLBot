@@ -96,7 +96,8 @@ def analysis_identify_intent(llm: BaseChatModel, question: str) -> AnalysisInten
         raise RuntimeError(f"意图识别失败：{str(e)}")
 
 
-async def merge_streaming_chunks(stream,
+async def merge_streaming_chunks(session: Session,
+                                 stream,
                                  llm_service: LLMService = None,
                                  payload: IntentPayload = None,
                                  chat_question: OpenChatQuestion = None) -> AsyncGenerator[str, None]:
@@ -203,7 +204,7 @@ async def merge_streaming_chunks(stream,
                                                                           'analysis') and payload.analysis != "":
                                         record.question = payload.analysis
                                         # 执行分析任务
-                                        llm_service.run_analysis_or_predict_task_async('analysis', record)
+                                        llm_service.run_analysis_or_predict_task_async(session, 'analysis', record)
                                         # 获取分析结果流
                                         analysis_stream = llm_service.await_result()
                                         # 处理分析流
@@ -214,7 +215,7 @@ async def merge_streaming_chunks(stream,
                                                                          'predict') and payload.predict != "":
                                         record.question = payload.predict
                                         # 执行分析任务
-                                        llm_service.run_analysis_or_predict_task_async('predict', record)
+                                        llm_service.run_analysis_or_predict_task_async(session, 'predict', record)
                                         # 获取分析结果流
                                         predict_stream = llm_service.await_result()
                                         # 处理分析流
@@ -445,6 +446,7 @@ def _create_clean_response(success_count: int, failed_count: int, total_count: i
 
 
 async def _run_analysis_or_predict(
+        session: SessionDep,
         current_user: CurrentUser,
         chat_record: OpenChat,
         current_assistant: CurrentAssistant,
@@ -522,6 +524,7 @@ async def _run_analysis_or_predict(
     try:
         payload = None
         llm_service = await LLMService.create(
+            session,
             current_user,
             request_question,
             current_assistant)
@@ -544,7 +547,7 @@ async def _run_analysis_or_predict(
         data_str = None
         if chat_record.chat_data_object is not None:
             data_str = json.dumps(chat_record.chat_data_object, ensure_ascii=False)
-        llm_service.run_analysis_or_predict_task_async(task_type, record, data_str, payload)
+        llm_service.run_analysis_or_predict_task_async(session, task_type, record, data_str, payload)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(

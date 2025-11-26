@@ -136,6 +136,7 @@ async def get_data_source_by_id_or_name(
              description="给定一个提示，模型将返回一条或多条预测消息",
              dependencies=[Depends(common_headers)])
 async def getChat(
+        session: SessionDep,
         current_user: CurrentUser,
         chat_question: OpenChatQuestion,
         current_assistant: CurrentAssistant
@@ -147,6 +148,7 @@ async def getChat(
     此接口遵循OpenAI Chat Completions API规范，支持流式响应。
 
     Args:
+        session: 数据库连接
         current_user: 当前认证用户信息
         chat_question: 包含问题内容的请求对象
         current_assistant: 当前使用的AI助手信息
@@ -177,6 +179,7 @@ async def getChat(
 
         # 创建LLM服务实例
         llm_service = await LLMService.create(
+            session,
             current_user,
             chat_question,
             current_assistant,
@@ -219,10 +222,12 @@ async def getChat(
         stream = llm_service.await_result()
         # 返回经过合并处理的流式响应
         return StreamingResponse(
-            merge_streaming_chunks(stream=stream,
-                                   llm_service=llm_service,
-                                   payload=payload,
-                                   chat_question=chat_question),
+            merge_streaming_chunks(
+                session=session,
+                stream=stream,
+                llm_service=llm_service,
+                payload=payload,
+                chat_question=chat_question),
             media_type="text/event-stream"
         )
     except Exception as e:
@@ -353,6 +358,7 @@ async def bind_data_source(session: SessionDep, current_user: CurrentUser, db_bi
 
 @router.post("/getRecommend", dependencies=[Depends(common_headers)])
 async def get_recommend(
+        session: SessionDep,
         current_user: CurrentUser,
         chat_record: OpenChat,
         current_assistant: CurrentAssistant
@@ -363,6 +369,7 @@ async def get_recommend(
     基于指定的聊天记录，异步生成推荐问题并以流式方式返回结果。
 
     Args:
+        session: 数据库连接
         current_user: 当前认证用户信息
         chat_record: 聊天对象，包含聊天记录ID
         current_assistant: 当前使用的AI助手信息
@@ -394,6 +401,7 @@ async def get_recommend(
 
         # 创建LLM服务实例并设置推荐问题模式
         llm_service = await LLMService.create(
+            session,
             current_user,
             chat_question,
             current_assistant,
@@ -466,6 +474,7 @@ async def clean_all_chat_record(
              description="对指定聊天记录进行分析",
              dependencies=[Depends(common_headers)])
 async def analysis_chat_record(
+        session: SessionDep,
         current_user: CurrentUser,
         chat_record: OpenChat,
         current_assistant: CurrentAssistant
@@ -474,6 +483,7 @@ async def analysis_chat_record(
     对指定聊天记录进行分析
 
     Args:
+        session: 数据库连接
         current_user: 当前认证用户信息
         chat_record: 聊天对象，包含聊天记录ID
         current_assistant: 当前使用的AI助手信息
@@ -481,13 +491,14 @@ async def analysis_chat_record(
     Returns:
         StreamingResponse: 流式响应，包含分析结果
     """
-    return await _run_analysis_or_predict(current_user, chat_record, current_assistant, 'analysis')
+    return await _run_analysis_or_predict(session, current_user, chat_record, current_assistant, 'analysis')
 
 
 @router.post("/predict", summary="预测",
              description="对指定聊天记录进行预测",
              dependencies=[Depends(common_headers)])
 async def predict_chat_record(
+        session: SessionDep,
         current_user: CurrentUser,
         chat_record: OpenChat,
         current_assistant: CurrentAssistant
@@ -496,6 +507,7 @@ async def predict_chat_record(
     对指定聊天记录进行预测
 
     Args:
+        session: 数据库连接
         current_user: 当前认证用户信息
         chat_record: 聊天对象，包含聊天记录ID
         current_assistant: 当前使用的AI助手信息
@@ -503,7 +515,7 @@ async def predict_chat_record(
     Returns:
         StreamingResponse: 流式响应，包含预测结果
     """
-    return await _run_analysis_or_predict(current_user, chat_record, current_assistant, 'predict')
+    return await _run_analysis_or_predict(session, current_user, chat_record, current_assistant, 'predict')
 
 
 @router.post("/uploadExcelAndCreateDatasource", response_model=CoreDatasource)
