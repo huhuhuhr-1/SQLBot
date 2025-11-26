@@ -639,7 +639,7 @@ class LLMService:
             if SQLBotLicenseUtil.valid():
                 self.chat_question.custom_prompt = find_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL,
                                                                        oid, ds_id)
-
+            # midify by huorong
             self.init_messages(_session=_session)
 
         if _error:
@@ -648,8 +648,7 @@ class LLMService:
     def generate_sql(self, _session: Session):
         # append current question
         self.sql_message.append(HumanMessage(
-            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                                 change_title=self.change_title)))
+            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),change_title = self.change_title)))
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -1066,7 +1065,8 @@ class LLMService:
                 if SQLBotLicenseUtil.valid():
                     self.chat_question.custom_prompt = find_custom_prompts(_session,
                                                                            CustomPromptTypeEnum.GENERATE_SQL,
-                                                                           oid, ds_id)
+                                                                       oid, ds_id)
+                # modify by huhuhuhr
                 self.init_messages(_session=_session)
 
             # return id
@@ -1104,7 +1104,7 @@ class LLMService:
             if not connected:
                 raise SQLBotDBConnectionError('Connect DB failed')
 
-            # modify by huhuhuhr todo
+            # modify by huhuhuhr
             if self.chat_question.my_sql is not None and self.chat_question.my_sql.strip() != '':
                 sql_res = self.generate_sql_with_sql(_session=_session)
             else:
@@ -1127,10 +1127,8 @@ class LLMService:
             # return title
             if self.change_title:
                 llm_brief = self.get_brief_from_sql_answer(full_sql_text)
-                if (llm_brief and llm_brief != '') or (
-                        self.chat_question.question and self.chat_question.question.strip() != ''):
-                    save_brief = llm_brief if (llm_brief and llm_brief != '') else self.chat_question.question.strip()[
-                        :20]
+                if (llm_brief and llm_brief != '')  or (self.chat_question.question and self.chat_question.question.strip() != ''):
+                    save_brief = llm_brief if (llm_brief and llm_brief != '') else self.chat_question.question.strip()[:20]
                     brief = rename_chat(session=_session,
                                         rename_object=RenameChat(id=self.get_record().chat_id,
                                                                  brief=save_brief))
@@ -1218,8 +1216,7 @@ class LLMService:
                         for field in result.get('fields'):
                             _column_list.append(AxisObj(name=field, value=field))
 
-                        md_data, _fields_list = DataFormat.convert_object_array_for_pandas(_column_list,
-                                                                                           result.get('data'))
+                        md_data, _fields_list = DataFormat.convert_object_array_for_pandas(_column_list, result.get('data'))
 
                         # data, _fields_list, col_formats = self.format_pd_data(_column_list, result.get('data'))
 
@@ -1337,6 +1334,8 @@ class LLMService:
         finally:
             self.finish(_session)
             session_maker.remove()
+
+
 
     def run_recommend_questions_task_async(self):
         self.future = executor.submit(self.run_recommend_questions_task_cache)
