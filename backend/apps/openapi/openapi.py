@@ -215,7 +215,7 @@ async def getChat(
             payload = None
 
         # 初始化聊天记录
-        llm_service.init_record()
+        llm_service.init_record(session=session)
 
         # 异步运行任务
         llm_service.run_task_async()
@@ -263,7 +263,7 @@ async def get_data(session: SessionDep, record_chat: OpenChat):
     def _fetch_chart_data() -> dict:
         """内部函数：执行数据库查询获取图表数据"""
         return get_chat_chart_data(
-            chart_record_id=record_chat.chat_record_id,
+            chat_record_id=record_chat.chat_record_id,
             session=session
         )
 

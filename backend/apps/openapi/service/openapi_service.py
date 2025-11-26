@@ -2,19 +2,21 @@ import json
 import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, AsyncGenerator, Tuple, List
-from langchain.chat_models.base import BaseChatModel
+
 import orjson
 from fastapi import HTTPException
+from langchain.chat_models.base import BaseChatModel
 from langchain_core.messages import SystemMessage, HumanMessage
 from sqlalchemy import and_
 from sqlmodel import select
+from starlette.responses import StreamingResponse
 
 from apps.chat.curd.chat import get_chat_chart_data, delete_chat, list_chats
-from apps.chat.models.chat_model import ChatRecord, Chat, ChatQuestion
+from apps.chat.models.chat_model import ChatRecord, Chat
 from apps.openapi.models.openapiModels import IntentPayload, OpenChatQuestion, OpenClean, OpenChat, \
     AnalysisIntentPayload
 from apps.openapi.service.openapi_llm import LLMService
-from apps.openapi.service.openapi_prompt import chat_sys_intention, analysis_intention_question, analysis_question
+from apps.openapi.service.openapi_prompt import chat_sys_intention, analysis_intention_question
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.config import settings
 from common.core.db import get_session
@@ -22,7 +24,6 @@ from common.core.deps import SessionDep, CurrentUser, CurrentAssistant
 from common.core.deps import Trans
 from common.core.security import create_access_token
 from common.utils.utils import SQLBotLogUtil
-from starlette.responses import StreamingResponse
 
 
 def validate_user_status(user: BaseUserDTO, trans: Trans) -> None:
@@ -160,7 +161,7 @@ async def merge_streaming_chunks(session: SessionDep,
                             for session in get_session():
                                 # 调用内部的 _fetch_chart_data 函数
                                 chart_data = get_chat_chart_data(
-                                    chart_record_id=recorded_id,
+                                    chat_record_id=recorded_id,
                                     session=session
                                 )
 
