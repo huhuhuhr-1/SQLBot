@@ -96,7 +96,7 @@ def analysis_identify_intent(llm: BaseChatModel, question: str) -> AnalysisInten
         raise RuntimeError(f"意图识别失败：{str(e)}")
 
 
-async def merge_streaming_chunks(session: Session,
+async def merge_streaming_chunks(session: SessionDep,
                                  stream,
                                  llm_service: LLMService = None,
                                  payload: IntentPayload = None,
@@ -112,6 +112,7 @@ async def merge_streaming_chunks(session: Session,
     5. 当收到 'finish' 类型时，调用 get_data 获取图表数据并发送
 
     Args:
+        session: 数据库连接
         chat_question: 用户问题
         payload: 意图识别
         stream: 输入的流式数据生成器
