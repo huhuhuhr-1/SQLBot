@@ -31,11 +31,10 @@ WORKDIR ${APP_HOME}
 
 COPY  --from=sqlbot-ui-builder ${UI_HOME} ${UI_HOME}
 # Install dependencies
-RUN test -f "./uv.lock" && \
-    --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=backend/uv.lock,target=uv.lock \
     --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project || echo "uv.lock file not found, skipping intermediate-layers"
+    sh -c "test -f './uv.lock' && uv sync --frozen --no-install-project || echo 'uv.lock file not found, skipping intermediate-layers'"
 
 COPY ./backend ${APP_HOME}
 
@@ -78,10 +77,11 @@ ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
 
 ENV POSTGRES_DB=sqlbot
 ENV POSTGRES_USER=root
+# 注意：POSTGRES_PASSWORD 应该通过环境变量或 secrets 传入
 ENV POSTGRES_PASSWORD=Password123@pg
 
 # Add Oracle instant client path to ENV
-ENV LD_LIBRARY_PATH="/opt/sqlbot/db_client/oracle_instant_client:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH=/opt/sqlbot/db_client/oracle_instant_client
 
 # Copy necessary files from builder
 COPY start.sh /opt/sqlbot/app/start.sh
