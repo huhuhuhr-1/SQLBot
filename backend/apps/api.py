@@ -1,15 +1,19 @@
 from fastapi import APIRouter
 
+from apps.openapi import openapi
 from apps.chat.api import chat
 from apps.dashboard.api import dashboard_api
 from apps.data_training.api import data_training
 from apps.datasource.api import datasource, table_relation, recommended_problem
 from apps.mcp import mcp
+from apps.openapi.demo import demo
 from apps.system.api import login, user, aimodel, workspace, assistant
 from apps.terminology.api import terminology
 from apps.settings.api import base
 
 api_router = APIRouter()
+api_router.include_router(openapi.router)
+api_router.include_router(demo.router)
 api_router.include_router(login.router)
 api_router.include_router(user.router)
 api_router.include_router(workspace.router)

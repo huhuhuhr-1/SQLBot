@@ -183,6 +183,22 @@ class AiModelQuestion(BaseModel):
     custom_prompt: str = ""
     error_msg: str = ""
 
+    def sql_sys_question_with_schema(self, mySchema: str = None):
+        if mySchema:
+            tmp_schema = mySchema
+        else:
+            tmp_schema = self.db_schema
+        return get_sql_template()['system'].format(engine=self.engine, schema=tmp_schema, question=self.question,
+                                                   lang=self.lang, terminologies=self.terminologies,
+                                                   data_training=self.data_training)
+
+    def analysis_user_question_with_schema(self, mySchema: str = None):
+        if mySchema:
+            tmp_schema = mySchema
+        else:
+            tmp_schema = self.fields
+        return get_analysis_template()['user'].format(fields=tmp_schema, data=self.data)
+
     def sql_sys_question(self, db_type: Union[str, DB], enable_query_limit: bool = True):
         _sql_template = get_sql_example_template(db_type)
         _base_template = get_sql_template()

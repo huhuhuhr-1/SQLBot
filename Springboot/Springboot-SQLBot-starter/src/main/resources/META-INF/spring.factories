@@ -1,0 +1,5 @@
+# SQLBot Spring Boot Starter Auto-Configuration
+# 适用于Spring Boot 2.x版本
+
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+com.sqlbot.springboot.starter.SQLBotAutoConfiguration

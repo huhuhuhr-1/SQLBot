@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>API测试页面 - SQLBot</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .test-section { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-btn { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .test-btn:hover { background: #0056b3; }
+        .result { margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; border-left: 4px solid #007bff; }
+        .back-link { display: inline-block; padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; margin-bottom: 20px; }
+        input { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; }
+        label { display: block; margin: 10px 0 5px 0; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← 返回首页</a>
+        <h1>🧪 API测试页面</h1>
+        <p>测试SQLBot核心API接口功能</p>
+        
+        <div class="test-section">
+            <h3>🔐 用户认证测试</h3>
+            <label>用户名: <input type="text" id="username" value="admin"></label>
+            <label>密码: <input type="password" id="password" value="SQLBot@123456"></label>
+            <button class="test-btn" onclick="testLogin()">测试登录</button>
+            <div id="loginResult" class="result">等待测试...</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📊 数据源测试</h3>
+            <button class="test-btn" onclick="testGetDataSources()">获取数据源</button>
+            <div id="dataSourceResult" class="result">等待测试...</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>💬 聊天测试</h3>
+            <label>数据源ID: <input type="number" id="dbId" value="1"></label>
+            <label>问题: <input type="text" id="question" value="查询用户数据"></label>
+            <button class="test-btn" onclick="testChat()">测试聊天</button>
+            <div id="chatResult" class="result">等待测试...</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📈 数据获取测试</h3>
+            <label>聊天记录ID: <input type="number" id="chatRecordId" value="123"></label>
+            <button class="test-btn" onclick="testGetData()">获取数据</button>
+            <div id="getDataResult" class="result">等待测试...</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>💡 推荐测试</h3>
+            <label>聊天记录ID: <input type="number" id="recommendChatRecordId" value="123"></label>
+            <button class="test-btn" onclick="testRecommend()">获取推荐</button>
+            <div id="recommendResult" class="result">等待测试...</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🧹 清理测试</h3>
+            <label>聊天ID列表: <input type="text" id="chatIds" value="1,2,3"></label>
+            <button class="test-btn" onclick="testClean()">测试清理</button>
+            <div id="cleanResult" class="result">等待测试...</div>
+        </div>
+    </div>
+    
+    <script>
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/test/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, createChat: true })
+                });
+                
+                const result = await response.json();
+                document.getElementById('loginResult').innerHTML = '<strong>✅ 成功:</strong><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('loginResult').innerHTML = '<strong>❌ 错误:</strong> ' + error.message;
+            }
+        }
+        
+        async function testGetDataSources() {
+            try {
+                const response = await fetch('/api/test/datasources');
+                const result = await response.json();
+                document.getElementById('dataSourceResult').innerHTML = '<strong>✅ 成功:</strong><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('dataSourceResult').innerHTML = '<strong>❌ 错误:</strong> ' + error.message;
+            }
+        }
+        
+        async function testChat() {
+            const dbId = document.getElementById('dbId').value;
+            const question = document.getElementById('question').value;
+            
+            try {
+                const response = await fetch('/api/test/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dbId: parseInt(dbId), question, chatId: 'test_chat_' + Date.now() })
+                });
+                
+                if (response.ok) {
+                    document.getElementById('chatResult').innerHTML = '<strong>✅ 成功:</strong> SSE连接已建立，请查看控制台';
+                } else {
+                    const result = await response.json();
+                    document.getElementById('chatResult').innerHTML = '<strong>⚠️ 响应:</strong><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+                }
+            } catch (error) {
+                document.getElementById('chatResult').innerHTML = '<strong>❌ 错误:</strong> ' + error.message;
+            }
+        }
+        
+        async function testGetData() {
+            const chatRecordId = document.getElementById('chatRecordId').value;
+            
+            try {
+                const response = await fetch('/api/test/getData', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chatRecordId: parseInt(chatRecordId) })
+                });
+                
+                const result = await response.json();
+                document.getElementById('getDataResult').innerHTML = '<strong>✅ 成功:</strong><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('getDataResult').innerHTML = '<strong>❌ 错误:</strong> ' + error.message;
+            }
+        }
+        
+        async function testRecommend() {
+            const chatRecordId = document.getElementById('recommendChatRecordId').value;
+            
+            try {
+                const response = await fetch('/api/test/recommend', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chatRecordId: parseInt(chatRecordId) })
+                });
+                
+                if (response.ok) {
+                    document.getElementById('recommendResult').innerHTML = '<strong>✅ 成功:</strong> SSE连接已建立，请查看控制台';
+                } else {
+                    const result = await response.json();
+                    document.getElementById('recommendResult').innerHTML = '<strong>⚠️ 响应:</strong><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+                }
+            } catch (error) {
+                document.getElementById('recommendResult').innerHTML = '<strong>❌ 错误:</strong> ' + error.message;
+            }
+        }
+        
+        async function testClean() {
+            const chatIds = document.getElementById('chatIds').value.split(',').map(id => parseInt(id.trim()));
+            
+            try {
+                const response = await fetch('/api/test/clean', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chatIds })
+                });
+                
+                const result = await response.json();
+                document.getElementById('cleanResult').innerHTML = '<strong>✅ 成功:</strong><pre>' + JSON.stringify(result, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('cleanResult').innerHTML = '<strong>❌ 错误:</strong> ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,5 +1,7 @@
+import pathlib
 import secrets
 from typing import Annotated, Any, Literal
+import os
 
 from pydantic import (
     AnyUrl,
@@ -23,7 +25,7 @@ def parse_cors(v: Any) -> list[str] | str:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Use top level .env file (one level above ./backend/)
-        env_file="../.env",
+        env_file=pathlib.Path(__file__).resolve().parent.parent.parent / ".env",
         env_ignore_empty=True,
         extra="ignore",
     )
@@ -104,10 +106,14 @@ class Settings(BaseSettings):
     DEFAULT_REASONING_CONTENT_START: str = '<think>'
     DEFAULT_REASONING_CONTENT_END: str = '</think>'
 
-    PG_POOL_SIZE: int = 20
-    PG_MAX_OVERFLOW: int = 30
+    PG_POOL_SIZE: int = 50
+    PG_MAX_OVERFLOW: int = 100
     PG_POOL_RECYCLE: int = 3600
+    PG_POOL_TIMEOUT: int = 60
     PG_POOL_PRE_PING: bool = True
+    # qian wen 32k
+    MAX_TOKEN_CHUNK: int = 30000
+    TIKTOKEN_CACHE_DIR: str = '/opt/sqlbot/app/apps/tiktoken_cache'
 
     TABLE_EMBEDDING_ENABLED: bool = True
     TABLE_EMBEDDING_COUNT: int = 10

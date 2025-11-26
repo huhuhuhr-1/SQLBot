@@ -1,0 +1,216 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sqlbot
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sqlbot-config
+  namespace: sqlbot
+data:
+  # Database configuration - SQLBot includes PostgreSQL internally
+  POSTGRES_SERVER: "localhost"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "sqlbot"
+  POSTGRES_USER: "root"
+  POSTGRES_PASSWORD: "Password123@pg"
+  # Project basic settings
+  PROJECT_NAME: "SQLBot"
+  DEFAULT_PWD: "SQLBot@123456"
+  # MCP settings
+  SERVER_IMAGE_HOST: "http://YOUR_SERVE_IP:MCP_PORT/images/"
+  # Auth & Security
+  SECRET_KEY: "y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s"
+  # CORS settings
+  BACKEND_CORS_ORIGINS: "http://localhost,http://localhost:5173,https://localhost,https://localhost:5173"
+  # Logging
+  LOG_LEVEL: "INFO"
+  SQL_DEBUG: "False"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sqlbot
+  namespace: sqlbot
+  labels:
+    app: sqlbot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sqlbot
+  template:
+    metadata:
+      labels:
+        app: sqlbot
+    spec:
+      containers:
+      - name: sqlbot
+        image: dataease/sqlbot:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: api
+        - containerPort: 8001
+          name: api-2
+        - containerPort: 5432  # PostgreSQL port
+          name: postgres
+        - containerPort: 3000  # Additional port
+          name: web
+        envFrom:
+        - configMapRef:
+            name: sqlbot-config
+        env:
+          # Ensure PostgreSQL runs in the same container
+          - name: POSTGRES_SERVER
+            value: "localhost"
+        volumeMounts:
+        - name: excel-data
+          mountPath: /opt/sqlbot/data/excel
+        - name: file-data
+          mountPath: /opt/sqlbot/data/file
+        - name: images-data
+          mountPath: /opt/sqlbot/images
+        - name: logs-data
+          mountPath: /opt/sqlbot/app/logs
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data  # PostgreSQL data directory
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 90  # Increased delay for PostgreSQL to start
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 60  # Increased delay for PostgreSQL to start
+          periodSeconds: 10
+      volumes:
+      - name: excel-data
+        persistentVolumeClaim:
+          claimName: sqlbot-excel-pvc
+      - name: file-data
+        persistentVolumeClaim:
+          claimName: sqlbot-file-pvc
+      - name: images-data
+        persistentVolumeClaim:
+          claimName: sqlbot-images-pvc
+      - name: logs-data
+        persistentVolumeClaim:
+          claimName: sqlbot-logs-pvc
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: sqlbot-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sqlbot-service
+  namespace: sqlbot
+  labels:
+    app: sqlbot
+spec:
+  selector:
+    app: sqlbot
+  ports:
+    - name: api
+      port: 8000
+      targetPort: 8000
+      nodePort: 30000
+    - name: api-2
+      port: 8001
+      targetPort: 8001
+      nodePort: 30001
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      nodePort: 30002  # PostgreSQL external access (if needed)
+    - name: web
+      port: 3000
+      targetPort: 3000
+      nodePort: 30003
+  type: NodePort
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sqlbot-ingress
+  namespace: sqlbot
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: sqlbot.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sqlbot-service
+            port:
+              number: 8000
+---
+# PersistentVolumeClaims for data persistence
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sqlbot-excel-pvc
+  namespace: sqlbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sqlbot-file-pvc
+  namespace: sqlbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sqlbot-images-pvc
+  namespace: sqlbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sqlbot-logs-pvc
+  namespace: sqlbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sqlbot-postgres-pvc
+  namespace: sqlbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi

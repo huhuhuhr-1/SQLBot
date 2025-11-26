@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>SSE 日志格式化器（按 type 合并 + JSON 智能修复）</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            background: #f9fafb;
+            margin: 0;
+            padding: 20px;
+            color: #0f172a;
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            padding: 10px;
+            background: #fff;
+        }
+
+        button {
+            margin: 8px 8px 8px 0;
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            cursor: pointer;
+            background: #fff;
+        }
+
+        button:hover {
+            box-shadow: 0 2px 10px rgba(0, 0, 0, .05);
+        }
+
+        .output {
+            margin-top: 20px;
+            display: grid;
+            gap: 16px;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .card {
+            background: #fff;
+            padding: 14px;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 22px;
+        }
+
+        h3 {
+            margin: 10px 0 8px;
+            font-size: 16px;
+        }
+
+        h4 {
+            margin: 6px 0 6px;
+            font-size: 14px;
+            color: #374151;
+        }
+
+        .group {
+            margin: 12px 0 18px;
+        }
+
+        .group-title {
+            margin: 0 0 8px;
+            font-size: 15px;
+            color: #111827;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            font-size: 12px;
+            border-radius: 999px;
+            background: #eef2ff;
+            color: #3730a3;
+            border: 1px solid #e0e7ff;
+        }
+
+        .segments {
+            display: grid;
+            gap: 8px;
+        }
+
+        .seg {
+            border: 1px solid #eef2f7;
+            border-radius: 10px;
+            background: #fff;
+        }
+
+        .seg-hd {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .seg-idx {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        pre {
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 12px;
+            border-radius: 0 0 10px 10px;
+            overflow: auto;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin: 0;
+        }
+
+        .muted {
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+<h1>SSE 日志格式化器</h1>
+<p>现在：<b>仅合并相同 <code>type</code> 的 content</b>，每个 type 分组后再做 JSON 拆分与修复。还支持修复破碎键名（如 <code>"
+    t ables "</code> → <code>"tables"</code>）、SQL 关键字断裂（<code>LIM IT</code> → <code>LIMIT</code>）。</p>
+
+<textarea id="raw" placeholder="粘贴日志（data:{...} 或 { ... }，允许空行）"></textarea>
+<div>
+    <button id="btnFormat">格式化</button>
+    <button id="btnExample">示例</button>
+    <button id="btnClear">清空</button>
+</div>
+
+<div class="output">
+    <div class="card">
+        <h3>合并 reasoning_content</h3>
+        <pre id="outReason">—</pre>
+
+        <h3>合并 content（按 type 分组 → 组内合并 → 拆分与修复）</h3>
+        <div id="outContent" class="muted">—</div>
+    </div>
+    <div class="card">
+        <h3>原始 JSON 数组</h3>
+        <pre id="outJSON">[]</pre>
+    </div>
+</div>
+
+<script>
+    const raw = document.getElementById('raw');
+    const outReason = document.getElementById('outReason');
+    const outContent = document.getElementById('outContent');
+    const outJSON = document.getElementById('outJSON');
+
+    function parseSSE(text) {
+        const events = [];
+        const lines = (text || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        for (const line of lines) {
+            const m = line.startsWith('data:') ? line.slice(5).trim() : line;
+            try {
+                events.push(JSON.parse(m));
+            } catch {
+            }
+        }
+        const reasoning = events.map(ev => ev.reasoning_content).filter(x => typeof x === 'string' && x.length > 0).join('');
+        return {events, reasoning};
+    }
+
+    // 按 type 分组 content
+    function groupContentsByType(events) {
+        const groups = new Map();
+        for (const ev of events) {
+            const t = (ev && typeof ev.type === 'string') ? ev.type : 'unknown';
+            const c = (ev && typeof ev.content === 'string') ? ev.content : '';
+            if (!c || !c.trim()) continue;
+            if (!groups.has(t)) groups.set(t, []);
+            groups.get(t).push(c);
+        }
+        return groups; // Map<type, string[]>
+    }
+
+    // 从合并后的字符串中按花括号配对切出多个 JSON 片段
+    function splitJsonSegments(merged) {
+        const segments = [];
+        let buf = '';
+        let depth = 0;
+        let inString = false;
+        let esc = false;
+        for (let i = 0; i < merged.length; i++) {
+            const ch = merged[i];
+            buf += ch;
+            if (esc) {
+                esc = false;
+                continue;
+            }
+            if (ch === '\\') {
+                esc = true;
+                continue;
+            }
+            if (ch === '"') {
+                inString = !inString;
+                continue;
+            }
+            if (!inString) {
+                if (ch === '{') depth++;
+                if (ch === '}') {
+                    depth--;
+                    if (depth === 0) {
+                        segments.push(buf.trim());
+                        buf = '';
+                    }
+                }
+            }
+        }
+        return segments;
+    }
+
+    // 轻量 SQL 识别
+    function isLikelySQL(s) {
+        return /\bselect\b|\binsert\b|\bupdate\b|\bdelete\b|\bwith\b|\border\s+by\b|\blimit\b/i.test(s);
+    }
+
+    // 智能修复 JSON 文本（宽松）
+    function repairJsonText(text) {
+        return (text || '')
+            .replace(/\r|\n/g, ' ')        // 去换行
+            .replace(/\s{2,}/g, ' ')       // 合并多空格
+            .replace(/\"\s+([^\"\\]*?)\s+\"/g, '"$1"') // 去掉引号内多余空格 → " t ables " → "tables"
+            // 常见 SQL 断裂
+            .replace(/LIM\s*IT/gi, 'LIMIT')
+            .replace(/OR\s*DER\s*\s*BY/gi, 'ORDER BY')
+            // 合并数字中间空格：100 0 → 1000
+            .replace(/(\d)\s+(\d)/g, '$1$2')
+            // 零散词修复（按需补充）
+            .replace(/ret\s+ail/gi, 'retail')
+            .replace(/t\s+ables/gi, 'tables')
+            .trim();
+    }
+
+    function tryParseJsonLoose(text) {
+        const fixed = repairJsonText(text);
+        try {
+            return {ok: true, value: JSON.parse(fixed)};
+        } catch {
+        }
+        return {ok: false, value: fixed};
+    }
+
+    function render({events, reasoning}) {
+        outReason.textContent = reasoning || '—';
+        outContent.innerHTML = '';
+
+        const groups = groupContentsByType(events);
+        if (groups.size === 0) {
+            outContent.textContent = '—';
+            return;
+        }
+
+        for (const [type, arr] of groups.entries()) {
+            const groupEl = document.createElement('div');
+            groupEl.className = 'group';
+
+            const title = document.createElement('div');
+            title.className = 'group-title';
+            title.innerHTML = `类型：<span class="badge">${escapeHtml(type)}</span>`;
+            groupEl.appendChild(title);
+
+            // 组内先合并（去掉换行），再切 JSON 片段
+            const merged = arr.join(' ').replace(/[\r\n]+/g, ' ');
+            const jsonSegs = splitJsonSegments(merged);
+
+            const segWrap = document.createElement('div');
+            segWrap.className = 'segments';
+
+            if (jsonSegs.length === 0) {
+                // 没有 JSON，按 SQL / 文本展示整个 merged
+                const segEl = renderSegment(merged, 1);
+                segWrap.appendChild(segEl);
+            } else {
+                jsonSegs.forEach((seg, i) => {
+                    const segEl = renderSegment(seg, i + 1, /*forceJson*/ true);
+                    segWrap.appendChild(segEl);
+                });
+            }
+
+            groupEl.appendChild(segWrap);
+            outContent.appendChild(groupEl);
+        }
+
+        outJSON.textContent = JSON.stringify(events, null, 2);
+    }
+
+    function renderSegment(text, idx, forceJson = false) {
+        const wrap = document.createElement('div');
+        wrap.className = 'seg';
+        const hd = document.createElement('div');
+        hd.className = 'seg-hd';
+
+        let kind = 'TEXT';
+        let content = text;
+        if (forceJson) {
+            const p = tryParseJsonLoose(text);
+            if (p.ok) {
+                kind = 'JSON';
+                content = JSON.stringify(p.value, null, 2);
+            } else {
+                kind = 'JSON?';
+                content = p.value;
+            }
+        } else if (isLikelySQL(text)) {
+            kind = 'SQL';
+            content = text.trim();
+        } else {
+            // 尝试：如果像 JSON 也试着修复
+            if (/^\s*\{[\s\S]*\}\s*$/.test(text)) {
+                const p = tryParseJsonLoose(text);
+                if (p.ok) {
+                    kind = 'JSON';
+                    content = JSON.stringify(p.value, null, 2);
+                } else {
+                    kind = 'JSON?';
+                    content = p.value;
+                }
+            } else {
+                content = text.trim();
+            }
+        }
+
+        const idxEl = document.createElement('div');
+        idxEl.className = 'seg-idx';
+        idxEl.textContent = `#${idx}`;
+        const badge = document.createElement('div');
+        badge.className = 'badge';
+        badge.textContent = kind;
+        hd.appendChild(idxEl);
+        hd.appendChild(badge);
+
+        const pre = document.createElement('pre');
+        pre.textContent = content;
+        wrap.appendChild(hd);
+        wrap.appendChild(pre);
+        return wrap;
+    }
+
+    function escapeHtml(s) {
+        return (s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+    }
+
+    document.getElementById('btnFormat').onclick = () => {
+        render(parseSSE(raw.value));
+    };
+    document.getElementById('btnClear').onclick = () => {
+        raw.value = '';
+        render({events: [], reasoning: ''});
+    };
+    document.getElementById('btnExample').onclick = () => {
+        raw.value = `data:{"type":"sql-result","content":"{\\n   \\\" success \\\" : true, \\\" sql \\\" : \\\" SELECT \\\\\\\" full _name \\\\\\\" AS \\\\\\\" full _name \\\\\\\", \\\" t ables \\\" : [ \\\" users \\\" ] }"}
+
+data:{"type":"sql-result","content":"{ \\\" success \\\" : false }"}
+
+data:{"type":"table-meta","content":"{\\n  \\\"type\\\": \\\"table\\\", \\\"title\\\": \\\"人员列表\\\"\\n}"}`;
+        render(parseSSE(raw.value));
+    };
+
+    render({events: [], reasoning: ''});
+</script>
+</body>
+</html>
