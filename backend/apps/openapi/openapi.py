@@ -197,9 +197,38 @@ async def chat(
             llm = await create_llm()
 
             async def _stream(queue):
-                while True:
-                    data = await queue.get()
-                    yield 'data:' + orjson.dumps(data).decode() + '\n\n'
+                try:
+                    while True:
+                        try:
+                            # 使用带超时的get，避免无限阻塞
+                            data = await asyncio.wait_for(queue.get(), timeout=1.0)
+                        except asyncio.TimeoutError:
+                            # 超时后检查队列状态，如果队列为空则继续等待
+                            continue
+
+                        yield 'data:' + orjson.dumps(data).decode() + '\n\n'
+
+                        # 检查是否收到finish类型，如果是则结束流式响应
+                        if isinstance(data, dict) and data.get('type') == 'finish':
+                            break
+                        elif isinstance(data, dict) and data.get('type') == 'error':
+                            # 遇到错误也结束
+                            break
+                        else:
+                            # 正常数据，继续循环
+                            continue
+
+                except GeneratorExit:
+                    # 生成器被外部终止 - 使用return结束整个stream函数
+                    return
+                except Exception as e:
+                    # 发送错误信息并结束 - 使用return结束整个stream函数
+                    error_data = {
+                        "type": "error",
+                        "content": f"Stream error: {str(e)}"
+                    }
+                    yield 'data:' + orjson.dumps(error_data).decode() + '\n\n'
+                    return
 
             def run_task(context,
                          current_user,
