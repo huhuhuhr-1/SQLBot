@@ -1,6 +1,7 @@
 import concurrent
 import json
 import os
+import re
 import traceback
 import urllib.parse
 import warnings
@@ -15,7 +16,6 @@ import pandas as pd
 import requests
 import sqlparse
 # modify by huhuhuhr
-from sqlalchemy.exc import PendingRollbackError
 import tiktoken
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
@@ -35,8 +35,8 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_old_questions, save_analysis_predict_record, rename_chat, get_chart_config, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error, format_json_data, format_chart_fields
-from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
-    ChatFinishStep, AxisObj
+from apps.chat.models.chat_model import ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
+    ChatFinishStep, AxisObj, ChatQuestion
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
@@ -44,7 +44,7 @@ from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection
 # modify by huhuhuhr
-from apps.openapi.dao.openapiDao import select_one, get_datasource_by_name_or_id
+from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id
 from apps.openapi.models.openapiModels import AnalysisIntentPayload, DataSourceRequest
 from apps.openapi.models.openapiModels import OpenChatQuestion
 from apps.openapi.service.openapi_prompt import analysis_question
@@ -149,7 +149,7 @@ class LLMService:
                         del self.config.additional_params['extra_body']['enable_thinking']
 
         #  modify by huhuhuhr 20250923
-        if chat_question.no_reasoning is True:
+        if chat_question.no_reasoning:
             SQLBotLogUtil.info("qwen no reasoning")
             # 确保 additional_params 存在
             if self.config.additional_params:
@@ -245,7 +245,23 @@ class LLMService:
                     self.chart_message.append(_msg)
 
     def init_record(self, session: Session) -> ChatRecord:
-        self.record = save_question(session=session, current_user=self.current_user, question=self.chat_question)
+        # modify by huhuhuhr
+        question=ChatQuestion(
+            # 基类 AiModelQuestion 的属性
+            question=self.chat_question.question,
+            ai_modal_id=self.chat_question.ai_modal_id,
+            ai_modal_name=self.chat_question.ai_modal_name,
+            engine=self.chat_question.engine,
+            db_schema=self.chat_question.db_schema,
+            sql=self.chat_question.sql,
+            rule=self.chat_question.rule,
+            fields=self.chat_question.fields,
+            data=self.chat_question.data,
+            lang=self.chat_question.lang,
+            # ChatQuestion 特有的属性
+            chat_id=self.chat_question.chat_id
+        )
+        self.record = save_question(session=session, current_user=self.current_user, question=question)
         return self.record
 
     def get_record(self):
@@ -261,7 +277,7 @@ class LLMService:
     # modify by huhuhuhr
     def generate_analysis(self, _session: Session,
                           dataStr: str = None, payload: AnalysisIntentPayload = None):
-        fields = self.get_fields_from_chart()
+        fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
         # modify by huhuhuhr 只分析数据的时候由于没有上级的recordId,所以不会有chat无法提取fields
         if self.chat_question.fields is None or self.chat_question.fields == '[]':
@@ -297,7 +313,7 @@ class LLMService:
             self.chat_question.custom_prompt = find_custom_prompts(_session, CustomPromptTypeEnum.ANALYSIS,
                                                                    self.current_user.oid, ds_id)
         # 系统提示词 modify by huhuhuhr
-        sys_prompt = self.get_analysis_sys_prompt(payload)
+        sys_prompt = self.get_analysis_sys_prompt(_session=_session,payload=payload)
         analysis_msg.append(SystemMessage(content=sys_prompt))
         if raw_data:
             # 将数据转换为JSON字符串以估算字符数
@@ -366,7 +382,7 @@ class LLMService:
         full_thinking_text = ''
         full_analysis_text = ''
         # modify by huhuhuhr 打印分析
-        self.print_Message(analysis_msg)
+        self.print_message(analysis_msg)
         token_usage = {}
         res = process_stream(self.stream_with_think(self.llm.stream(analysis_msg)), token_usage)
         for chunk in res:
@@ -497,6 +513,7 @@ class LLMService:
         yield {'recommended_question': self.record.recommended_question}
 
     def select_datasource(self, _session: Session):
+        global ds
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         datasource_msg.append(SystemMessage(self.chat_question.datasource_sys_question()))
         if self.current_assistant and self.current_assistant.type != 4:
@@ -645,7 +662,197 @@ class LLMService:
         if _error:
             raise _error
 
+    # modify by chenshu
+    async def generate_sql_with_sql_for_plan(self, _session: Session):
+        try:
+            self.sql_message.append(HumanMessage(
+                self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),change_title=self.change_title)))
+
+            # 硬设置提示词
+            content = orjson.dumps({
+                "question": self.chat_question.question,
+                "sql": self.chat_question.my_sql
+            }).decode()
+            self.sql_message.append(HumanMessage(content=content))
+            # add at 20250619 huhuhuhr
+            self.print_message(self.sql_message)
+
+            self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
+                                                                      ai_modal_id=self.chat_question.ai_modal_id,
+                                                                      ai_modal_name=self.chat_question.ai_modal_name,
+                                                                      operate=OperationEnum.GENERATE_SQL,
+                                                                      record_id=self.record.id,
+                                                                      full_message=[
+                                                                          {'type': msg.type, 'content': msg.content} for
+                                                                          msg
+                                                                          in self.sql_message])
+
+            llm_result = await self.llm.ainvoke(self.sql_message)
+            format_llm_result = self.get_think_and_content(llm_result)
+            full_sql_text = format_llm_result["content"]
+            full_thinking_text = format_llm_result["think"]
+
+            self.sql_message.append(AIMessage(full_sql_text))
+
+            self.current_logs[OperationEnum.GENERATE_SQL] = end_log(session=_session,
+                                                                    log=self.current_logs[OperationEnum.GENERATE_SQL],
+                                                                    full_message=[
+                                                                        {'type': msg.type, 'content': msg.content}
+                                                                        for msg in self.sql_message],
+                                                                    reasoning_content=full_thinking_text,
+                                                                    token_usage={})
+            self.record = save_sql_answer(session=_session, record_id=self.record.id,
+                                          answer=orjson.dumps({'content': full_sql_text}).decode())
+            return {
+                "enhanced_think_result": "",
+                "sql": full_sql_text
+            }
+        except Exception as e:
+            SQLBotLogUtil.error(f"{e}")
+            SQLBotLogUtil.error("generate_sql_with_sql_for_plan有误")
+            return {
+                "enhanced_think_result": "",
+                "sql": ""
+        }
+
+    # modify by chenshu
+    def get_think_and_content(self, llm_result):
+        think = ""
+        content = ""
+
+        if hasattr(llm_result, "content"):
+            llm_content = llm_result.content
+
+            start_tag = settings.DEFAULT_REASONING_CONTENT_START,
+            end_tag = settings.DEFAULT_REASONING_CONTENT_END
+
+            pattern = r'{}(.*?){}(.*)'.format(start_tag, end_tag)
+
+            match = re.search(pattern, llm_content, re.DOTALL)
+
+            if match:
+                think_result = match.group(1).strp()
+                content_result = match.group(2).strip()
+
+                think = think_result
+                content = content_result
+            else:
+                content = llm_content
+
+        return {
+            "think": think,
+            "content": content
+        }
+
+    # modify by chenshu
+    async def gen_enhanced_think_result_fro_plan(self):
+        try:
+            enhanced_think_prompt = self.chat_question.enhanced_think_question(
+                current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+            ori_llm_result = await self.llm.ainvoke(enhanced_think_prompt)
+            llm_result = self.get_think_and_content(ori_llm_result)
+
+            self.chat_question.enhanced_think_result = llm_result["content"]
+            enhanced_think_result = llm_result["content"]
+
+            SQLBotLogUtil.info(f"\n\nenhanced think result:\n {enhanced_think_result}\n")
+
+            return enhanced_think_result
+
+        except Exception as e:
+            SQLBotLogUtil.error(f"{e}")
+            SQLBotLogUtil.error("获取增强型思考过程有误")
+            return ""
+
+    # modify by chenshu
+    async def generate_sql_for_plan(self, _session: Session):
+        sql_result = {"enhanced_think_result": "",
+                      "sql": ""}
+
+        try:
+            # 开启加强型思考为sql生成做参考
+            if self.chat_question.is_enhanced_think:
+                SQLBotLogUtil.info("开始调用大模型进行增强型思考")
+                enhanced_think_result = await self.gen_enhanced_think_result_fro_plan()
+
+                if len(enhanced_think_result) != 0:
+                    sql_result["enhanced_think_result"] = enhanced_think_result
+                SQLBotLogUtil.info("增强型思考结束")
+
+            # append current question
+            self.sql_message.append(HumanMessage(
+                self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),change_title=self.change_title)))
+
+            self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
+                                                                      ai_modal_id=self.chat_question.ai_modal_id,
+                                                                      ai_modal_name=self.chat_question.ai_modal_name,
+                                                                      operate=OperationEnum.GENERATE_SQL,
+                                                                      record_id=self.record.id,
+                                                                      full_message=[
+                                                                          {'type': msg.type, 'content': msg.content} for
+                                                                          msg
+                                                                          in self.sql_message])
+
+            SQLBotLogUtil.info(f"开始调用大模型生成SQL")
+            llm_result = await self.llm.ainvoke(self.sql_message)
+            SQLBotLogUtil.info(f"SQL调用大模型成功，结果为：{llm_result}")
+
+            format_llm_result = self.get_think_and_content(llm_result)
+            full_sql_text = format_llm_result["content"]
+            full_thinking_text = format_llm_result["think"]
+
+            self.sql_message.append(AIMessage(full_sql_text))
+
+            self.current_logs[OperationEnum.GENERATE_SQL] = end_log(session=_session,
+                                                                    log=self.current_logs[OperationEnum.GENERATE_SQL],
+                                                                    full_message=[
+                                                                        {'type': msg.type, 'content': msg.content}
+                                                                        for msg in self.sql_message],
+                                                                    reasoning_content=full_thinking_text,
+                                                                    token_usage={})
+            self.record = save_sql_answer(session=_session, record_id=self.record.id,
+                                          answer=orjson.dumps({'content': full_sql_text}).decode())
+            sql_result["sql"] = full_sql_text
+
+            return sql_result
+        except Exception as e:
+            SQLBotLogUtil.error(f"{e}")
+            SQLBotLogUtil.error("plan生成sql有误")
+            return sql_result
+
+    # modify by chenshu
     def generate_sql(self, _session: Session):
+        # modify by chenshu
+        full_thinking_text = ''
+        full_sql_text = ''
+        token_usage = {}
+
+        # 开启加强型思考为sql生成做参考
+        if self.chat_question.is_enhanced_think:
+            think_result = ''
+            temp_think_result = ''
+
+            enhanced_think_prompt = self.chat_question.enhanced_think_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            res = process_stream(self.stream_with_think(self.llm.stream(enhanced_think_prompt)), token_usage)
+
+            for chunk in res:
+                if chunk.get('content'):
+                    chunk['reasoning_content'] = chunk.get('content')
+                    chunk['content'] = ""
+                    think_result += chunk.get('reasoning_content')
+
+                full_thinking_text += chunk.get('reasoning_content')
+                temp_think_result += chunk.get('reasoning_content')
+
+                yield chunk
+
+            if len(think_result) == 0:
+                think_result = temp_think_result
+
+            self.chat_question.enhanced_think_result = think_result
+            SQLBotLogUtil.info(f"\n\nenhanced think result:\n {think_result}\n")
+
         # append current question
         self.sql_message.append(HumanMessage(
             self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),change_title = self.change_title)))
@@ -658,11 +865,8 @@ class LLMService:
                                                                   full_message=[
                                                                       {'type': msg.type, 'content': msg.content} for msg
                                                                       in self.sql_message])
-        full_thinking_text = ''
-        full_sql_text = ''
-        token_usage = {}
         # modify by huhuhuhr huhuhuhr
-        self.print_Message(self.sql_message)
+        self.print_message(self.sql_message)
         res = process_stream(self.stream_with_think(self.llm.stream(self.sql_message)), token_usage)
         for chunk in res:
             if chunk.get('content'):
@@ -801,6 +1005,48 @@ class LLMService:
         if not filters:
             return None
         return self.build_table_filter(session=_session, sql=sql, filters=filters)
+
+    # modify by chenshu
+    async def generate_chart_for_plan(self, _session: Session, chart_type: Optional[str] = ''):
+        try:
+            # append current question
+            self.chart_message.append(HumanMessage(self.chat_question.chart_user_question(chart_type)))
+
+            self.current_logs[OperationEnum.GENERATE_CHART] = start_log(session=_session,
+                                                                        ai_modal_id=self.chat_question.ai_modal_id,
+                                                                        ai_modal_name=self.chat_question.ai_modal_name,
+                                                                        operate=OperationEnum.GENERATE_CHART,
+                                                                        record_id=self.record.id,
+                                                                        full_message=[
+                                                                            {'type': msg.type, 'content': msg.content}
+                                                                            for
+                                                                            msg
+                                                                            in self.chart_message])
+            llm_result = await self.llm.ainvoke(self.chart_message)
+            format_llm_result = self.get_think_and_content(llm_result)
+            full_chart_text = format_llm_result["content"]
+            full_thinking_text = format_llm_result["think"]
+
+            self.chart_message.append(AIMessage(full_chart_text))
+
+            self.record = save_chart_answer(session=_session, record_id=self.record.id,
+                                            answer=orjson.dumps({'content': full_chart_text}).decode())
+            self.current_logs[OperationEnum.GENERATE_CHART] = end_log(session=_session,
+                                                                      log=self.current_logs[
+                                                                          OperationEnum.GENERATE_CHART],
+                                                                      full_message=[
+                                                                          {'type': msg.type, 'content': msg.content}
+                                                                          for msg in self.chart_message],
+                                                                      reasoning_content=full_thinking_text,
+                                                                      token_usage={})
+            return {"think": full_thinking_text,
+                    "chart": full_chart_text}
+        except Exception as e:
+            SQLBotLogUtil.error(f"{e}")
+            SQLBotLogUtil.error("生成图表有误")
+
+            return {"think": "",
+                    "chart": ""}
 
     def generate_chart(self, _session: Session, chart_type: Optional[str] = ''):
         # append current question
@@ -997,7 +1243,6 @@ class LLMService:
         """Execute SQL query
 
         Args:
-            ds: Data source instance
             sql: SQL query statement
 
         Returns:
@@ -1044,6 +1289,265 @@ class LLMService:
                        finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART):
         for chunk in self.run_task(in_chat, stream, finish_step):
             self.chunk_list.append(chunk)
+
+    def init_for_plan(self, _session: Session):
+        if not self.chat_question.terminologies:
+            if self.ds:
+                oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
+                ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+                self.chat_question.terminologies = get_terminology_template(_session, self.chat_question.question,
+                                                                            oid, ds_id)
+
+        if not self.chat_question.db_schema:
+            self.chat_question.db_schema = self.out_ds_instance.get_db_schema(
+               ds_id=self.ds.id,question=self.chat_question.question) if self.out_ds_instance else get_table_schema(session=_session,
+                                                                          current_user=self.current_user,
+                                                                          ds=self.ds,
+                                                                          question=self.chat_question.question)
+
+        if self.chat_question.history_open is False:
+            last_sql_messages = []
+        else:
+            last_sql_messages: List[dict[str, Any]] = self.generate_sql_logs[-1].messages if len(
+                self.generate_sql_logs) > 0 else []
+        self.init_record(_session)
+        return last_sql_messages
+
+    async def get_data_for_plan(self, _session: Session, query, is_chart_output=False):
+        self.chat_question.question = query
+
+        try:
+            if self.ds:
+                oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
+                ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+                self.chat_question.terminologies = get_terminology_template(_session, self.chat_question.question,
+                                                                            oid, ds_id)
+                self.chat_question.data_training = get_training_template(_session, self.chat_question.question,
+                                                                         ds_id, oid)
+                if SQLBotLicenseUtil.valid():
+                    self.chat_question.custom_prompt = find_custom_prompts(_session,
+                                                                           CustomPromptTypeEnum.GENERATE_SQL,
+                                                                           oid, ds_id)
+
+            self.init_messages(_session)
+
+            # select datasource if datasource is none
+            if not self.ds:
+                ds_res = self.select_datasource(_session)
+                for chunk in ds_res:
+                    SQLBotLogUtil.info(f"{chunk}")
+
+                self.chat_question.db_schema = self.out_ds_instance.get_db_schema(
+                    ds_id=self.ds.id,question=self.chat_question.question) if self.out_ds_instance else get_table_schema(session=_session,
+                                                                              current_user=self.current_user,
+                                                                              ds=self.ds,
+                                                                              question=self.chat_question.question)
+            else:
+                self.validate_history_ds(_session)
+
+            # check connection
+            connected = check_connection(ds=self.ds, trans=None)
+
+            if not connected:
+                SQLBotLogUtil.error("Connect DB failed")
+                yield {
+                    "data": "连接db失败",
+                    "type": "error"
+                }
+                return
+
+            SQLBotLogUtil.info("连接db成功")
+
+            # modify by huhuhuhr
+            if self.chat_question.my_sql is not None and self.chat_question.my_sql.strip() != '':
+                sql_res = await self.generate_sql_with_sql_for_plan(_session=_session)
+            else:
+                sql_res = await self.generate_sql_for_plan(_session=_session)
+
+            full_sql_text = sql_res["sql"]
+            SQLBotLogUtil.info('生成sql成功')
+
+            try:
+                chart_type = self.get_chart_type_from_sql_answer(full_sql_text)
+
+                use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
+                is_page_embedded: bool = self.current_assistant and self.current_assistant.type == 4
+                dynamic_sql_result = None
+                sqlbot_temp_sql_text = None
+                assistant_dynamic_sql = None
+
+                # todo row permission
+                if ((not self.current_assistant or is_page_embedded) and is_normal_user(
+                        self.current_user)) or use_dynamic_ds:
+                    sql, tables = self.check_sql(res=full_sql_text)
+                    sql_result = None
+
+                    if use_dynamic_ds:
+                        dynamic_sql_result = self.generate_assistant_dynamic_sql(_session, sql, tables)
+                        sqlbot_temp_sql_text = dynamic_sql_result.get(
+                            'sqlbot_temp_sql_text') if dynamic_sql_result else None
+                    else:
+                        sql_result = self.generate_filter(_session, sql, tables)  # maybe no sql and tables
+
+                    if sql_result:
+                        SQLBotLogUtil.info(sql_result)
+                        sql = self.check_save_sql(res=sql_result,session=_session)
+                    elif dynamic_sql_result and sqlbot_temp_sql_text:
+                        assistant_dynamic_sql = self.check_save_sql(res=sqlbot_temp_sql_text,session=_session)
+                    else:
+                        sql = self.check_save_sql(res=full_sql_text,session=_session)
+                else:
+                    # modify by huhuhuhr
+                    SQLBotLogUtil.info(full_sql_text)
+                    sql = self.check_save_sql(res=full_sql_text,session=_session)
+            except Exception as e:
+                SQLBotLogUtil.error(f"{e}")
+                SQLBotLogUtil.error("校验sql失败")
+                yield {
+                    "data": "生成的sql校验失败",
+                    "type": "error"
+                }
+                return
+
+            SQLBotLogUtil.info('sql: ' + sql)
+            format_sql = sqlparse.format(sql, reindent=True)
+
+            yield {
+                "data": {
+                    "enhanced_think_result": sql_res["enhanced_think_result"],
+                    "sql": format_sql,
+                },
+                "type": "sql_result"
+            }
+
+            try:
+                # execute sql
+                real_execute_sql = sql
+                if sqlbot_temp_sql_text and assistant_dynamic_sql:
+                    dynamic_sql_result.pop('sqlbot_temp_sql_text')
+                    for origin_table, subsql in dynamic_sql_result.items():
+                        assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}',
+                                                                              subsql)
+                    real_execute_sql = assistant_dynamic_sql
+
+                result = self.execute_sql(sql=real_execute_sql)
+
+                self.save_sql_data(data_obj=result,session=_session)
+
+                SQLBotLogUtil.info('执行sql成功，且sql_data保存成功: ')
+                SQLBotLogUtil.info('开始转换sql执行的结果')
+
+                data = []
+                _fields_list = []
+                _fields_skip = False
+                for _data in result.get('data'):
+                    _row = []
+                    for field in result.get('fields'):
+                        _row.append(_data.get(field))
+                        if not _fields_skip:
+                            _fields_list.append(field)
+                    data.append(_row)
+                    _fields_skip = True
+
+                if not data or not _fields_list:
+                    yield {
+                        "data": "sql执行结果为空",
+                        "type": "error"
+                    }
+                else:
+                    yield {
+                        "data": "sql执行成功",
+                        "type": "sql_execute_result"
+                    }
+                    # df = pd.DataFrame(np.array(data), columns=_fields_list)
+                    # markdown_table = df.to_markdown(index=False)
+                    # yield markdown_table + '\n\n'
+
+
+            except Exception as e:
+                SQLBotLogUtil.error(f"{e}")
+                SQLBotLogUtil.error("执行sql失败")
+                yield {
+                    "data": "执行sql失败",
+                    "type": "error"
+                }
+                return
+
+            if is_chart_output:
+                from apps.chat.curd.chat import get_chat_chart_data
+                # generate chart
+                chart_res = await self.generate_chart_for_plan(chart_type=chart_type,_session=_session)
+                full_chart_text = chart_res["chart"]
+
+                if len(full_chart_text) == 0:
+                    yield {
+                        "data": {
+                            "output_data": "error",
+                            "pd_data": {
+                                "data": data,
+                                "columns": _fields_list
+                            }
+                        },
+                        "type": "chart_result"
+                    }
+                    return
+
+                # filter chart
+                SQLBotLogUtil.info(full_chart_text)
+                chart = self.check_save_chart(res=full_chart_text,session=_session)
+                SQLBotLogUtil.info(chart)
+
+                record_id = self.get_record().id
+                chart_data = None
+
+                for session in get_session():
+                    # 调用内部的 _fetch_chart_data 函数
+                    chart_data = get_chat_chart_data(
+                        chat_record_id=record_id,
+                        session=session
+                    )
+
+                yield {
+                    "data": {
+                        "output_data":[
+                            {
+                                'content': chart,
+                                'type': 'chart'
+                            },
+                            {
+                                "content": chart_data,
+                                "type": "chart-data"
+                            },
+                            {
+                                "content": record_id,
+                                "type": "data-finish"
+                            }
+                        ],
+                        "pd_data": {
+                            "data": data,
+                            "columns": _fields_list
+                        }
+                    },
+                    "type": "chart_result"
+                }
+
+            else:
+                yield {
+                    "data": {
+                        "data": data,
+                        "columns": _fields_list
+                             },
+                    "type": "chart_result"
+                }
+
+        except Exception as e:
+            SQLBotLogUtil.error(f"{e}")
+            SQLBotLogUtil.error("plan获取数据失败")
+            yield {
+                "data": "获取数据失败",
+                "type": "error"
+            }
+            return
 
     def run_task(self, in_chat: bool = True, stream: bool = True,
                  finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART):
@@ -1436,14 +1940,15 @@ class LLMService:
                 if not current_ds:
                     raise SingleMessageError('chat.ds_is_invalid')
             except Exception as e:
+                SQLBotLogUtil.error(f"{e}")
                 raise SingleMessageError("chat.ds_is_invalid")
         else:
             try:
                 _ds_list: list[dict] = get_assistant_ds(session=session, llm_service=self)
                 match_ds = any(item.get("id") == _ds.id for item in _ds_list)
                 if not match_ds:
-                    type = self.current_assistant.type
-                    msg = f"[please check ds list and public ds list]" if type == 0 else f"[please check ds api]"
+                    assistant_type:int = self.current_assistant.type
+                    msg = f"[please check ds list and public ds list]" if assistant_type == 0 else f"[please check ds api]"
                     raise SingleMessageError(msg)
             except Exception as e:
                 raise SingleMessageError(f"ds is invalid [{str(e)}]")
@@ -1472,9 +1977,9 @@ class LLMService:
         return human_prompt
 
     # modify by huhuhuhr
-    def get_analysis_sys_prompt(self, payload):
+    def get_analysis_sys_prompt(self, _session: Session, payload):
         if self.chat_question.my_promote is not None:
-            sys_prompt = self.get_my_sys_prompt(payload)
+            sys_prompt = self.get_my_sys_prompt(payload,_session)
         elif payload is not None:
             sys_prompt = analysis_question(role=payload.role, task=payload.task, intent=payload.intent,
                                            terminologies=self.chat_question.terminologies)
@@ -1565,8 +2070,8 @@ class LLMService:
 
     # modify by huhuhuhr
     def model_think_parse(self, chunks: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
-        THINK_BEGIN_TAG = "<think>"
-        THINK_END_TAG = "</think>"
+        start = "<think>"
+        end = "</think>"
         response_content = ""
         force_think_begin = False
         tag_begin = False
@@ -1588,12 +2093,12 @@ class LLMService:
 
             if tag_begin:
                 response_content += token
-                if not force_think_begin and not think_begin and THINK_BEGIN_TAG in response_content:
+                if not force_think_begin and not think_begin and start in response_content:
                     think_begin = True
                     tag_begin = False
-                elif not think_end and THINK_END_TAG in response_content:
+                elif not think_end and end in response_content:
                     # 返回 think 结束之前的内容
-                    end_index = response_content.index(THINK_END_TAG) + len(THINK_END_TAG)
+                    end_index = response_content.index(end) + len(end)
                     chunk.additional_kwargs["reasoning_content"] = response_content[:end_index]
                     chunk.content = ''
                     yield chunk
@@ -1604,8 +2109,8 @@ class LLMService:
                     if response_content == "":
                         continue
                 # 去除 < 符号之前的字符，防止 < 符号之前有其他字符导致判断出错
-                elif (response_content[response_content.index("<"):] not in THINK_BEGIN_TAG
-                      and response_content[response_content.index("<"):] not in THINK_END_TAG):
+                elif (response_content[response_content.index("<"):] not in start
+                      and response_content[response_content.index("<"):] not in end):
                     tag_begin = False
 
             if tag_begin:
@@ -1679,7 +2184,7 @@ class LLMService:
     def generate_sql_with_sql(self, _session: Session):
         # append current question
         self.sql_message.append(HumanMessage(
-            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))))
+            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),change_title=self.change_title)))
         # 硬设置提示词
         content = orjson.dumps({
             "question": self.chat_question.question,
@@ -1687,7 +2192,7 @@ class LLMService:
         }).decode()
         self.sql_message.append(HumanMessage(content=content))
         # add at 20250619 huhuhuhr
-        self.print_Message(self.sql_message)
+        self.print_message(self.sql_message)
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -1722,7 +2227,7 @@ class LLMService:
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
 
     # modify by huhuhuhr
-    def print_Message(self, messages=None):
+    def print_message(self, messages=None):
         if messages is None:
             messages = self.sql_message
         for i, msg in enumerate(messages):
@@ -1893,8 +2398,6 @@ def process_stream(res: Iterator[BaseMessageChunk],
                 # 在遇到结束标签前，持续收集思考内容
                 current_thinking += content
                 reasoning_content_chunk += content
-                content = ''
-
         else:
             # 不在思考块中或标签解析未启用，正常输出
             output_content += content

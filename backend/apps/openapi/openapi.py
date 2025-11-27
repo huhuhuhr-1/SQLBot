@@ -1,14 +1,18 @@
 import asyncio
+import contextvars
 import hashlib
 import json
 import os
+import threading
 import traceback
 import uuid
 from typing import Optional, List
 
+import orjson
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from starlette.responses import StreamingResponse
 
+from apps.ai_model.model_factory import create_llm
 from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat
 from apps.chat.models.chat_model import CreateChat
 from apps.datasource.crud.datasource import get_datasource_list_for_openapi, get_datasource_list_for_openapi_excels, \
@@ -16,13 +20,15 @@ from apps.datasource.crud.datasource import get_datasource_list_for_openapi, get
 from apps.datasource.models.datasource import CoreDatasource, CreateDatasource, CoreTable, DatasourceConf
 from apps.datasource.utils.utils import aes_encrypt
 from apps.db.db import exec_sql
-from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id, bind_datasource
+from apps.openapi.agent.chat_agent import ChatAgent
+from apps.openapi.agent.plan_agent import PlanAgent
+from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, IntentPayload, DbBindChat, SinglePgConfig, DataSourceRequestWithSql
+    OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql
 from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.openapi.service.openapi_llm import LLMService
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
-    chat_identify_intent, _get_chats_to_clean, _create_clean_response, \
+    _get_chats_to_clean, _create_clean_response, \
     _execute_cleanup, \
     _run_analysis_or_predict, is_safe_sql
 from apps.system.crud.user import authenticate
@@ -135,11 +141,11 @@ async def get_data_source_by_id_or_name(
 @router.post("/chat", summary="聊天",
              description="给定一个提示，模型将返回一条或多条预测消息",
              dependencies=[Depends(common_headers)])
-async def getChat(
+async def chat(
         session: SessionDep,
         current_user: CurrentUser,
         chat_question: OpenChatQuestion,
-        current_assistant: CurrentAssistant
+        current_assistant: CurrentAssistant,
 ):
     """
     创建聊天完成（Create Chat Completion）
@@ -160,76 +166,67 @@ async def getChat(
         HTTPException: 当处理过程中出现异常时抛出500错误
     """
     try:
-        # 获取数据源信息
-        for session in get_session():
-            datasource = get_datasource_by_name_or_id(
+        # 传统sqlbot模式
+        if chat_question.chat_mode != "plan":
+            agent = ChatAgent(
                 session=session,
-                user=current_user,
-                query=DataSourceRequest(id=chat_question.db_id)
-            )
-            if datasource:
-                # 绑定数据源到聊天会话
-                await bind_datasource(datasource, chat_question.chat_id, session, current_user)
-                break
+                current_user=current_user,
+                chat_question=chat_question,
+                current_assistant=current_assistant)
+
+            # predict or analysis
+            if chat_question.task_type != "chat":
+                await agent.run_analysis_or_predict()
+                return StreamingResponse(agent.llm_service.await_result(), media_type="text/event-stream")
+            # chat
             else:
-                raise HTTPException(
-                    status_code=500,
-                    detail="数据源未找到"
+                stream = await agent.run_chat()
+
+                # 返回经过合并处理的流式响应
+                return StreamingResponse(
+                    merge_streaming_chunks(stream=stream,
+                                           llm_service=agent.llm_service,
+                                           payload=agent.payload,
+                                           chat_question=agent.chat_question,
+                                           session=session),
+                    media_type="text/event-stream"
                 )
-
-        # 创建LLM服务实例
-        llm_service = await LLMService.create(
-            session,
-            current_user,
-            chat_question,
-            current_assistant,
-            no_reasoning=chat_question.no_reasoning,
-            embedding=True
-        )
-        # 如果存在意图检测，则进行意图识别
-        payload: Optional[IntentPayload] = (
-            chat_identify_intent(llm_service.llm, chat_question.question)
-            if chat_question.intent is True else None
-        )
-
-        # 记录意图识别结果
-        if payload:
-            SQLBotLogUtil.info(f"意图识别详情 - 原始输入: '{chat_question.question}', "
-                               f"搜索意图: '{payload.search}', "
-                               f"分析意图: '{payload.analysis}', "
-                               f"预测意图: '{payload.predict}'")
+        # plan模式
         else:
-            SQLBotLogUtil.info(
-                f"未识别到意图 - 输入: '{chat_question.question}', 未识别到有效意图")
-            if chat_question.analysis or chat_question.predict:
-                payload = IntentPayload(
-                    search=chat_question.question,
-                    analysis=chat_question.question if chat_question.analysis else "",
-                    predict=chat_question.question if chat_question.predict else ""
-                )
+            queue = asyncio.Queue()
+            llm = await create_llm()
 
-        # 如果存在意图，则使用意图作为问题
-        if payload is not None and payload.search != "":
-            llm_service.chat_question.question = payload.search
-        else:
-            payload = None
+            async def _stream(queue):
+                while True:
+                    data = await queue.get()
+                    yield 'data:' + orjson.dumps(data).decode() + '\n\n'
 
-        # 初始化聊天记录
-        llm_service.init_record(session=session)
+            def run_task(context,
+                         current_user,
+                         chat_question,
+                         current_assistant,
+                         queue):
+                context.run(lambda: asyncio.run(
+                    PlanAgent(
+                        session=session,
+                        current_user=current_user,
+                        chat_question=chat_question,
+                        current_assistant=current_assistant,
+                        queue=queue,
+                        llm=llm).execute_plan()))
 
-        # 异步运行任务
-        llm_service.run_task_async()
-        stream = llm_service.await_result()
-        # 返回经过合并处理的流式响应
-        return StreamingResponse(
-            merge_streaming_chunks(
-                session=session,
-                stream=stream,
-                llm_service=llm_service,
-                payload=payload,
-                chat_question=chat_question),
-            media_type="text/event-stream"
-        )
+            thread = threading.Thread(target=run_task,
+                                      args=(contextvars.copy_context(),
+                                            current_user,
+                                            chat_question,
+                                            current_assistant, queue),
+                                      daemon=True)
+            thread.start()
+            return StreamingResponse(
+                _stream(queue),
+                media_type="text/event-stream"
+            )
+
     except Exception as e:
         # 记录异常信息用于调试
         SQLBotLogUtil.error(f"聊天接口异常: {str(e)}")
@@ -301,7 +298,7 @@ def get_data_by_db_id_and_sql(current_user: CurrentUser, request: DataSourceRequ
             datasource = get_datasource_by_name_or_id(
                 session=session,
                 user=current_user,
-                query=DataSourceRequest(id=request.db_id)  # 使用 request.db_id 而不是 request.ds.id
+                query=DataSourceRequest(id=int(request.db_id))  # 使用 request.db_id 而不是 request.ds.id
             )
             if datasource is None:
                 raise HTTPException(
@@ -401,10 +398,10 @@ async def get_recommend(
 
         # 创建LLM服务实例并设置推荐问题模式
         llm_service = await LLMService.create(
-            session,
-            current_user,
-            chat_question,
-            current_assistant,
+            session=session,
+            current_user=current_user,
+            chat_question=chat_question,
+            current_assistant=current_assistant,
             no_reasoning=chat_record.no_reasoning,
             embedding=True
         )
@@ -527,8 +524,8 @@ async def upload_excel_and_create_datasource(
         example_size: int = Form(10),
         ai: bool = Form(False),
 ):
-    ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv"}
-    if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
+    extensions = {"xlsx", "xls", "csv"}
+    if not file.filename.lower().endswith(tuple(extensions)):
         raise HTTPException(400, "Only support .xlsx/.xls/.csv")
 
     os.makedirs(path, exist_ok=True)
@@ -606,7 +603,7 @@ async def delete_datasource_by_id(session: SessionDep, id: int):
 
 @router.post(
     "/deleteExcels",
-    summary="清空excle",
+    summary="清空excel",
     description="清空excel",
     dependencies=[Depends(common_headers)],
 )

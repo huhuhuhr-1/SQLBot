@@ -10,11 +10,10 @@ OpenAPI 数据模型模块
 日期: 2025/01/30
 版本: 1.0.0
 """
-from datetime import datetime
 import json
 import re
 from dataclasses import dataclass
-from enum import Enum
+from datetime import datetime
 from typing import Any, Dict
 from typing import List, Union, Optional
 
@@ -23,6 +22,8 @@ from pydantic import BaseModel, validator, Field
 from pydantic import field_validator
 
 from apps.chat.models.chat_model import AiModelQuestion
+from apps.openapi.service.openapi_prompt import get_myself_template
+from apps.template.generate_sql.generator import get_sql_template
 
 
 class OpenClean(BaseModel):
@@ -78,11 +79,11 @@ class OpenChat(BaseModel):
 class OpenChatQuestion(AiModelQuestion):
     """
     开放API聊天问题模型
-    
+
     继承自AiModelQuestion，扩展了数据源和聊天会话相关字段
     """
-    question: str = Body(..., description='用户问题内容')
-    chat_id: int = Body(..., description='聊天会话标识')
+    question: str = Body(None, description='用户问题内容')
+    chat_id: int = Body(None, description='聊天会话标识')
     db_id: Optional[int] = Body(None, description='数据源标识')
     my_sql: Optional[str] = Body(None, description='自定义sql')
     my_promote: Optional[str] = Body(None, description='自定义提示词')
@@ -95,6 +96,28 @@ class OpenChatQuestion(AiModelQuestion):
     no_reasoning: Optional[bool] = Body(default=True, description='不思考')
     history_open: Optional[bool] = Body(default=True, description='历史信息打开')
 
+    # 原OpenChat中相比于OpenChatQuestion多出的字段
+    chat_record_id: int = Body(None, description='会话聊天消息标识')
+    chat_data_object: Any = Body(None, description='分析问题')
+
+    # task_type用于选择接口是chat/analysis/predict
+    task_type: str = Body("chat", description='用户问题内容')
+
+    # 新增字段用于增强思考
+    is_enhanced_think: bool = Body(default=True, description='是否使用增强思考')
+    enhanced_think_result: str = Body(default=None, description='增强思考的结果')
+
+    # 新增用户信息
+    user_name: str = Body(default=None, description='用户名')
+
+    # 问答时候的模式
+    chat_mode: str = Body(default="chat", description='使用什么模式进行问答，plan和chat')
+
+    max_data_length: int = Body(default=1000, description='最大取数长度')
+
+    # 是否输出sqlbot的图表（对于plan模式而言）
+    is_chart_output: bool = Body(default=True, description='是否输出sqlbot的图表, 时间会更长')
+
     @field_validator('my_promote', 'my_schema', 'my_sql', mode='before')
     @classmethod
     def empty_str_to_none(cls, v):
@@ -102,6 +125,32 @@ class OpenChatQuestion(AiModelQuestion):
         if v == '':
             return None
         return v
+
+    # 在原sql生成的prompt里面加入think_result
+    def sql_user_question(self, current_time: str, change_title: bool):
+        return get_sql_template()['user'].format(engine=self.engine,
+                                                 schema=self.db_schema,
+                                                 question=self.question,
+                                                 rule=self.rule,
+                                                 current_time=current_time,
+                                                 error_msg=self.error_msg,
+                                                 change_title=change_title,
+                                                 thinking_result=self.enhanced_think_result)
+
+    # 获取增强思考的prompt
+    def enhanced_think_question(self, current_time: str):
+        return get_myself_template()['think_prompt'].format(user_info=self.user_name,
+                                                            current_time=current_time,
+                                                            schema=self.db_schema,
+                                                            query=self.question,
+                                                            terminologies=self.terminologies)
+
+    # 获取plan模式的prompt
+    def plan_prompt(self, current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')):
+        return get_myself_template()['plan_prompt'].format(schema=self.db_schema,
+                                                           terminologies=self.terminologies,
+                                                           max_lenght=self.max_data_length,
+                                                           current_date=current_time)
 
 
 class OpenToken(BaseModel):

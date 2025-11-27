@@ -133,16 +133,45 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 
 
+# @router.post("/question")
+# async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
+#                      current_assistant: CurrentAssistant):
+#     """Stream SQL analysis results
+#
+#     Args:
+#         session: Database session
+#         current_user: CurrentUser
+#         request_question: User question model
+#
+#     Returns:
+#         Streaming response with analysis results
+#     """
+#
+#     try:
+#         llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
+#                                               embedding=True)
+#         llm_service.init_record(session=session)
+#         llm_service.run_task_async()
+#     except Exception as e:
+#         traceback.print_exc()
+#
+#         def _err(_e: Exception):
+#             yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+#
+#         return StreamingResponse(_err(e), media_type="text/event-stream")
+#
+#     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
+
 @router.post("/question")
 async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
                      current_assistant: CurrentAssistant):
     """Stream SQL analysis results
-    
+
     Args:
         session: Database session
         current_user: CurrentUser
         request_question: User question model
-        
+
     Returns:
         Streaming response with analysis results
     """

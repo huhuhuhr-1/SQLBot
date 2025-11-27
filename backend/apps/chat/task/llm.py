@@ -521,7 +521,107 @@ class LLMService:
         if _error:
             raise _error
 
+        # modify by huhuhuhr
+
+    def stream_with_think(self, raw_stream: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
+        for chunk in self.model_think_parse(raw_stream):
+            SQLBotLogUtil.debug(f"stream_with_think-chunk:{chunk}")
+            yield chunk
+
+        # modify by huhuhuhr
+
+    def model_think_parse(self, chunks: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
+        THINK_BEGIN_TAG = "<think>"
+        THINK_END_TAG = "</think>"
+        response_content = ""
+        force_think_begin = False
+        tag_begin = False
+        think_begin = True if force_think_begin else False
+        think_end = False
+
+        for chunk in chunks:
+            SQLBotLogUtil.info(f"original chunk:{chunk}")
+            if (chunk.additional_kwargs and hasattr(chunk.additional_kwargs, "reasoning_content")
+                    and chunk.additional_kwargs["reasoning_content"] is not None and chunk.additional_kwargs[
+                        "reasoning_content"] != ''):
+                yield chunk
+                continue
+            token = chunk.content
+            # 分次处理输入字符，以缓冲的为准，防止连续的 < 符号判断导致丢失 tag 的前部分，导致出错，如 <\n</|th|in|k>
+            if "<" in token:
+                tag_begin = True
+                response_content = ""
+
+            if tag_begin:
+                response_content += token
+                if not force_think_begin and not think_begin and THINK_BEGIN_TAG in response_content:
+                    think_begin = True
+                    tag_begin = False
+                elif not think_end and THINK_END_TAG in response_content:
+                    # 返回 think 结束之前的内容
+                    end_index = response_content.index(THINK_END_TAG) + len(THINK_END_TAG)
+                    chunk.additional_kwargs["reasoning_content"] = response_content[:end_index]
+                    chunk.content = ''
+                    yield chunk
+                    think_end = True
+                    tag_begin = False
+                    # 返回 think 结束之后的内容（如果有）
+                    response_content = response_content[end_index:]
+                    if response_content == "":
+                        continue
+                # 去除 < 符号之前的字符，防止 < 符号之前有其他字符导致判断出错
+                elif (response_content[response_content.index("<"):] not in THINK_BEGIN_TAG
+                      and response_content[response_content.index("<"):] not in THINK_END_TAG):
+                    tag_begin = False
+
+            if tag_begin:
+                continue
+
+            if response_content == "":
+                response_content = token
+            if response_content == "":
+                continue
+
+            if think_begin and not think_end:
+                chunk.additional_kwargs["reasoning_content"] = response_content
+                chunk.content = ''
+                yield chunk
+            else:
+                chunk.content = response_content
+                yield chunk
+            response_content = ""
+
     def generate_sql(self, _session: Session):
+        full_thinking_text = ''
+        full_sql_text = ''
+        token_usage = {}
+
+        # 开启加强型思考为sql生成做参考
+        if self.chat_question.is_enhanced_think:
+            think_result = ''
+            temp_think_result = ''
+
+            enhanced_think_prompt = self.chat_question.enhanced_think_question(
+                current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            res = process_stream(self.stream_with_think(self.llm.stream(enhanced_think_prompt)), token_usage)
+
+            for chunk in res:
+                if chunk.get('content'):
+                    chunk['reasoning_content'] = chunk.get('content')
+                    chunk['content'] = ""
+                    think_result += chunk.get('reasoning_content')
+
+                full_thinking_text += chunk.get('reasoning_content')
+                temp_think_result += chunk.get('reasoning_content')
+
+                yield chunk
+
+            if len(think_result) == 0:
+                think_result = temp_think_result
+
+            self.chat_question.enhanced_think_result = think_result
+            SQLBotLogUtil.info(f"\n\nenhanced think result:\n {think_result}\n")
+
         # append current question
         self.sql_message.append(HumanMessage(
             self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),change_title = self.change_title)))
@@ -534,9 +634,6 @@ class LLMService:
                                                                   full_message=[
                                                                       {'type': msg.type, 'content': msg.content} for msg
                                                                       in self.sql_message])
-        full_thinking_text = ''
-        full_sql_text = ''
-        token_usage = {}
         res = process_stream(self.llm.stream(self.sql_message), token_usage)
         for chunk in res:
             if chunk.get('content'):

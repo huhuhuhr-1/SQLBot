@@ -526,10 +526,10 @@ async def _run_analysis_or_predict(
     try:
         payload = None
         llm_service = await LLMService.create(
-            session,
-            current_user,
-            request_question,
-            current_assistant)
+            session=session,
+            current_user=current_user,
+            chat_question=request_question,
+            current_assistant=current_assistant)
         if task_type == 'analysis':
             if chat_record.my_promote is None and chat_record.intent:
                 payload: Optional[AnalysisIntentPayload] = (

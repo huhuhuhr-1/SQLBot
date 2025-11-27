@@ -18,6 +18,7 @@ from apps.template.generate_guess_question.generator import get_guess_question_t
 from apps.template.generate_predict.generator import get_predict_template
 from apps.template.generate_sql.generator import get_sql_template, get_sql_example_template
 from apps.template.select_datasource.generator import get_datasource_template
+from apps.openapi.service.openapi_prompt import get_myself_template
 
 
 def enum_values(enum_class: type[Enum]) -> list:
@@ -183,6 +184,14 @@ class AiModelQuestion(BaseModel):
     custom_prompt: str = ""
     error_msg: str = ""
 
+    # 新增字段用于增强思考
+    is_enhanced_think: bool = True
+    enhanced_think_result: str = None
+    user_name: str = None
+
+    # 新增用户信息
+    user_name: Optional[str] = Body(default=None, description='用户名')
+
     def sql_sys_question_with_schema(self, mySchema: str = None):
         if mySchema:
             tmp_schema = mySchema
@@ -228,8 +237,15 @@ class AiModelQuestion(BaseModel):
 
     def sql_user_question(self, current_time: str, change_title: bool):
         return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=self.question,
-                                                 rule=self.rule, current_time=current_time, error_msg=self.error_msg,change_title = change_title)
+                                                 rule=self.rule, current_time=current_time, error_msg=self.error_msg,change_title = change_title,
+                                                 thinking_result=self.enhanced_think_result)
 
+    def enhanced_think_question(self, current_time: str):
+        return get_myself_template()['think_prompt'].format(user_info=self.user_name,
+                                                            current_time=current_time,
+                                                            schema=self.db_schema,
+                                                            query=self.question,
+                                                            terminologies=self.terminologies)
     def chart_sys_question(self):
         return get_chart_template()['system'].format(sql=self.sql, question=self.question, lang=self.lang)
 

@@ -7,13 +7,15 @@ from langchain.chat_models.base import BaseChatModel
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from apps.ai_model.openai.llm import BaseChatOpenAI
+from apps.ai_model.openai.llm import BaseChatOpenAI, ChatOpenAI
 from apps.system.models.system_model import AiModelDetail
 from common.core.db import engine
 from common.utils.crypto import sqlbot_decrypt
 from common.utils.utils import prepare_model_arg
 from langchain_community.llms import VLLMOpenAI
 from langchain_openai import AzureChatOpenAI
+
+
 # from langchain_community.llms import Tongyi, VLLM
 
 class LLMConfig(BaseModel):
@@ -24,16 +26,17 @@ class LLMConfig(BaseModel):
     api_key: Optional[str] = None
     api_base_url: Optional[str] = None
     additional_params: Dict[str, Any] = {}
+
     class Config:
         frozen = True
 
     def __hash__(self):
         if hasattr(self, 'additional_params') and isinstance(self.additional_params, dict):
-            hashable_params = frozenset((k, tuple(v) if isinstance(v, (list, dict)) else v) 
-                            for k, v in self.additional_params.items())
+            hashable_params = frozenset((k, tuple(v) if isinstance(v, (list, dict)) else v)
+                                        for k, v in self.additional_params.items())
         else:
             hashable_params = None
-        
+
         return hash((
             self.model_id,
             self.model_type,
@@ -47,8 +50,9 @@ class LLMConfig(BaseModel):
 class BaseLLM(ABC):
     """Abstract base class for large language models"""
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig, use_tool: bool = False):
         self.config = config
+        self.use_tool = use_tool
         self._llm = self._init_llm()
 
     @abstractmethod
@@ -61,6 +65,7 @@ class BaseLLM(ABC):
         """Return the langchain LLM instance"""
         return self._llm
 
+
 class OpenAIvLLM(BaseLLM):
     def _init_llm(self) -> VLLMOpenAI:
         return VLLMOpenAI(
@@ -70,6 +75,7 @@ class OpenAIvLLM(BaseLLM):
             streaming=True,
             **self.config.additional_params,
         )
+
 
 class OpenAIAzureLLM(BaseLLM):
     def _init_llm(self) -> AzureChatOpenAI:
@@ -88,15 +94,28 @@ class OpenAIAzureLLM(BaseLLM):
             streaming=True,
             **self.config.additional_params,
         )
+
+
 class OpenAILLM(BaseLLM):
     def _init_llm(self) -> BaseChatModel:
-        return BaseChatOpenAI(
-            model=self.config.model_name,
-            api_key=self.config.api_key or 'Empty',
-            base_url=self.config.api_base_url,
-            stream_usage=True,
-            **self.config.additional_params,
-        )
+        if not self.use_tool:
+            return BaseChatOpenAI(
+                model=self.config.model_name,
+                api_key=self.config.api_key or 'Empty',
+                base_url=self.config.api_base_url,
+                stream_usage=True,
+                **self.config.additional_params,
+            )
+        else:
+            from common.utils.utils import SQLBotLogUtil
+            SQLBotLogUtil.info("使用工具")
+            return ChatOpenAI(
+                model=self.config.model_name,
+                api_key=self.config.api_key or 'Empty',
+                base_url=self.config.api_base_url,
+                streaming=True,
+                **self.config.additional_params,
+            )
 
     def generate(self, prompt: str) -> str:
         return self.llm.invoke(prompt)
@@ -113,12 +132,23 @@ class LLMFactory:
     }
 
     @classmethod
-    @lru_cache(maxsize=32)
-    def create_llm(cls, config: LLMConfig) -> BaseLLM:
+    def create_llm(cls, config: LLMConfig, use_cache: bool = True, use_tool: bool = False) -> BaseLLM:
+        if use_cache:
+            return cls._create_llm_cached(config, use_tool)
+        else:
+            return cls._create_llm(config, use_tool)
+
+    @classmethod
+    def _create_llm(cls, config: LLMConfig, use_tool: bool = False) -> BaseLLM:
         llm_class = cls._llm_types.get(config.model_type)
         if not llm_class:
             raise ValueError(f"Unsupported LLM type: {config.model_type}")
-        return llm_class(config)
+        return llm_class(config, use_tool)
+
+    @classmethod
+    @lru_cache(maxsize=32)
+    def _create_llm_cached(cls, config: LLMConfig, use_tool: bool = False) -> BaseLLM:
+        return cls._create_llm(config, use_tool)
 
     @classmethod
     def register_llm(cls, model_type: str, llm_class: Type[BaseLLM]):
@@ -150,7 +180,8 @@ async def get_default_config() -> LLMConfig:
         if db_model.config:
             try:
                 config_raw = json.loads(db_model.config)
-                additional_params = {item["key"]: prepare_model_arg(item.get('val')) for item in config_raw if "key" in item and "val" in item}
+                additional_params = {item["key"]: prepare_model_arg(item.get('val')) for item in config_raw if
+                                     "key" in item and "val" in item}
                 # modify by huhuhuhr 20250925
                 if hasattr(additional_params, "extra_body") is False:
                     additional_params.setdefault('extra_body', {})
@@ -160,7 +191,6 @@ async def get_default_config() -> LLMConfig:
             db_model.api_domain = await sqlbot_decrypt(db_model.api_domain)
             if db_model.api_key:
                 db_model.api_key = await sqlbot_decrypt(db_model.api_key)
-            
 
         # 构造 LLMConfig
         return LLMConfig(
@@ -171,3 +201,16 @@ async def get_default_config() -> LLMConfig:
             api_base_url=db_model.api_domain,
             additional_params=additional_params,
         )
+
+
+async def create_llm(config: LLMConfig = None, use_cache: bool = False, use_tool: bool = True):
+    if config is None:
+        llm_config = await get_default_config()
+    else:
+        llm_config = config
+
+    llm_instance = LLMFactory.create_llm(config=llm_config, use_cache=use_cache, use_tool=use_tool)
+
+    llm = llm_instance.llm
+
+    return llm
