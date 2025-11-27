@@ -1,0 +1,30 @@
+# 基于已构建的基础镜像，只更新backend代码
+FROM sqlbot-dev-20251130:latest
+
+# 环境变量
+ENV SQLBOT_HOME=/opt/sqlbot
+ENV PYTHONPATH=${SQLBOT_HOME}/app
+ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
+
+# 工作目录
+WORKDIR ${SQLBOT_HOME}/app
+
+# 复制backend代码，然后删除不需要的文件（避免重复拷贝 .venv）
+COPY backend/ .
+
+# 删除本地复制的 .venv 目录，使用基础镜像中的环境
+# 这样可以避免 1.7GB 的重复复制
+RUN if [ -d ".venv" ]; then \
+        echo "删除本地 .venv 目录 $(du -sh .venv 2>/dev/null | cut -f1)"; \
+        rm -rf .venv; \
+    fi && \
+    if [ -d "__pycache__" ]; then \
+        find . -name "__pycache__" -type d -exec rm -rf {} +; \
+    fi && \
+    find . -name "*.pyc" -delete && \
+    find . -name "*.pyo" -delete
+
+# 注意：离线环境不能执行uv sync，直接使用基础镜像中的依赖
+
+# 入口点保持不变
+ENTRYPOINT ["sh", "start.sh"]

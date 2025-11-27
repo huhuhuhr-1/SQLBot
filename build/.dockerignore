@@ -1,0 +1,25 @@
+# 排除本地虚拟环境和其他不需要的文件
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# 排除敏感配置
+.env
+.env.local
+.env.*.local
