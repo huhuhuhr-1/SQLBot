@@ -206,14 +206,18 @@ async def chat(
                          chat_question,
                          current_assistant,
                          queue):
-                context.run(lambda: asyncio.run(
-                    PlanAgent(
-                        session=session,
-                        current_user=current_user,
-                        chat_question=chat_question,
-                        current_assistant=current_assistant,
-                        queue=queue,
-                        llm=llm).execute_plan()))
+                # 为子线程创建独立的数据库session，确保线程安全
+                from common.core.db import get_db_session
+
+                with get_db_session() as thread_session:
+                    context.run(lambda: asyncio.run(
+                        PlanAgent(
+                            session=thread_session,
+                            current_user=current_user,
+                            chat_question=chat_question,
+                            current_assistant=current_assistant,
+                            queue=queue,
+                            llm=llm).execute_plan()))
 
             thread = threading.Thread(target=run_task,
                                       args=(contextvars.copy_context(),
