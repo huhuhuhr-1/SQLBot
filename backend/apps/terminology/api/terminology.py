@@ -17,15 +17,17 @@ from apps.terminology.models.terminology_model import TerminologyInfo
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.data_format import DataFormat
+from common.utils.excel import get_excel_column_count
 
 router = APIRouter(tags=["Terminology"], prefix="/system/terminology")
 
 
 @router.get("/page/{current_page}/{page_size}")
 async def pager(session: SessionDep, current_user: CurrentUser, current_page: int, page_size: int,
-                word: Optional[str] = Query(None, description="搜索术语(可选)")):
+                word: Optional[str] = Query(None, description="搜索术语(可选)"),
+                dslist: Optional[list[int]] = Query(None, description="数据集ID集合(可选)")):
     current_page, page_size, total_count, total_pages, _list = page_terminology(session, current_page, page_size, word,
-                                                                                current_user.oid)
+                                                                                current_user.oid, dslist)
 
     return {
         "current_page": current_page,
@@ -131,6 +133,9 @@ async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile
         import_data = []
 
         for sheet_name in sheet_names:
+
+            if get_excel_column_count(save_path, sheet_name) < len(use_cols):
+                raise Exception(trans("i18n_excel_import.col_num_not_match"))
 
             df = pd.read_excel(
                 save_path,
