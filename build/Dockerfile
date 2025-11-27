@@ -8,6 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
+# 复制前端源码（排除 node_modules、dist 等不需要的文件）
 COPY frontend /tmp/frontend
 RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
 
@@ -31,13 +32,26 @@ WORKDIR ${APP_HOME}
 
 COPY  --from=sqlbot-ui-builder ${UI_HOME} ${UI_HOME}
 # Install dependencies
-RUN test -f "./uv.lock" && \
-    --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=backend/uv.lock,target=uv.lock \
     --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project || echo "uv.lock file not found, skipping intermediate-layers"
+    sh -c "test -f './uv.lock' && uv sync --frozen --no-install-project || echo 'uv.lock file not found, skipping intermediate-layers'"
 
+# 复制后端源码，然后删除不需要的文件（避免 .venv 重复复制）
 COPY ./backend ${APP_HOME}
+
+# 删除本地复制的 .venv 目录和其他缓存文件
+# 使用 uv 安装依赖，避免手动管理的 .venv
+RUN if [ -d ".venv" ]; then \
+        echo "删除本地 .venv 目录 $(du -sh .venv 2>/dev/null | cut -f1)"; \
+        rm -rf .venv; \
+    fi && \
+    if [ -d "__pycache__" ]; then \
+        find . -name "__pycache__" -type d -exec rm -rf {} +; \
+    fi && \
+    find . -name "*.pyc" -delete && \
+    find . -name "*.pyo" -delete && \
+    find . -name "*.pyd" -delete
 
 # Final sync to ensure all dependencies are installed
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -78,10 +92,11 @@ ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
 
 ENV POSTGRES_DB=sqlbot
 ENV POSTGRES_USER=root
+# 注意：POSTGRES_PASSWORD 应该通过环境变量或 secrets 传入
 ENV POSTGRES_PASSWORD=Password123@pg
 
 # Add Oracle instant client path to ENV
-ENV LD_LIBRARY_PATH="/opt/sqlbot/db_client/oracle_instant_client:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH=/opt/sqlbot/db_client/oracle_instant_client
 
 # Copy necessary files from builder
 COPY start.sh /opt/sqlbot/app/start.sh
