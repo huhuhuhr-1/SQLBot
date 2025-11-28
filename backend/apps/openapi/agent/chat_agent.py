@@ -59,7 +59,7 @@ class ChatAgent:
             )
 
     async def run_chat(self):
-        self.datasource = self.get_datasource()
+        self.datasource = await self.get_datasource()
         self.llm_service = await LLMService.create(
             self.session,
             self.current_user,
@@ -129,8 +129,10 @@ class ChatAgent:
                                       self.chat_question.chat_id,
                                       session,
                                       self.current_user)
+                SQLBotLogUtil.info("绑定数据源成功")
                 break
             else:
+                SQLBotLogUtil.error("数据源未找到")
                 raise HTTPException(
                     status_code=500,
                     detail="数据源未找到"

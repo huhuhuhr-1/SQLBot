@@ -211,7 +211,7 @@ class LLMService:
         else:
             if self.chat_question.my_schema is not None:
                 self.sql_message.append(SystemMessage(
-                    content=self.chat_question.sql_sys_question_with_schema(self.chat_question.my_schema)))
+                    content=self.chat_question.sql_sys_question_with_schema(self.ds.type,settings.GENERATE_SQL_QUERY_LIMIT_ENABLED,self.chat_question.my_schema)))
             else:
                 self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question(self.ds.type,
                                                                                                   settings.GENERATE_SQL_QUERY_LIMIT_ENABLED)))
@@ -543,9 +543,20 @@ class LLMService:
                                             self.chat_question.question, self.current_assistant)
                 # yield {'content': '{"id":' + str(ds.get('id')) + '}'}
 
+            # Convert to serializable format before JSON encoding
             _ds_list_dict = []
             for _ds in _ds_list:
-                _ds_list_dict.append(_ds)
+                if isinstance(_ds, dict):
+                    # Extract only the fields needed for serialization
+                    serializable_ds = {
+                        'id': _ds.get('id'),
+                        'name': _ds.get('name'),
+                        'description': _ds.get('description')
+                    }
+                    _ds_list_dict.append(serializable_ds)
+                else:
+                    # Handle other data types if needed
+                    _ds_list_dict.append(_ds)
             datasource_msg.append(
                 HumanMessage(self.chat_question.datasource_user_question(orjson.dumps(_ds_list_dict).decode())))
 
