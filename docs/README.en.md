@@ -60,7 +60,9 @@ If you are in an intranet environment, you can deploy SQLBot via the [offline in
 ## UI Display
 
   <tr>
-    <img alt="q&a" src="https://github.com/user-attachments/assets/55526514-52f3-4cfe-98ec-08a986259280"   />
+    <img width="1920" height="991" alt="image" src="https://github.com/user-attachments/assets/c9f5e1ff-f654-4375-96be-5511fe30c120" />
+
+    
   </tr>
 
 ## Star History
