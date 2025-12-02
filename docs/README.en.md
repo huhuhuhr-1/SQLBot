@@ -14,7 +14,8 @@ SQLBot is an intelligent data query system based on large language models and RA
 
 ## Working principle
 
-<img width="1153" height="563" alt="image" src="https://github.com/user-attachments/assets/8bc40db1-2602-4b68-9802-b9be36281967" />
+<img width="1105" height="577" alt="image" src="https://github.com/user-attachments/assets/58f147ff-412e-4ac9-a450-5d01a0bbe9f6" />
+
 
 ## Core advantages
 
