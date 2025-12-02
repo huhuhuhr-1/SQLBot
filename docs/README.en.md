@@ -1,5 +1,5 @@
 <p align="center"><img src="https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/sqlbot/sqlbot.png" alt="SQLBot" width="300" /></p>
-<h3 align="center">Intelligent Questioning System Based on Large Models and RAGs</h3>
+<h3 align="center">Intelligent Questioning System Based on Large Models and RAG</h3>
 <p align="center">
   <a href="https://github.com/dataease/SQLBot/releases/latest"><img src="https://img.shields.io/github/v/release/dataease/SQLBot" alt="Latest release"></a>
   <a href="https://github.com/dataease/SQLBot"><img src="https://img.shields.io/github/stars/dataease/SQLBot?color=%231890FF&style=flat-square" alt="Stars"></a>    
@@ -10,14 +10,14 @@
 <hr/>
 
 
-SQLBot is an intelligent data query system based on large language models and RAGs, meticulously crafted by the DataEase open-source project team. With SQLBot, users can perform conversational data analysis (ChatBI), quickly extracting the necessary data information and visualizations, and supporting further intelligent analysis.
+SQLBot is an intelligent data query system based on large language models and RAG, meticulously crafted by the DataEase open-source project team. With SQLBot, users can perform conversational data analysis (ChatBI), quickly extracting the necessary data information and visualizations, and supporting further intelligent analysis.
 
-## Working principle
+## How It Works
 
 <img width="1105" height="577" alt="image" src="https://github.com/user-attachments/assets/58f147ff-412e-4ac9-a450-5d01a0bbe9f6" />
 
 
-## Core advantages
+## Key Features
 
 - **Out-of-the-Box Functionality:** Simply configure the large model and data source; no complex development is required to quickly enable intelligent data collection. Leveraging the large model's natural language understanding and SQL generation capabilities, combined with RAG technology, it achieves high-quality Text-to-SQL conversion.
 - **Secure and Controllable:** Provides a workspace-level resource isolation mechanism, building clear data boundaries and ensuring data access security. Supports fine-grained data permission configuration, strengthening permission control capabilities and ensuring compliance and controllability during use.
@@ -83,7 +83,7 @@ If you are in an intranet environment, you can deploy SQLBot via the [offline in
 
 This repository is licensed under the [FIT2CLOUD Open Source License](LICENSE), which is essentially GPLv3 but with some additional restrictions.
 
-You can perform secondary development based on the SQLBot source code, but you must adhere to the following:
+You may conduct secondary development based on the SQLBot source code, but you must adhere to the following:
 
 - You cannot replace or modify the SQLBot logo and copyright information;
 
