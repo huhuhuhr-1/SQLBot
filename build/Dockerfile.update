@@ -9,20 +9,30 @@ ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
 # 工作目录
 WORKDIR ${SQLBOT_HOME}/app
 
-# 复制backend代码，然后删除不需要的文件（避免重复拷贝 .venv）
-COPY backend/ .
+# 由于已有.dockerignore文件，直接复制会自动排除大文件
+# 但我们使用更精确的方式来控制复制内容
 
-# 删除本地复制的 .venv 目录，使用基础镜像中的环境
-# 这样可以避免 1.7GB 的重复复制
-RUN if [ -d ".venv" ]; then \
-        echo "删除本地 .venv 目录 $(du -sh .venv 2>/dev/null | cut -f1)"; \
-        rm -rf .venv; \
-    fi && \
-    if [ -d "__pycache__" ]; then \
-        find . -name "__pycache__" -type d -exec rm -rf {} +; \
-    fi && \
+# 1. 先复制重要的配置文件
+COPY backend/*.py backend/*.ini backend/*.toml ./
+
+# 2. 复制核心目录（按重要性排序，合并COPY操作）
+COPY backend/apps/ ./apps/
+COPY backend/common/ ./common/
+COPY backend/alembic/ ./alembic/
+COPY backend/scripts/ ./scripts/
+COPY backend/templates/ ./templates/
+COPY backend/locales/ ./locales/
+
+# 3. 复制示例配置文件
+COPY backend/.env.example ./
+
+# 4. 最后清理 - 在同一个RUN层中完成所有清理工作
+RUN find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true && \
     find . -name "*.pyc" -delete && \
-    find . -name "*.pyo" -delete
+    find . -name "*.pyo" -delete && \
+    find . -name ".pytest_cache" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    rm -rf logs/ __pycache__/ .pytest_cache/ 2>/dev/null || true && \
+    echo "Backend files updated successfully, excluding .venv and logs"
 
 # 注意：离线环境不能执行uv sync，直接使用基础镜像中的依赖
 
