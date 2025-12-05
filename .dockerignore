@@ -1,0 +1,77 @@
+# 排除虚拟环境 - 1.7GB
+backend/.venv
+backend/venv
+.venv
+venv
+
+# 排除日志文件 - 1.7GB
+backend/logs/
+logs/
+*.log
+*.log.*
+
+# 排除缓存文件
+backend/__pycache__/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 排除测试文件
+backend/test/
+test/
+tests/
+
+# 排除Git相关
+.git/
+.gitignore
+
+# 排除IDE和编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 排除临时文件
+tmp/
+temp/
+*.tmp
+*.temp
+
+# 排除构建产物
+build/
+dist/
+*.egg-info/
+
+# 排除环境配置文件（保留示例）
+backend/.env
+.env
+
+# 排除数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 排除数据文件
+data/
+uploads/
+static/uploads/
+
+# 排除Node.js相关
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 排除系统文件
+.DS_Store
+Thumbs.db
+
+# 但保留重要的配置文件
+!backend/.env.example
+!backend/pyproject.toml
+!backend/alembic.ini
+!backend/requirements.txt
