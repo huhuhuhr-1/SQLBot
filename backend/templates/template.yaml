@@ -548,17 +548,22 @@ template:
           在返回的JSON的sql字段字符串内，必须注意符号的转译是否正确
         </rule>
         <rule>
+          过滤条件空字符串处理：
+          - 如果过滤条件数组为空[]或null → 视为无过滤条件
+          - 如果过滤条件中filter字段为空字符串（""）→ 该条件视为无效
+          - 如果所有过滤条件的filter都为空字符串 → 视为无有效过滤条件
+        </rule>
+        <rule>
           处理逻辑：
-          - 如果过滤条件为空数组[]或null → {{"success":true,"sql":"原SQL"}}
+          - 如果无过滤条件（空数组、null、所有filter为空字符串） → {{"success":true,"sql":"原SQL"}}
           - 如果过滤条件不为空但找不到匹配的表 → {{"success":true,"sql":"原SQL"}}
-          - 如果过滤条件有语法错误或安全风险 → {{"success":false,"message":"错误原因"}}
-          - 其他情况 → 生成新SQL并返回 {{"success":true,"sql":"新SQL"}}
+          - 如果过滤条件有语法错误或安全风险（不包括空字符串） → {{"success":false,"message":"错误原因"}}
+          - 如果过滤条件有有效条件（非空字符串）且能找到匹配表 → 生成新SQL并返回 {{"success":true,"sql":"新SQL"}}
         </rule>
         <rule>
           无论成功还是失败，都必须返回JSON格式，禁止输出任何自然语言。
           思考过程只在内部进行，不输出到最终结果。
         </rule>
-        
       </Rules>
       
       ### 响应, 请根据上述要求直接返回JSON结果:
