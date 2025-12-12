@@ -13,6 +13,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, Path
 from apps.db.db import get_schema
 from apps.db.engine import get_engine_conn
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.utils import SQLBotLogUtil
@@ -80,7 +81,9 @@ async def choose_tables(session: SessionDep, trans: Trans, tables: List[CoreTabl
     await asyncio.to_thread(inner)
 
 
+
 @router.post("/update", response_model=CoreDatasource, summary=f"{PLACEHOLDER_PREFIX}ds_update")
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="ds.id"))
 async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
     def inner():
         return update_ds(session, trans, user, ds)
@@ -89,11 +92,13 @@ async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreD
 
 
 @router.post("/delete/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_delete")
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="id"))
 async def delete(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     return delete_ds(session, id)
 
 
 @router.post("/getTables/{id}", response_model=List[TableSchemaResponse], summary=f"{PLACEHOLDER_PREFIX}ds_get_tables")
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="id"))
 async def get_tables(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     return getTables(session, id)
 

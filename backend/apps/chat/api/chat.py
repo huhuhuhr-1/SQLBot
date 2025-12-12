@@ -14,6 +14,7 @@ from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, 
     format_json_data, format_json_list_data, get_chart_config, list_recent_questions
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand
 from apps.chat.task.llm import LLMService
+from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
@@ -87,6 +88,7 @@ async def delete(session: SessionDep, chart_id: int):
 
 
 @router.post("/start")
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="create_chat_obj.datasource"))
 async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat):
     try:
         return create_chat(session, current_user, create_chat_obj)
@@ -138,6 +140,7 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
 
 
 @router.get("/recent_questions/{datasource_id}")
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="datasource_id"))
 async def recommend_questions(session: SessionDep, current_user: CurrentUser, datasource_id: int):
     return list_recent_questions(session=session, current_user=current_user, datasource_id=datasource_id)
 
@@ -156,6 +159,7 @@ def find_base_question(record_id: int, session: SessionDep):
 
 
 @router.post("/question")
+@require_permissions(permission=SqlbotPermission(type='chat', keyExpression="request_question.chat_id"))
 async def question_answer(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
                           current_assistant: CurrentAssistant):
     try:
