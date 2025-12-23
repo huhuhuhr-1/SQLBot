@@ -364,7 +364,7 @@ const btnSelectClick = (val: any) => {
           <template #icon>
             <icon_import_outlined></icon_import_outlined>
           </template>
-          {{ $t('professional.export') }}
+          {{ $t('parameter.export_notes') }}
         </el-button>
         <UploaderRemark
           :upload-path="`/datasource/uploadDsSchema/${info.id}`"
