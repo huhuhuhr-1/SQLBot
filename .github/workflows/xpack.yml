@@ -8,18 +8,19 @@ on:
       target_os:
         description: 'Select OS to run on'
         required: false
-        default: '["ubuntu-latest","macos-latest","windows-latest","macos-15-intel"]'
+        default: '["ubuntu-latest","macos-latest","windows-latest","macos-15-intel","ubuntu-24.04-arm"]'
         type: choice
         options:
           - '["macos-latest"]'
           - '["macos-15-intel"]'
           - '["ubuntu-latest"]'
           - '["windows-latest"]'
+          - '["ubuntu-24.04-arm"]'
           - '["ubuntu-latest","windows-latest"]'
           - '["ubuntu-latest","macos-latest"]'
           - '["macos-latest","windows-latest"]'
           - '["ubuntu-latest","macos-latest","windows-latest"]'
-          - '["ubuntu-latest","macos-latest","windows-latest","macos-15-intel"]'
+          - '["ubuntu-latest","macos-latest","windows-latest","macos-15-intel","ubuntu-24.04-arm"]'
       publish:
         description: 'Publish to repository'
         required: false
