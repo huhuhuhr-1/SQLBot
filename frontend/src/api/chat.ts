@@ -51,6 +51,7 @@ export class ChatRecord {
   recommended_question?: string
   analysis_record_id?: number
   predict_record_id?: number
+  regenerate_record_id?: number
 
   constructor()
   constructor(
@@ -75,7 +76,8 @@ export class ChatRecord {
     first_chat: boolean,
     recommended_question: string | undefined,
     analysis_record_id: number | undefined,
-    predict_record_id: number | undefined
+    predict_record_id: number | undefined,
+    regenerate_record_id: number | undefined
   )
   constructor(
     id?: number,
@@ -99,7 +101,8 @@ export class ChatRecord {
     first_chat?: boolean,
     recommended_question?: string,
     analysis_record_id?: number,
-    predict_record_id?: number
+    predict_record_id?: number,
+    regenerate_record_id?: number
   ) {
     this.id = id
     this.chat_id = chat_id
@@ -123,6 +126,7 @@ export class ChatRecord {
     this.recommended_question = recommended_question
     this.analysis_record_id = analysis_record_id
     this.predict_record_id = predict_record_id
+    this.regenerate_record_id = regenerate_record_id
   }
 }
 
@@ -252,7 +256,8 @@ const toChatRecord = (data?: any): ChatRecord | undefined => {
     data.first_chat,
     data.recommended_question,
     data.analysis_record_id,
-    data.predict_record_id
+    data.predict_record_id,
+    data.regenerate_record_id
   )
 }
 const toChatRecordList = (list: any = []): ChatRecord[] => {
@@ -319,8 +324,8 @@ export const chatApi = {
   renameChat: (chat_id: number | undefined, brief: string): Promise<string> => {
     return request.post('/chat/rename', { id: chat_id, brief: brief })
   },
-  deleteChat: (id: number | undefined): Promise<string> => {
-    return request.delete(`/chat/${id}`)
+  deleteChat: (id: number | undefined, brief: any): Promise<string> => {
+    return request.delete(`/chat/${id}/${brief}`)
   },
   analysis: (record_id: number | undefined, controller?: AbortController) => {
     return request.fetchStream(`/chat/record/${record_id}/analysis`, {}, controller)
@@ -328,8 +333,12 @@ export const chatApi = {
   predict: (record_id: number | undefined, controller?: AbortController) => {
     return request.fetchStream(`/chat/record/${record_id}/predict`, {}, controller)
   },
-  recommendQuestions: (record_id: number | undefined, controller?: AbortController) => {
-    return request.fetchStream(`/chat/recommend_questions/${record_id}`, {}, controller)
+  recommendQuestions: (
+    record_id: number | undefined,
+    controller?: AbortController,
+    params?: any
+  ) => {
+    return request.fetchStream(`/chat/recommend_questions/${record_id}${params}`, {}, controller)
   },
   recentQuestions: (datasource_id?: number): Promise<any> => {
     return request.get(`/chat/recent_questions/${datasource_id}`)

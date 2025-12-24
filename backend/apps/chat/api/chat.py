@@ -1,39 +1,48 @@
 import asyncio
 import io
 import traceback
+from typing import Optional, List
 
 import orjson
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, select
+from starlette.responses import JSONResponse
 
 from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, rename_chat, \
     delete_chat, get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data, get_chat_record_by_id, \
     format_json_data, format_json_list_data, get_chart_config, list_recent_questions
-from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj
+from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand, \
+    ChatInfo, Chat, ChatFinishStep
 from apps.chat.task.llm import LLMService
+from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
+from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
+from sqlbot_xpack.audit.models.log_model import OperationType, OperationDetails, OperationModules
+from sqlbot_xpack.audit.schemas.logger_decorator import system_log, LogConfig
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
 
-@router.get("/list")
+@router.get("/list", response_model=List[Chat], summary=f"{PLACEHOLDER_PREFIX}get_chat_list")
 async def chats(session: SessionDep, current_user: CurrentUser):
     return list_chats(session, current_user)
 
 
-@router.get("/{chart_id}")
-async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int, current_assistant: CurrentAssistant):
+@router.get("/{chart_id}", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}get_chat")
+async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int, current_assistant: CurrentAssistant,
+                   trans: Trans):
     def inner():
         return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user,
-                                     current_assistant=current_assistant)
+                                     current_assistant=current_assistant, trans=trans)
 
     return await asyncio.to_thread(inner)
 
 
-@router.get("/{chart_id}/with_data")
+@router.get("/{chart_id}/with_data", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}get_chat_with_data")
 async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, chart_id: int,
                              current_assistant: CurrentAssistant):
     def inner():
@@ -43,7 +52,7 @@ async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, cha
     return await asyncio.to_thread(inner)
 
 
-@router.get("/record/{chat_record_id}/data")
+@router.get("/record/{chat_record_id}/data", summary=f"{PLACEHOLDER_PREFIX}get_chart_data")
 async def chat_record_data(session: SessionDep, chat_record_id: int):
     def inner():
         data = get_chat_chart_data(chat_record_id=chat_record_id, session=session)
@@ -52,7 +61,7 @@ async def chat_record_data(session: SessionDep, chat_record_id: int):
     return await asyncio.to_thread(inner)
 
 
-@router.get("/record/{chat_record_id}/predict_data")
+@router.get("/record/{chat_record_id}/predict_data", summary=f"{PLACEHOLDER_PREFIX}get_chart_predict_data")
 async def chat_predict_data(session: SessionDep, chat_record_id: int):
     def inner():
         data = get_chat_predict_data(chat_record_id=chat_record_id, session=session)
@@ -61,7 +70,7 @@ async def chat_predict_data(session: SessionDep, chat_record_id: int):
     return await asyncio.to_thread(inner)
 
 
-@router.post("/rename")
+@router.post("/rename", response_model=str, summary=f"{PLACEHOLDER_PREFIX}rename_chat")
 async def rename(session: SessionDep, chat: RenameChat):
     try:
         return rename_chat(session=session, rename_object=chat)
@@ -72,8 +81,15 @@ async def rename(session: SessionDep, chat: RenameChat):
         )
 
 
-@router.delete("/{chart_id}")
-async def delete(session: SessionDep, chart_id: int):
+@router.delete("/{chart_id}/{brief}", response_model=str, summary=f"{PLACEHOLDER_PREFIX}delete_chat")
+@system_log(LogConfig(
+    operation_type=OperationType.DELETE_QA,
+    operation_detail=OperationDetails.DELETE_QA_DETAILS,
+    module=OperationModules.QA,
+    resource_id_expr="chart_id",
+    remark_expr="brief"
+))
+async def delete(session: SessionDep, chart_id: int, brief: str):
     try:
         return delete_chat(session=session, chart_id=chart_id)
     except Exception as e:
@@ -83,7 +99,14 @@ async def delete(session: SessionDep, chart_id: int):
         )
 
 
-@router.post("/start")
+@router.post("/start", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}start_chat")
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="create_chat_obj.datasource"))
+@system_log(LogConfig(
+    operation_type=OperationType.CREATE_QA,
+    operation_detail=OperationDetails.CREATE_QA_DETAILS,
+    module=OperationModules.QA,
+    result_id_expr="id"
+))
 async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat):
     try:
         return create_chat(session, current_user, create_chat_obj)
@@ -94,7 +117,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
         )
 
 
-@router.post("/assistant/start")
+@router.post("/assistant/start", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}assistant_start_chat")
 async def start_chat(session: SessionDep, current_user: CurrentUser):
     try:
         return create_chat(session, current_user, CreateChat(origin=2), False)
@@ -105,9 +128,9 @@ async def start_chat(session: SessionDep, current_user: CurrentUser):
         )
 
 
-@router.post("/recommend_questions/{chat_record_id}")
-async def recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int,
-                              current_assistant: CurrentAssistant):
+@router.post("/recommend_questions/{chat_record_id}", summary=f"{PLACEHOLDER_PREFIX}ask_recommend_questions")
+async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int,
+                                  current_assistant: CurrentAssistant, articles_number: Optional[int] = 4):
     def _return_empty():
         yield 'data:' + orjson.dumps({'content': '[]', 'type': 'recommended_question'}).decode() + '\n\n'
 
@@ -121,6 +144,7 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
 
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant, True)
         llm_service.set_record(record)
+        llm_service.set_articles_number(articles_number)
         llm_service.run_recommend_questions_task_async()
     except Exception as e:
         traceback.print_exc()
@@ -132,44 +156,176 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
 
     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 
-@router.get("/recent_questions/{datasource_id}")
-async def recommend_questions(session: SessionDep, current_user: CurrentUser, datasource_id: int):
+
+@router.get("/recent_questions/{datasource_id}", response_model=List[str],
+            summary=f"{PLACEHOLDER_PREFIX}get_recommend_questions")
+#@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="datasource_id"))
+async def recommend_questions(session: SessionDep, current_user: CurrentUser,
+                              datasource_id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     return list_recent_questions(session=session, current_user=current_user, datasource_id=datasource_id)
 
 
-@router.post("/question")
-async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
-                     current_assistant: CurrentAssistant):
-    """Stream SQL analysis results
-    
-    Args:
-        session: Database session
-        current_user: CurrentUser
-        request_question: User question model
-        
-    Returns:
-        Streaming response with analysis results
-    """
+def find_base_question(record_id: int, session: SessionDep):
+    stmt = select(ChatRecord.question, ChatRecord.regenerate_record_id).where(
+        and_(ChatRecord.id == record_id))
+    _record = session.execute(stmt).fetchone()
+    if not _record:
+        raise Exception(f'Cannot find base chat record')
+    rec_question, rec_regenerate_record_id = _record
+    if rec_regenerate_record_id:
+        return find_base_question(rec_regenerate_record_id, session)
+    else:
+        return rec_question
 
+
+@router.post("/question", summary=f"{PLACEHOLDER_PREFIX}ask_question")
+@require_permissions(permission=SqlbotPermission(type='chat', keyExpression="request_question.chat_id"))
+async def question_answer(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
+                          current_assistant: CurrentAssistant):
+    return await question_answer_inner(session, current_user, request_question, current_assistant, embedding=True)
+
+
+async def question_answer_inner(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
+                                current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True,
+                                stream: bool = True,
+                                finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False):
     try:
-        llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
-                                              embedding=True)
-        llm_service.init_record(session=session)
-        llm_service.run_task_async()
+        command, text_before_command, record_id, warning_info = parse_quick_command(request_question.question)
+        if command:
+            # todo 对话界面下，暂不支持分析和预测，需要改造前端
+            if in_chat and (command == QuickCommand.ANALYSIS or command == QuickCommand.PREDICT_DATA):
+                raise Exception(f'Command: {command.value} temporary not supported')
+
+            if record_id is not None:
+                # 排除analysis和predict
+                stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.analysis_record_id,
+                              ChatRecord.predict_record_id, ChatRecord.regenerate_record_id,
+                              ChatRecord.first_chat).where(
+                    and_(ChatRecord.id == record_id)).order_by(ChatRecord.create_time.desc())
+                _record = session.execute(stmt).fetchone()
+                if not _record:
+                    raise Exception(f'Record id: {record_id} does not exist')
+
+                rec_id, rec_chat_id, rec_analysis_record_id, rec_predict_record_id, rec_regenerate_record_id, rec_first_chat = _record
+
+                if rec_chat_id != request_question.chat_id:
+                    raise Exception(f'Record id: {record_id} does not belong to this chat')
+                if rec_first_chat:
+                    raise Exception(f'Record id: {record_id} does not support this operation')
+
+                if rec_analysis_record_id:
+                    raise Exception('Analysis record does not support this operation')
+                if rec_predict_record_id:
+                    raise Exception('Predict data record does not support this operation')
+
+            else:  # get last record id
+                stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.regenerate_record_id).where(
+                    and_(ChatRecord.chat_id == request_question.chat_id,
+                         ChatRecord.first_chat == False,
+                         ChatRecord.analysis_record_id.is_(None),
+                         ChatRecord.predict_record_id.is_(None))).order_by(
+                    ChatRecord.create_time.desc()).limit(1)
+                _record = session.execute(stmt).fetchone()
+
+                if not _record:
+                    raise Exception(f'You have not ask any question')
+
+                rec_id, rec_chat_id, rec_regenerate_record_id = _record
+
+            # 没有指定的，就查询上一个
+            if not rec_regenerate_record_id:
+                rec_regenerate_record_id = rec_id
+
+            # 针对已经是重新生成的提问，需要找到原来的提问是什么
+            base_question_text = find_base_question(rec_regenerate_record_id, session)
+            text_before_command = text_before_command + ("\n" if text_before_command else "") + base_question_text
+
+            if command == QuickCommand.REGENERATE:
+                request_question.question = text_before_command
+                request_question.regenerate_record_id = rec_id
+                return await stream_sql(session, current_user, request_question, current_assistant, in_chat, stream,
+                                        finish_step, embedding)
+
+            elif command == QuickCommand.ANALYSIS:
+                return await analysis_or_predict(session, current_user, rec_id, 'analysis', current_assistant, in_chat,
+                                                 stream)
+
+            elif command == QuickCommand.PREDICT_DATA:
+                return await analysis_or_predict(session, current_user, rec_id, 'predict', current_assistant, in_chat,
+                                                 stream)
+            else:
+                raise Exception(f'Unknown command: {command.value}')
+        else:
+            return await stream_sql(session, current_user, request_question, current_assistant, in_chat, stream,
+                                    finish_step, embedding)
     except Exception as e:
         traceback.print_exc()
 
-        def _err(_e: Exception):
-            yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+        if stream:
+            def _err(_e: Exception):
+                if in_chat:
+                    yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+                else:
+                    yield f'&#x274c; **ERROR:**\n'
+                    yield f'> {str(_e)}\n'
 
-        return StreamingResponse(_err(e), media_type="text/event-stream")
+            return StreamingResponse(_err(e), media_type="text/event-stream")
+        else:
+            return JSONResponse(
+                content={'message': str(e)},
+                status_code=500,
+            )
 
-    return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
+
+async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
+                     current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True, stream: bool = True,
+                     finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False):
+    try:
+        llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
+                                              embedding=embedding)
+        llm_service.init_record(session=session)
+        llm_service.run_task_async(in_chat=in_chat, stream=stream, finish_step=finish_step)
+    except Exception as e:
+        traceback.print_exc()
+
+        if stream:
+            def _err(_e: Exception):
+                yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+
+            return StreamingResponse(_err(e), media_type="text/event-stream")
+        else:
+            return JSONResponse(
+                content={'message': str(e)},
+                status_code=500,
+            )
+    if stream:
+        return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
+    else:
+        res = llm_service.await_result()
+        raw_data = {}
+        for chunk in res:
+            if chunk:
+                raw_data = chunk
+        status_code = 200
+        if not raw_data.get('success'):
+            status_code = 500
+
+        return JSONResponse(
+            content=raw_data,
+            status_code=status_code,
+        )
 
 
-@router.post("/record/{chat_record_id}/{action_type}")
+@router.post("/record/{chat_record_id}/{action_type}", summary=f"{PLACEHOLDER_PREFIX}analysis_or_predict")
+async def analysis_or_predict_question(session: SessionDep, current_user: CurrentUser,
+                                       current_assistant: CurrentAssistant, chat_record_id: int,
+                                       action_type: str = Path(...,
+                                                               description=f"{PLACEHOLDER_PREFIX}analysis_or_predict_action_type")):
+    return await analysis_or_predict(session, current_user, chat_record_id, action_type, current_assistant)
+
+
 async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str,
-                              current_assistant: CurrentAssistant):
+                              current_assistant: CurrentAssistant, in_chat: bool = True, stream: bool = True):
     try:
         if action_type != 'analysis' and action_type != 'predict':
             raise Exception(f"Type {action_type} Not Found")
@@ -196,19 +352,38 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
         request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
 
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant)
-        llm_service.run_analysis_or_predict_task_async(session, action_type, record)
+        llm_service.run_analysis_or_predict_task_async(session, action_type, record, in_chat, stream)
     except Exception as e:
         traceback.print_exc()
+        if stream:
+            def _err(_e: Exception):
+                yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
 
-        def _err(_e: Exception):
-            yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+            return StreamingResponse(_err(e), media_type="text/event-stream")
+        else:
+            return JSONResponse(
+                content={'message': str(e)},
+                status_code=500,
+            )
+    if stream:
+        return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
+    else:
+        res = llm_service.await_result()
+        raw_data = {}
+        for chunk in res:
+            if chunk:
+                raw_data = chunk
+        status_code = 200
+        if not raw_data.get('success'):
+            status_code = 500
 
-        return StreamingResponse(_err(e), media_type="text/event-stream")
+        return JSONResponse(
+            content=raw_data,
+            status_code=status_code,
+        )
 
-    return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 
-
-@router.get("/record/{chat_record_id}/excel/export")
+@router.get("/record/{chat_record_id}/excel/export", summary=f"{PLACEHOLDER_PREFIX}export_chart_data")
 async def export_excel(session: SessionDep, chat_record_id: int, trans: Trans):
     chat_record = session.get(ChatRecord, chat_record_id)
     if not chat_record:

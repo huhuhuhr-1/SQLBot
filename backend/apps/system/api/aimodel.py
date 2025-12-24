@@ -3,19 +3,22 @@ from typing import List, Union
 
 from fastapi.responses import StreamingResponse
 from apps.ai_model.model_factory import LLMConfig, LLMFactory
+from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.ai_model_schema import AiModelConfigItem, AiModelCreator, AiModelEditor, AiModelGridItem
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 from sqlmodel import func, select, update
 
 from apps.system.models.system_model import AiModelDetail
+from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.deps import SessionDep, Trans
 from common.utils.crypto import sqlbot_decrypt
 from common.utils.time import get_timestamp
 from common.utils.utils import SQLBotLogUtil, prepare_model_arg
 
-router = APIRouter(tags=["system/aimodel"], prefix="/system/aimodel")
+router = APIRouter(tags=["system_model"], prefix="/system/aimodel")
 
-@router.post("/status")
+@router.post("/status", include_in_schema=False)
+@require_permissions(permission=SqlbotPermission(role=['admin'])) 
 async def check_llm(info: AiModelCreator, trans: Trans):
     async def generate():
         try:
@@ -42,7 +45,7 @@ async def check_llm(info: AiModelCreator, trans: Trans):
     
     return StreamingResponse(generate(), media_type="application/x-ndjson")
 
-@router.get("/default")
+@router.get("/default", include_in_schema=False)
 async def check_default(session: SessionDep, trans: Trans):
     db_model = session.exec(
         select(AiModelDetail).where(AiModelDetail.default_model == True)
@@ -50,8 +53,9 @@ async def check_default(session: SessionDep, trans: Trans):
     if not db_model:
         raise Exception(trans('i18n_llm.miss_default'))
     
-@router.put("/default/{id}")
-async def set_default(session: SessionDep, id: int):
+@router.put("/default/{id}", summary=f"{PLACEHOLDER_PREFIX}system_model_default", description=f"{PLACEHOLDER_PREFIX}system_model_default")
+@require_permissions(permission=SqlbotPermission(role=['admin'])) 
+async def set_default(session: SessionDep, id: int = Path(description="ID")):
     db_model = session.get(AiModelDetail, id)
     if not db_model:
         raise ValueError(f"AiModelDetail with id {id} not found")
@@ -69,10 +73,11 @@ async def set_default(session: SessionDep, id: int):
         session.rollback()
         raise e
 
-@router.get("", response_model=list[AiModelGridItem])
+@router.get("", response_model=list[AiModelGridItem], summary=f"{PLACEHOLDER_PREFIX}system_model_grid", description=f"{PLACEHOLDER_PREFIX}system_model_grid")
+@require_permissions(permission=SqlbotPermission(role=['admin'])) 
 async def query(
         session: SessionDep,
-        keyword: Union[str, None] = Query(default=None, max_length=255)
+        keyword: Union[str, None] = Query(default=None, max_length=255, description=f"{PLACEHOLDER_PREFIX}keyword")
 ):
     statement = select(AiModelDetail.id, 
                        AiModelDetail.name, 
@@ -87,10 +92,11 @@ async def query(
     items = session.exec(statement).all()
     return items
 
-@router.get("/{id}", response_model=AiModelEditor)
+@router.get("/{id}", response_model=AiModelEditor, summary=f"{PLACEHOLDER_PREFIX}system_model_query", description=f"{PLACEHOLDER_PREFIX}system_model_query")
+@require_permissions(permission=SqlbotPermission(role=['admin'])) 
 async def get_model_by_id(
         session: SessionDep,
-        id: int
+        id: int = Path(description="ID")
 ):
     db_model = session.get(AiModelDetail, id)
     if not db_model:
@@ -103,16 +109,20 @@ async def get_model_by_id(
             config_list = [AiModelConfigItem(**item) for item in raw]
         except Exception:
             pass
-    if db_model.api_key:
-        db_model.api_key = await sqlbot_decrypt(db_model.api_key)
-    if db_model.api_domain:
-        db_model.api_domain = await sqlbot_decrypt(db_model.api_domain)
+    try:
+        if db_model.api_key:
+            db_model.api_key = await sqlbot_decrypt(db_model.api_key)
+        if db_model.api_domain:
+            db_model.api_domain = await sqlbot_decrypt(db_model.api_domain)
+    except Exception:
+        pass
     data = AiModelDetail.model_validate(db_model).model_dump(exclude_unset=True)
     data.pop("config", None)
     data["config_list"] = config_list
     return AiModelEditor(**data)
 
-@router.post("")
+@router.post("", summary=f"{PLACEHOLDER_PREFIX}system_model_create", description=f"{PLACEHOLDER_PREFIX}system_model_create")
+@require_permissions(permission=SqlbotPermission(role=['admin'])) 
 async def add_model(
         session: SessionDep,
         creator: AiModelCreator
@@ -128,7 +138,8 @@ async def add_model(
     session.add(detail)
     session.commit()
 
-@router.put("")
+@router.put("", summary=f"{PLACEHOLDER_PREFIX}system_model_update", description=f"{PLACEHOLDER_PREFIX}system_model_update")
+@require_permissions(permission=SqlbotPermission(role=['admin'])) 
 async def update_model(
         session: SessionDep,
         editor: AiModelEditor
@@ -143,11 +154,12 @@ async def update_model(
     session.add(db_model)
     session.commit()
 
-@router.delete("/{id}")
+@router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}system_model_del", description=f"{PLACEHOLDER_PREFIX}system_model_del")
+@require_permissions(permission=SqlbotPermission(role=['admin'])) 
 async def delete_model(
         session: SessionDep,
         trans: Trans,
-        id: int
+        id: int = Path(description="ID")
 ):
     item = session.get(AiModelDetail, id)
     if item.default_model:

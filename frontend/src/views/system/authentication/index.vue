@@ -23,7 +23,7 @@
                 v-if="!item.valid"
                 class="box-item"
                 effect="dark"
-                :content="t('system.be_turned_on')"
+                :content="t('authentication.be_turned_on')"
                 placement="top"
               >
                 <el-switch
@@ -90,9 +90,13 @@ const init = (needLoading: boolean) => {
     .get(url)
     .then((res) => {
       if (res) {
-        infos.value = [...(res as CardInfo[])].filter(
-          (item) => item.name === 'cas' || item.name === 'oauth2' || item.name === 'oidc'
-        )
+        const templateArray = ['ldap', 'oidc', 'cas', 'oauth2']
+        const resultList = [...(res as CardInfo[])].filter((item) => item.name !== 'saml2')
+        let resultMap = {} as any
+        resultList.forEach((item: any) => {
+          resultMap[item.name] = item
+        })
+        infos.value = templateArray.map((item: string) => resultMap[item])
         showInfos.value = [...infos.value]
       }
       loading.value = false
@@ -132,14 +136,6 @@ const editInfo = (item: CardInfo) => {
   }
 }
 const validate = (id: any) => {
-  if (!id) {
-    ElMessage.error(
-      `${t('ds.test_connection') + t('report.last_status_fail')}: ${t(
-        'system.platform_information_first'
-      )}`
-    )
-    return
-  }
   loading.value = true
   request
     .patch('/system/authentication/status', { type: id, name: '', config: '' })

@@ -4,6 +4,8 @@ import { ElMessage, ElLoading } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus-secondary'
 import { request } from '@/utils/request'
+import { getSQLBotAddr } from '@/utils/utils'
+
 const { t } = useI18n()
 const dialogVisible = ref(false)
 const loadingInstance = ref<ReturnType<typeof ElLoading.service> | null>(null)
@@ -15,7 +17,7 @@ const state = reactive({
     client_id: '',
     client_secret: '',
     metadata_url: '',
-    redirect_uri: '',
+    redirect_uri: getSQLBotAddr(),
     realm: '',
     scope: '',
     mapping: '',
@@ -26,7 +28,7 @@ const state = reactive({
 const validateUrl = (rule, value, callback) => {
   const reg = new RegExp(/(http|https):\/\/([\w.]+\/?)\S*/)
   if (!reg.test(value)) {
-    callback(new Error(t('system.incorrect_please_re_enter')))
+    callback(new Error(t('authentication.incorrect_please_re_enter')))
   } else {
     callback()
   }
@@ -41,9 +43,18 @@ const validateMapping = (rule, value, callback) => {
     JSON.parse(value)
   } catch (e: any) {
     console.error(e)
-    callback(new Error(t('system.in_json_format')))
+    callback(new Error(t('authentication.in_json_format')))
   }
   callback()
+}
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-expect-error
+const validateCbUrl = (rule, value, callback) => {
+  const addr = getSQLBotAddr()
+  if (value === addr || `${value}/` === addr) {
+    callback()
+  }
+  callback(new Error(t('authentication.callback_domain_name_error')))
 }
 const rule = reactive<FormRules>({
   client_id: [
@@ -55,7 +66,7 @@ const rule = reactive<FormRules>({
     {
       min: 2,
       max: 50,
-      message: t('commons.input_limit', [2, 50]),
+      message: t('common.input_limit', [2, 50]),
       trigger: 'blur',
     },
   ],
@@ -68,7 +79,7 @@ const rule = reactive<FormRules>({
     {
       min: 5,
       max: 50,
-      message: t('commons.input_limit', [5, 50]),
+      message: t('common.input_limit', [5, 50]),
       trigger: 'blur',
     },
   ],
@@ -81,10 +92,10 @@ const rule = reactive<FormRules>({
     {
       min: 10,
       max: 255,
-      message: t('commons.input_limit', [10, 255]),
+      message: t('common.input_limit', [10, 255]),
       trigger: 'blur',
     },
-    { required: true, validator: validateUrl, trigger: 'blur' },
+    { required: true, validator: validateCbUrl, trigger: 'blur' },
   ],
   metadata_url: [
     {
@@ -95,7 +106,7 @@ const rule = reactive<FormRules>({
     {
       min: 10,
       max: 255,
-      message: t('commons.input_limit', [10, 255]),
+      message: t('common.input_limit', [10, 255]),
       trigger: 'blur',
     },
     { required: true, validator: validateUrl, trigger: 'blur' },
@@ -109,7 +120,7 @@ const rule = reactive<FormRules>({
     {
       min: 2,
       max: 50,
-      message: t('commons.input_limit', [2, 50]),
+      message: t('common.input_limit', [2, 50]),
       trigger: 'blur',
     },
   ],
@@ -122,7 +133,7 @@ const rule = reactive<FormRules>({
     {
       min: 2,
       max: 255,
-      message: t('commons.input_limit', [2, 255]),
+      message: t('common.input_limit', [2, 255]),
       trigger: 'blur',
     },
   ],
@@ -163,8 +174,8 @@ const submitForm = async (formEl: FormInstance | undefined) => {
         name: 'oidc',
       }
       const method = id.value
-        ? request.put('/system/authentication', data)
-        : request.post('/system/authentication', data)
+        ? request.put('/system/authentication', data, { requestOptions: { silent: true } })
+        : request.post('/system/authentication', data, { requestOptions: { silent: true } })
       showLoading()
       method
         .then((res) => {
@@ -173,9 +184,16 @@ const submitForm = async (formEl: FormInstance | undefined) => {
             emits('saved')
             reset()
           }
-          closeLoading()
         })
-        .catch(() => {
+        .catch((e: any) => {
+          if (
+            e.message?.startsWith('sqlbot_authentication_connect_error') ||
+            e.response?.data?.startsWith('sqlbot_authentication_connect_error')
+          ) {
+            ElMessage.error(t('ds.connection_failed'))
+          }
+        })
+        .finally(() => {
           closeLoading()
         })
     }

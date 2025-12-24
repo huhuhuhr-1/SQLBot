@@ -11,6 +11,7 @@ from fastapi import APIRouter, File, UploadFile, Query
 from fastapi.responses import StreamingResponse
 
 from apps.chat.models.chat_model import AxisObj
+from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.terminology.curd.terminology import page_terminology, create_terminology, update_terminology, \
     delete_terminology, enable_terminology, get_all_terminology, batch_create_terminology
 from apps.terminology.models.terminology_model import TerminologyInfo
@@ -22,7 +23,7 @@ from common.utils.excel import get_excel_column_count
 router = APIRouter(tags=["Terminology"], prefix="/system/terminology")
 
 
-@router.get("/page/{current_page}/{page_size}")
+@router.get("/page/{current_page}/{page_size}", summary=f"{PLACEHOLDER_PREFIX}get_term_page")
 async def pager(session: SessionDep, current_user: CurrentUser, current_page: int, page_size: int,
                 word: Optional[str] = Query(None, description="搜索术语(可选)"),
                 dslist: Optional[list[int]] = Query(None, description="数据集ID集合(可选)")):
@@ -38,7 +39,7 @@ async def pager(session: SessionDep, current_user: CurrentUser, current_page: in
     }
 
 
-@router.put("")
+@router.put("", summary=f"{PLACEHOLDER_PREFIX}create_or_update_term")
 async def create_or_update(session: SessionDep, current_user: CurrentUser, trans: Trans, info: TerminologyInfo):
     oid = current_user.oid
     if info.id:
@@ -47,17 +48,17 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, trans
         return create_terminology(session, info, oid, trans)
 
 
-@router.delete("")
+@router.delete("", summary=f"{PLACEHOLDER_PREFIX}delete_term")
 async def delete(session: SessionDep, id_list: list[int]):
     delete_terminology(session, id_list)
 
 
-@router.get("/{id}/enable/{enabled}")
+@router.get("/{id}/enable/{enabled}", summary=f"{PLACEHOLDER_PREFIX}enable_term")
 async def enable(session: SessionDep, id: int, enabled: bool, trans: Trans):
     enable_terminology(session, id, enabled, trans)
 
 
-@router.get("/export")
+@router.get("/export", summary=f"{PLACEHOLDER_PREFIX}export_term")
 async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
                        word: Optional[str] = Query(None, description="搜索术语(可选)")):
     def inner():
@@ -98,6 +99,51 @@ async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentU
     return StreamingResponse(result, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
+@router.get("/template", summary=f"{PLACEHOLDER_PREFIX}excel_template_term")
+async def excel_template(trans: Trans):
+    def inner():
+        data_list = []
+        _data1 = {
+            "word": trans('i18n_terminology.term_name_template_example_1'),
+            "other_words": trans('i18n_terminology.synonyms_template_example_1'),
+            "description": trans('i18n_terminology.term_description_template_example_1'),
+            "all_data_sources": 'N',
+            "datasource": trans('i18n_terminology.effective_data_sources_template_example_1'),
+        }
+        data_list.append(_data1)
+        _data2 = {
+            "word": trans('i18n_terminology.term_name_template_example_2'),
+            "other_words": trans('i18n_terminology.synonyms_template_example_2'),
+            "description": trans('i18n_terminology.term_description_template_example_2'),
+            "all_data_sources": 'Y',
+            "datasource": '',
+        }
+        data_list.append(_data2)
+
+        fields = []
+        fields.append(AxisObj(name=trans('i18n_terminology.term_name_template'), value='word'))
+        fields.append(AxisObj(name=trans('i18n_terminology.synonyms_template'), value='other_words'))
+        fields.append(AxisObj(name=trans('i18n_terminology.term_description_template'), value='description'))
+        fields.append(AxisObj(name=trans('i18n_terminology.effective_data_sources_template'), value='datasource'))
+        fields.append(AxisObj(name=trans('i18n_terminology.all_data_sources_template'), value='all_data_sources'))
+
+        md_data, _fields_list = DataFormat.convert_object_array_for_pandas(fields, data_list)
+
+        df = pd.DataFrame(md_data, columns=_fields_list)
+
+        buffer = io.BytesIO()
+
+        with pd.ExcelWriter(buffer, engine='xlsxwriter',
+                            engine_kwargs={'options': {'strings_to_numbers': False}}) as writer:
+            df.to_excel(writer, sheet_name='Sheet1', index=False)
+
+        buffer.seek(0)
+        return io.BytesIO(buffer.getvalue())
+
+    result = await asyncio.to_thread(inner)
+    return StreamingResponse(result, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 path = settings.EXCEL_PATH
 
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -107,7 +153,7 @@ from sqlmodel import Session
 session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 
 
-@router.post("/uploadExcel")
+@router.post("/uploadExcel", summary=f"{PLACEHOLDER_PREFIX}upload_term")
 async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile = File(...)):
     ALLOWED_EXTENSIONS = {"xlsx", "xls"}
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):

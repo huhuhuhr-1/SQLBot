@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     EXCEL_PATH: str = '/opt/sqlbot/data/excel'
     MCP_IMAGE_HOST: str = 'http://localhost:3000'
     SERVER_IMAGE_HOST: str = 'http://YOUR_SERVE_IP:MCP_PORT/images/'
+    SERVER_IMAGE_TIMEOUT: int = 15
 
     LOCAL_MODEL_PATH: str = '/opt/sqlbot/models'
     DEFAULT_EMBEDDING_MODEL: str = 'shibing624/text2vec-base-chinese'
@@ -98,6 +99,7 @@ class Settings(BaseSettings):
     EMBEDDING_TERMINOLOGY_TOP_COUNT: int = EMBEDDING_DEFAULT_TOP_COUNT
     EMBEDDING_DATA_TRAINING_TOP_COUNT: int = EMBEDDING_DEFAULT_TOP_COUNT
 
+    # 是否启用SQL查询行数限制，默认值，可被参数配置覆盖
     GENERATE_SQL_QUERY_LIMIT_ENABLED: bool = True
 
     PARSE_REASONING_BLOCK_ENABLED: bool = True

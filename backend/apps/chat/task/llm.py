@@ -17,6 +17,7 @@ from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy import and_, select
 from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlbot_xpack.config.model import SysArgModel
 from sqlbot_xpack.custom_prompt.curd.custom_prompt import find_custom_prompts
 from sqlbot_xpack.custom_prompt.models.custom_prompt_model import CustomPromptTypeEnum
 from sqlbot_xpack.license.license_manage import SQLBotLicenseUtil
@@ -29,7 +30,8 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     save_select_datasource_answer, save_recommend_question_answer, \
     get_old_questions, save_analysis_predict_record, rename_chat, get_chart_config, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
-    get_last_execute_sql_error, format_json_data, format_chart_fields
+    get_last_execute_sql_error, format_json_data, format_chart_fields, get_chat_brief_generate, get_chat_predict_data, \
+    get_chat_chart_config
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
     ChatFinishStep, AxisObj
 from apps.data_training.curd.data_training import get_training_template
@@ -39,6 +41,7 @@ from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
+from apps.system.crud.parameter_manage import get_groups
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
@@ -84,6 +87,9 @@ class LLMService:
     future: Future
 
     last_execute_sql_error: str = None
+    articles_number: int = 4
+
+    enable_sql_row_limit: bool = settings.GENERATE_SQL_QUERY_LIMIT_ENABLED
 
     def __init__(self, session: Session, current_user: CurrentUser, chat_question: ChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
@@ -116,7 +122,7 @@ class LLMService:
         self.generate_sql_logs = list_generate_sql_logs(session=session, chart_id=chat_id)
         self.generate_chart_logs = list_generate_chart_logs(session=session, chart_id=chat_id)
 
-        self.change_title = len(self.generate_sql_logs) == 0
+        self.change_title = not get_chat_brief_generate(session=session, chat_id=chat_id)
 
         chat_question.lang = get_lang_name(current_user.language)
 
@@ -151,6 +157,14 @@ class LLMService:
     async def create(cls, *args, **kwargs):
         config: LLMConfig = await get_default_config()
         instance = cls(*args, **kwargs, config=config)
+
+        chat_params: list[SysArgModel] = await get_groups(args[0], "chat")
+        for config in chat_params:
+            if config.pkey == 'chat.limit_rows':
+                if config.pval.lower().strip() == 'true':
+                    instance.enable_sql_row_limit = True
+                else:
+                    instance.enable_sql_row_limit = False
         return instance
 
     def is_running(self, timeout=0.5):
@@ -166,6 +180,11 @@ class LLMService:
     def init_messages(self):
         last_sql_messages: List[dict[str, Any]] = self.generate_sql_logs[-1].messages if len(
             self.generate_sql_logs) > 0 else []
+        if self.chat_question.regenerate_record_id:
+            # filter record before regenerate_record_id
+            _temp_log = next(
+                filter(lambda obj: obj.pid == self.chat_question.regenerate_record_id, self.generate_sql_logs), None)
+            last_sql_messages: List[dict[str, Any]] = _temp_log.messages if _temp_log else []
 
         # todo maybe can configure
         count_limit = 0 - base_message_count_limit
@@ -173,7 +192,7 @@ class LLMService:
         self.sql_message = []
         # add sys prompt
         self.sql_message.append(SystemMessage(
-            content=self.chat_question.sql_sys_question(self.ds.type, settings.GENERATE_SQL_QUERY_LIMIT_ENABLED)))
+            content=self.chat_question.sql_sys_question(self.ds.type, self.enable_sql_row_limit)))
         if last_sql_messages is not None and len(last_sql_messages) > 0:
             # limit count
             for last_sql_message in last_sql_messages[count_limit:]:
@@ -212,6 +231,9 @@ class LLMService:
 
     def set_record(self, record: ChatRecord):
         self.record = record
+
+    def set_articles_number(self, articles_number: int):
+        self.articles_number = articles_number
 
     def get_fields_from_chart(self, _session: Session):
         chart_info = get_chart_config(_session, self.record.id)
@@ -330,7 +352,7 @@ class LLMService:
                 embedding=False)
 
         guess_msg: List[Union[BaseMessage, dict[str, Any]]] = []
-        guess_msg.append(SystemMessage(content=self.chat_question.guess_sys_question()))
+        guess_msg.append(SystemMessage(content=self.chat_question.guess_sys_question(self.articles_number)))
 
         old_questions = list(map(lambda q: q.strip(), get_old_questions(_session, self.record.datasource)))
         guess_msg.append(
@@ -524,7 +546,8 @@ class LLMService:
     def generate_sql(self, _session: Session):
         # append current question
         self.sql_message.append(HumanMessage(
-            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),change_title = self.change_title)))
+            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                 change_title=self.change_title)))
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -851,7 +874,7 @@ class LLMService:
             limit = 1000
             if data_result:
                 data_result = prepare_for_orjson(data_result)
-                if data_result and len(data_result) > limit and settings.GENERATE_SQL_QUERY_LIMIT_ENABLED:
+                if data_result and len(data_result) > limit and self.enable_sql_row_limit:
                     data_obj['data'] = data_result[:limit]
                     data_obj['limit'] = limit
                 else:
@@ -942,6 +965,15 @@ class LLMService:
             # return id
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
+                if self.get_record().regenerate_record_id:
+                    yield 'data:' + orjson.dumps({'type': 'regenerate_record_id',
+                                                  'regenerate_record_id': self.get_record().regenerate_record_id}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps(
+                    {'type': 'question', 'question': self.get_record().question}).decode() + '\n\n'
+            else:
+                if stream:
+                    yield '> ID: ' + str(self.get_record().id) + '\n'
+                    yield '> ' + self.get_record().question + '\n\n'
             if not stream:
                 json_result['record_id'] = self.get_record().id
 
@@ -993,11 +1025,13 @@ class LLMService:
             # return title
             if self.change_title:
                 llm_brief = self.get_brief_from_sql_answer(full_sql_text)
-                if (llm_brief and llm_brief != '')  or (self.chat_question.question and self.chat_question.question.strip() != ''):
-                    save_brief = llm_brief if (llm_brief and llm_brief != '') else self.chat_question.question.strip()[:20]
+                llm_brief_generated = bool(llm_brief)
+                if llm_brief_generated or (self.chat_question.question and self.chat_question.question.strip() != ''):
+                    save_brief = llm_brief if (llm_brief and llm_brief != '') else self.chat_question.question.strip()[
+                                                                                   :20]
                     brief = rename_chat(session=_session,
                                         rename_object=RenameChat(id=self.get_record().chat_id,
-                                                                 brief=save_brief))
+                                                                 brief=save_brief, brief_generate=llm_brief_generated))
                     if in_chat:
                         yield 'data:' + orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
                     if not stream:
@@ -1080,7 +1114,8 @@ class LLMService:
                         for field in result.get('fields'):
                             _column_list.append(AxisObj(name=field, value=field))
 
-                        md_data, _fields_list = DataFormat.convert_object_array_for_pandas(_column_list, result.get('data'))
+                        md_data, _fields_list = DataFormat.convert_object_array_for_pandas(_column_list,
+                                                                                           result.get('data'))
 
                         # data, _fields_list, col_formats = self.format_pd_data(_column_list, result.get('data'))
 
@@ -1120,26 +1155,8 @@ class LLMService:
                     {'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
             else:
                 if stream:
-                    _fields = {}
-                    if chart.get('columns'):
-                        for _column in chart.get('columns'):
-                            if _column:
-                                _fields[_column.get('value')] = _column.get('name')
-                    if chart.get('axis'):
-                        if chart.get('axis').get('x'):
-                            _fields[chart.get('axis').get('x').get('value')] = chart.get('axis').get('x').get('name')
-                        if chart.get('axis').get('y'):
-                            _fields[chart.get('axis').get('y').get('value')] = chart.get('axis').get('y').get('name')
-                        if chart.get('axis').get('series'):
-                            _fields[chart.get('axis').get('series').get('value')] = chart.get('axis').get('series').get(
-                                'name')
-                    _column_list = []
-                    for field in result.get('fields'):
-                        _column_list.append(
-                            AxisObj(name=field if not _fields.get(field) else _fields.get(field), value=field))
-
-                    md_data, _fields_list = DataFormat.convert_object_array_for_pandas(_column_list, result.get('data'))
-
+                    md_data, _fields_list = DataFormat.convert_data_fields_for_pandas(chart, result.get('fields'),
+                                                                                      result.get('data'))
                     # data, _fields_list, col_formats = self.format_pd_data(_column_list, result.get('data'))
 
                     if not md_data or not _fields_list:
@@ -1153,17 +1170,19 @@ class LLMService:
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
             else:
-                # todo generate picture
+                # generate picture
                 try:
-                    if chart['type'] != 'table':
+                    if chart.get('type') != 'table':
                         yield '### generated chart picture\n\n'
-                        image_url = request_picture(self.record.chat_id, self.record.id, chart,
-                                                    format_json_data(result))
+                        image_url, error = request_picture(self.record.chat_id, self.record.id, chart,
+                                                           format_json_data(result))
                         SQLBotLogUtil.info(image_url)
                         if stream:
-                            yield f'![{chart["type"]}]({image_url})'
+                            yield f'![{chart.get("type")}]({image_url})'
                         else:
                             json_result['image_url'] = image_url
+                        if error is not None:
+                            raise error
                 except Exception as e:
                     if stream:
                         raise e
@@ -1190,7 +1209,8 @@ class LLMService:
                 yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
             else:
                 if stream:
-                    yield f'> &#x274c; **ERROR**\n\n> \n\n> {error_msg}。'
+                    yield f'&#x274c; **ERROR:**\n'
+                    yield f'> {error_msg}\n'
                 else:
                     json_result['success'] = False
                     json_result['message'] = error_msg
@@ -1198,8 +1218,6 @@ class LLMService:
         finally:
             self.finish(_session)
             session_maker.remove()
-
-
 
     def run_recommend_questions_task_async(self):
         self.future = executor.submit(self.run_recommend_questions_task_cache)
@@ -1227,52 +1245,127 @@ class LLMService:
         finally:
             session_maker.remove()
 
-    def run_analysis_or_predict_task_async(self, session: Session, action_type: str, base_record: ChatRecord):
+    def run_analysis_or_predict_task_async(self, session: Session, action_type: str, base_record: ChatRecord,
+                                           in_chat: bool = True, stream: bool = True):
         self.set_record(save_analysis_predict_record(session, base_record, action_type))
-        self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type)
+        self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type, in_chat, stream)
 
-    def run_analysis_or_predict_task_cache(self, action_type: str):
-        for chunk in self.run_analysis_or_predict_task(action_type):
+    def run_analysis_or_predict_task_cache(self, action_type: str, in_chat: bool = True, stream: bool = True):
+        for chunk in self.run_analysis_or_predict_task(action_type, in_chat, stream):
             self.chunk_list.append(chunk)
 
-    def run_analysis_or_predict_task(self, action_type: str):
+    def run_analysis_or_predict_task(self, action_type: str, in_chat: bool = True, stream: bool = True):
+        json_result: Dict[str, Any] = {'success': True}
         _session = None
         try:
             _session = session_maker()
-            yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
+            if in_chat:
+                yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
+            else:
+                if stream:
+                    yield '> ID: ' + str(self.get_record().id) + '\n'
+                    yield '> ' + self.get_record().question + '\n\n'
+            if not stream:
+                json_result['record_id'] = self.get_record().id
 
             if action_type == 'analysis':
                 # generate analysis
                 analysis_res = self.generate_analysis(_session)
+                full_text = ''
                 for chunk in analysis_res:
-                    yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                         'type': 'analysis-result'}).decode() + '\n\n'
-                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
-
-                yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
+                    full_text += chunk.get('content')
+                    if in_chat:
+                        yield 'data:' + orjson.dumps(
+                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                             'type': 'analysis-result'}).decode() + '\n\n'
+                    else:
+                        if stream:
+                            yield chunk.get('content')
+                if in_chat:
+                    yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
+                    yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
+                else:
+                    if stream:
+                        yield '\n\n'
+                if not stream:
+                    json_result['content'] = full_text
 
             elif action_type == 'predict':
                 # generate predict
                 analysis_res = self.generate_predict(_session)
                 full_text = ''
                 for chunk in analysis_res:
-                    yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                         'type': 'predict-result'}).decode() + '\n\n'
                     full_text += chunk.get('content')
-                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
+                    if in_chat:
+                        yield 'data:' + orjson.dumps(
+                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                             'type': 'predict-result'}).decode() + '\n\n'
+                if in_chat:
+                    yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
 
-                _data = self.check_save_predict_data(session=_session, res=full_text)
-                if _data:
-                    yield 'data:' + orjson.dumps({'type': 'predict-success'}).decode() + '\n\n'
+                has_data = self.check_save_predict_data(session=_session, res=full_text)
+                if has_data:
+                    if in_chat:
+                        yield 'data:' + orjson.dumps({'type': 'predict-success'}).decode() + '\n\n'
+                    else:
+                        chart = get_chat_chart_config(_session, self.record.id)
+                        origin_data = get_chat_chart_data(_session, self.record.id)
+                        predict_data = get_chat_predict_data(_session, self.record.id)
+
+                        if stream:
+                            md_data, _fields_list = DataFormat.convert_data_fields_for_pandas(chart,
+                                                                                              origin_data.get('fields'),
+                                                                                              predict_data)
+                            if not md_data or not _fields_list:
+                                yield 'Predict data result is empty.\n\n'
+                            else:
+                                df = pd.DataFrame(md_data, columns=_fields_list)
+                                df_safe = DataFormat.safe_convert_to_string(df)
+                                markdown_table = df_safe.to_markdown(index=False)
+                                yield markdown_table + '\n\n'
+
+                        else:
+                            json_result['origin_data'] = origin_data
+                            json_result['predict_data'] = predict_data
+
+                        # generate picture
+                        try:
+                            if chart.get('type') != 'table':
+                                yield '### generated chart picture\n\n'
+
+                                _data = get_chat_chart_data(_session, self.record.id)
+                                _data['data'] = _data.get('data') + predict_data
+
+                                image_url, error = request_picture(self.record.chat_id, self.record.id, chart,
+                                                                   format_json_data(_data))
+                                SQLBotLogUtil.info(image_url)
+                                if stream:
+                                    yield f'![{chart.get("type")}]({image_url})'
+                                else:
+                                    json_result['image_url'] = image_url
+                                if error is not None:
+                                    raise error
+                        except Exception as e:
+                            if stream:
+                                raise e
                 else:
-                    yield 'data:' + orjson.dumps({'type': 'predict-failed'}).decode() + '\n\n'
-
-                yield 'data:' + orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
+                    if in_chat:
+                        yield 'data:' + orjson.dumps({'type': 'predict-failed'}).decode() + '\n\n'
+                    else:
+                        if stream:
+                            yield full_text + '\n\n'
+                    if not stream:
+                        json_result['success'] = False
+                        json_result['message'] = full_text
+                if in_chat:
+                    yield 'data:' + orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
 
             self.finish(_session)
+
+            if not stream:
+                yield json_result
         except Exception as e:
+            traceback.print_exc()
             error_msg: str
             if isinstance(e, SingleMessageError):
                 error_msg = str(e)
@@ -1280,7 +1373,16 @@ class LLMService:
                 error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
             if _session:
                 self.save_error(session=_session, message=error_msg)
-            yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
+            if in_chat:
+                yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
+            else:
+                if stream:
+                    yield f'&#x274c; **ERROR:**\n'
+                    yield f'> {error_msg}\n'
+                else:
+                    json_result['success'] = False
+                    json_result['message'] = error_msg
+                    yield json_result
         finally:
             # end
             session_maker.remove()
@@ -1356,16 +1458,20 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
 
     request_obj = {
         "path": os.path.join(settings.MCP_IMAGE_PATH, file_name),
-        "type": chart['type'],
+        "type": chart.get('type'),
         "data": orjson.dumps(data.get('data') if data.get('data') else []).decode(),
         "axis": orjson.dumps(axis).decode(),
     }
 
-    requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj)
+    _error = None
+    try:
+        requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj, timeout=settings.SERVER_IMAGE_TIMEOUT)
+    except Exception as e:
+        _error = e
 
     request_path = urllib.parse.urljoin(settings.SERVER_IMAGE_HOST, f"{file_name}.png")
 
-    return request_path
+    return request_path, _error
 
 
 def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = None):

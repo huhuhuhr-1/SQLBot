@@ -7,6 +7,26 @@
     "AI Model Configuration": "모델 구성",
     "Details": "세부"
   },
+  "parameter": {
+    "export_notes": "수출 참고사항",
+    "import_notes": "수입 참고사항",
+    "memo": "메모 업데이트 규칙: 테이블 이름과 필드 이름이 일치하는지 확인합니다. 일치하는 항목이 있으면 테이블 메모와 필드 메모를 업데이트하고, 그렇지 않으면 메모를 변경하지 않고 그대로 둡니다.",
+    "parameter_configuration": "매개변수 구성",
+    "question_count_settings": "질문 수 설정",
+    "model_thinking_process": "모델 사고 프로세스 확장",
+    "rows_of_data": "데이터 1,000행 제한",
+    "third_party_platform_settings": "타사 플랫폼 설정",
+    "by_third_party_platform": "타사 플랫폼에 의한 자동 사용자 생성",
+    "platform_user_organization": "제3자 플랫폼 작업 공간",
+    "platform_user_roles": "타사 플랫폼 사용자 역할",
+    "excessive_data_volume": "1,000행 데이터 제한을 비활성화하면 과도한 데이터 양으로 인해 시스템 지연이 발생할 수 있습니다.",
+    "prompt": "프롬프트",
+    "disabling_successfully": "비활성화 완료",
+    "closed_by_default": "질문 수 창에서 모델 사고 프로세스를 기본적으로 확장할지 또는 닫을지 여부를 제어합니다.",
+    "and_platform_integration": "인증 관련",
+    "login_settings": "로그인 설정",
+    "default_login": "기본 로그인 방식"
+  },
   "prompt": {
     "default_password:": "기본 비밀번호:{msg}",
     "no_sql_sample": "현재 사용 가능한 SQL 샘플 라이브러리가 없습니다",
@@ -26,7 +46,9 @@
     "edit_prompt_word": "프롬프트 편집",
     "all_236_terms": "모든 {msg}개의 {type} 프롬프트 기록을 내보내시겠습니까?",
     "export_hint": "모든 {type} 프롬프트를 내보내시겠습니까?",
-    "prompt_word_name_de": "프롬프트를 삭제하시겠습니까: {msg}?"
+    "prompt_word_name_de": "프롬프트를 삭제하시겠습니까: {msg}?",
+    "disable_field": "필드 비활성화",
+    "to_disable_it": "이 필드에는 테이블 관계가 설정되어 있습니다. 비활성화하면 관계가 유효하지 않게 됩니다. 비활성화하시겠습니까?"
   },
   "training": {
     "effective_data_sources": "유효한 데이터 소스",
@@ -117,10 +139,17 @@
     "english": "English",
     "re_upload": "다시 업로드",
     "not_exceed_50mb": "XLS, XLSX, CSV 형식을 지원하며, 파일 크기는 50MB를 초과할 수 없습니다",
+    "excel_file_type_limit": "XLS 및 XLSX 형식만 지원됩니다",
+    "click_to_select_file": "파일 선택을 클릭하세요",
+    "upload_hint_first": "먼저 ",
+    "upload_hint_download_template": "템플릿을 다운로드",
+    "upload_hint_end": ", 한 후 요구사항에 따라 작성하여 업로드하세요",
+    "continue_to_upload": "계속 가져오기",
     "reset_password": "비밀번호 재설정",
     "password_reset_successful": "비밀번호 재설정 성공",
     "or": "또는",
-    "refresh": "새로고침"
+    "refresh": "새로고침",
+    "input_limit": "길이는 {0}자에서 {1}자 사이여야 합니다"
   },
   "dashboard": {
     "open_dashboard": "대시보드 열기",
@@ -184,6 +213,8 @@
     "chart_selected": "{0}개 선택됨"
   },
   "qa": {
+    "retrieve_error": "콘텐츠 없음",
+    "retrieve_again": "다시 가져오기",
     "recently": "최근",
     "recommend": "추천",
     "quick_question": "빠른 질문",
@@ -207,6 +238,7 @@
     "continue_to_ask": "계속 질문하기:",
     "data_analysis": "데이터 분석",
     "data_predict": "데이터 예측",
+    "data_regenerated": "재생성",
     "chat_search": "검색",
     "thinking": "생각 중",
     "thinking_step": "사고 과정",
@@ -309,9 +341,11 @@
       },
       "timeout": "쿼리 시간 초과(초)",
       "address": "주소"
-    }
+    },
+    "sync_fields": "동기화된 테이블 구조"
   },
   "datasource": {
+    "recommended_repetitive_tips": "중복된 문제가 존재합니다",
     "recommended_problem_tips": "사용자 정의 구성으로 최소 한 개의 문제를 생성하세요, 각 문제는 2~200자로 작성",
     "recommended_problem_configuration": "추천 문제 구성",
     "problem_generation_method": "문제 생성 방식",
@@ -568,7 +602,7 @@
     "application_name": "애플리케이션 이름",
     "application_description": "애플리케이션 설명",
     "cross_domain_settings": "교차 도메인 설정",
-    "third_party_address": "임베디드할 제3자 주소를 입력하십시오",
+    "third_party_address": "임베디드할 제3자 주소를 입력하십시오, 여러 항목을 세미콜론으로 구분",
     "set_to_private": "비공개로 설정",
     "set_to_public": "공개로 설정",
     "public": "공개",
@@ -576,7 +610,7 @@
     "configure_interface": "인터페이스 설정",
     "interface_url": "인터페이스 URL",
     "format_is_incorrect": "형식이 올바르지 않습니다{msg}",
-    "domain_format_incorrect": ", http/https로 시작, 슬래시(/)로 끝나지 않음, 여러 도메인은 반각 쉼표(,)로 구분",
+    "domain_format_incorrect": ", http:// 또는 https://로 시작해야 하며, 슬래시(/)로 끝날 수 없습니다. 여러 도메인은 세미콜론으로 구분합니다",
     "interface_url_incorrect": ", 상대 경로를 입력해주세요. /로 시작합니다",
     "aes_enable": "AES 암호화 활성화",
     "aes_enable_tips": "암호화 필드 (host, user, password, dataBase, schema)는 모두 AES-CBC-PKCS5Padding 암호화 방식을 사용합니다",
@@ -723,6 +757,7 @@
     "valid": "유효함",
     "cas_settings": "CAS 설정",
     "callback_domain_name": "콜백 도메인",
+    "callback_domain_name_error": "콜백 URL은 현재 접속 도메인과 일치해야 합니다",
     "field_mapping": "사용자 속성 매핑",
     "field_mapping_placeholder": "예: {'{'}\"account\": \"saml2Account\", \"name\": \"saml2Name\", \"email\": \"email\"{'}'}",
     "incorrect_please_re_enter": "형식이 잘못되었습니다. 다시 입력해 주세요",
@@ -744,7 +779,19 @@
     "oidc_settings": "OIDC 설정",
     "metadata_url": "메타데이터 URL",
     "realm": "영역",
-    "oidc_field_mapping_placeholder": "예: {\"account\": \"oidcAccount\", \"name\": \"oidcName\", \"email\": \"email\"}"
+    "oidc_field_mapping_placeholder": "예: {\"account\": \"oidcAccount\", \"name\": \"oidcName\", \"email\": \"email\"}",
+    "ldap_settings": "LDAP 설정",
+    "server_address": "서버 주소",
+    "server_address_placeholder": "예: ldap://ldap.example.com:389",
+    "bind_dn": "바인드 DN",
+    "bind_dn_placeholder": "예: cn=admin,dc=example,dc=com",
+    "bind_pwd": "바인드 비밀번호",
+    "ou": "사용자 OU",
+    "ou_placeholder": "예: ou=users,dc=example,dc=com",
+    "user_filter": "사용자 필터",
+    "user_filter_placeholder": "예: uid",
+    "ldap_field_mapping_placeholder": "예: {\"account\": \"ldapAccount\", \"name\": \"ldapName\", \"email\": \"mail\"}",
+    "be_turned_on": "테스트 연결이 유효한 것으로 확인되면 활성화할 수 있습니다"
   },
   "login": {
     "default_login": "기본값",
@@ -774,5 +821,45 @@
   },
   "modelType": {
     "llm": "대형 언어 모델"
+  },
+  "audit": {
+    "system_log": "시스템 로그",
+    "search_log": "검색 로그",
+    "operation_type": "작업 유형",
+    "operation_details": "작업 상세",
+    "operation_user_name": "작업 사용자",
+    "operation_status": "작업 상태",
+    "user_name": "사용자 이름",
+    "oid_name": "작업 공간",
+    "ip_address": "IP 주소",
+    "create_time": "생성 시간",
+    "no_log": "로그 없음",
+    "all_236_terms": "전체 {msg}개의 로그를 내보내시겠습니까?",
+    "export_hint": "모든 로그를 내보내시겠습니까?",
+    "export": "내보내기",
+    "success": "성공",
+    "failed": "실패",
+    "failed_info": "작업 실패 상세",
+    "create_qa": "Q&A 생성",
+    "delete_qa": "Q&A 삭제",
+    "create_datasource": "데이터 소스 생성",
+    "update_datasource": "데이터 소스 편집",
+    "delete_datasource": "데이터 소스 삭제",
+    "create_dashboard": "대시보드 생성",
+    "update_dashboard": "대시보드 편집",
+    "delete_dashboard": "대시보드 삭제",
+    "setting_create_user": "멤버 추가",
+    "setting_delete_user": "멤버 제거",
+    "setting_create_rule": "규칙 그룹 추가",
+    "setting_delete_rule": "규칙 그룹 제거",
+    "setting_update_rule": "규칙 설정",
+    "setting_update_rule_user": "사용자 설정",
+    "setting_create_terminology": "용어 생성"
+  },
+  "api_key": {
+    "info_tips": "API 키는 SQLBot API에 액세스하는 비밀키로 계정의 모든 권한을 갖고 있습니다. 꼭 안전하게 보관하세요! 외부 채널에 어떠한 방식으로도 API 키를 공개하지 마시고, 타인이 악용하여 보안 위협이 발생하는 것을 방지하세요.",
+    "create": "생성",
+    "to_doc": "API 보기",
+    "trigger_limit": "최대 {0}개의 API 키 생성 지원"
   }
 }

@@ -3,6 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from common.core.schemas import BaseCreatorDTO
 
 EMAIL_REGEX = re.compile(
@@ -18,11 +19,11 @@ PWD_REGEX = re.compile(
 
 
 class UserStatus(BaseCreatorDTO):
-    status: int = 1
+    status: int = Field(default=1, description=f"{PLACEHOLDER_PREFIX}status")
 
 
 class UserLanguage(BaseModel):
-    language: str
+    language: str = Field(description=f"{PLACEHOLDER_PREFIX}language")
 
 
 class BaseUser(BaseModel):
@@ -34,6 +35,7 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
     language: str = Field(pattern=r"^(zh-CN|en|ko-KR)$", default="zh-CN", description="用户语言")
     password: str
     status: int = 1
+    origin: int = 0
 
     def to_dict(self):
         return {
@@ -50,11 +52,11 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
 
 
 class UserCreator(BaseUser):
-    name: str = Field(min_length=1, max_length=100, description="用户名")
-    email: str = Field(min_length=1, max_length=100, description="用户邮箱")
-    status: int = 1
-    origin: Optional[int] = 0
-    oid_list: Optional[list[int]] = None
+    name: str = Field(min_length=1, max_length=100, description=f"{PLACEHOLDER_PREFIX}user_name")
+    email: str = Field(min_length=1, max_length=100, description=f"{PLACEHOLDER_PREFIX}user_email")
+    status: int = Field(default=1, description=f"{PLACEHOLDER_PREFIX}status")
+    origin: Optional[int] = Field(default=0, description=f"{PLACEHOLDER_PREFIX}origin")
+    oid_list: Optional[list[int]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}oid")
 
     """ @field_validator("email")
     def validate_email(cls, lang: str) -> str:
@@ -68,30 +70,30 @@ class UserEditor(UserCreator, BaseCreatorDTO):
 
 
 class UserGrid(UserEditor):
-    create_time: int
-    language: str = "zh-CN"
+    create_time: int = Field(description=f"{PLACEHOLDER_PREFIX}create_time")
+    language: str = Field(default="zh-CN" ,description=f"{PLACEHOLDER_PREFIX}language") 
     # space_name: Optional[str] = None
     # origin: str = ''
 
 
 class PwdEditor(BaseModel):
-    pwd: str
-    new_pwd: str
+    pwd: str = Field(description=f"{PLACEHOLDER_PREFIX}origin_pwd")
+    new_pwd: str = Field(description=f"{PLACEHOLDER_PREFIX}new_pwd")
 
 
 class UserWsBase(BaseModel):
-    uid_list: list[int]
-    oid: Optional[int] = None
+    uid_list: list[int] = Field(description=f"{PLACEHOLDER_PREFIX}uid")
+    oid: Optional[int] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}oid")
 
 
 class UserWsDTO(UserWsBase):
-    weight: Optional[int] = 0
+    weight: Optional[int] = Field(default=0, description=f"{PLACEHOLDER_PREFIX}weight")
 
 
 class UserWsEditor(BaseModel):
-    uid: int
-    oid: int
-    weight: int = 0
+    uid: int = Field(description=f"{PLACEHOLDER_PREFIX}uid")
+    oid: int = Field(description=f"{PLACEHOLDER_PREFIX}oid")
+    weight: int = Field(default=0, description=f"{PLACEHOLDER_PREFIX}weight")
 
 
 class UserInfoDTO(UserEditor):
@@ -101,11 +103,11 @@ class UserInfoDTO(UserEditor):
 
 
 class AssistantBase(BaseModel):
-    name: str
-    domain: str
-    type: int = 0  # 0普通小助手 1高级 4页面嵌入
-    configuration: Optional[str] = None
-    description: Optional[str] = None
+    name: str = Field(description=f"{PLACEHOLDER_PREFIX}model_name")
+    domain: str = Field(description=f"{PLACEHOLDER_PREFIX}assistant_domain")
+    type: int = Field(default=0, description=f"{PLACEHOLDER_PREFIX}assistant_type")  # 0普通小助手 1高级 4页面嵌入
+    configuration: Optional[str] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}assistant_configuration")
+    description: Optional[str] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}assistant_description")
 
 
 class AssistantDTO(AssistantBase, BaseCreatorDTO):
@@ -148,11 +150,11 @@ class WorkspaceUser(UserEditor):
 
 
 class UserWs(BaseCreatorDTO):
-    name: str
+    name: str = Field(description="user_name")
 
 
 class UserWsOption(UserWs):
-    account: str
+    account: str = Field(description="user_account")
 
 
 class AssistantFieldSchema(BaseModel):
@@ -205,3 +207,13 @@ class AssistantUiSchema(BaseCreatorDTO):
     name: Optional[str] = None
     welcome: Optional[str] = None
     welcome_desc: Optional[str] = None
+
+class ApikeyStatus(BaseModel):
+    id: int = Field(description=f"{PLACEHOLDER_PREFIX}id")
+    status: bool = Field(description=f"{PLACEHOLDER_PREFIX}status")
+
+class ApikeyGridItem(BaseCreatorDTO):
+    access_key: str = Field(description=f"Access Key")
+    secret_key: str = Field(description=f"Secret Key")
+    status: bool = Field(description=f"{PLACEHOLDER_PREFIX}status")
+    create_time: int = Field(description=f"{PLACEHOLDER_PREFIX}create_time")

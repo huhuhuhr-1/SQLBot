@@ -1,38 +1,13 @@
 <template>
-  <el-popover
+  <el-icon
     v-if="assistantStore.assistant && !assistantStore.pageEmbedded && assistantStore.type != 4"
-    :width="280"
-    placement="bottom-start"
-    popper-class="popover-chat_history popover-chat_history_small"
-    :disabled="isPhone"
+    class="show-history_icon"
+    :class="{ 'embedded-history-hidden': embeddedHistoryHidden }"
+    size="20"
+    @click="showFloatPopover"
   >
-    <template #reference>
-      <el-icon
-        class="show-history_icon"
-        :class="{ 'embedded-history-hidden': embeddedHistoryHidden }"
-        style=""
-        size="20"
-        @click="showFloatPopover"
-      >
-        <icon_sidebar_outlined></icon_sidebar_outlined>
-      </el-icon>
-    </template>
-    <ChatListContainer
-      ref="floatPopoverRef"
-      v-model:chat-list="chatList"
-      v-model:current-chat-id="currentChatId"
-      v-model:current-chat="currentChat"
-      v-model:loading="loading"
-      in-popover
-      :app-name="customName"
-      @go-empty="goEmpty"
-      @on-chat-created="onChatCreated"
-      @on-click-history="onClickHistory"
-      @on-chat-deleted="onChatDeleted"
-      @on-chat-renamed="onChatRenamed"
-      @on-click-side-bar-btn="hideSideBar"
-    />
-  </el-popover>
+    <icon_sidebar_outlined></icon_sidebar_outlined>
+  </el-icon>
   <el-container class="chat-container no-padding">
     <el-aside
       v-if="(isCompletePage || pageEmbedded) && chatListSideBarShow"
@@ -145,10 +120,13 @@
                   ><custom_small v-if="appearanceStore.themeColor !== 'default'"></custom_small>
                   <LOGO_fold v-else></LOGO_fold
                 ></el-icon>
-                {{ appearanceStore.pc_welcome }}
+                {{ appearanceStore.pc_welcome ?? '你好，我是 SQLBot' }}
               </div>
               <div class="sub">
-                {{ appearanceStore.pc_welcome_desc }}
+                {{
+                  appearanceStore.pc_welcome_desc ??
+                  '我可以查询数据、生成图表、检测数据异常、预测数据等赶快开启智能问数吧～'
+                }}
               </div>
             </template>
 
@@ -233,7 +211,11 @@
                 <!--                  @stop="onChatStop"-->
                 <!--                  @loading-over="loadingOver"-->
                 <!--                />-->
-                <UserChat v-if="message.role === 'user'" :message="message" />
+                <UserChat
+                  v-if="message.role === 'user'"
+                  :message="message"
+                  :all-messages="computedMessages"
+                />
                 <template v-if="message.role === 'assistant' && !message.first_chat">
                   <ChartAnswer
                     v-if="
@@ -396,13 +378,12 @@
               </span>
             </template>
           </div>
-          <div v-if="computedMessages.length > 0" class="quick_question">
+          <div v-if="computedMessages.length > 0 && currentChat.datasource" class="quick_question">
             <quick-question
               ref="quickQuestionRef"
               :datasource-id="currentChat.datasource"
               :current-chat="currentChat"
               :record-id="computedMessages[0].record?.id"
-              :questions="computedMessages[0].recommended_question"
               :disabled="isTyping"
               :first-chat="true"
               @quick-ask="quickAsk"
@@ -420,7 +401,7 @@
             type="textarea"
             :autosize="{ minRows: 1, maxRows: 8.583 }"
             :placeholder="t('qa.question_placeholder')"
-            @keydown.enter.exact.prevent="($event: any) => sendMessage($event)"
+            @keydown.enter.exact.prevent="($event: any) => sendMessage(undefined, $event)"
             @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
           />
 
@@ -429,7 +410,7 @@
             type="primary"
             class="input-icon"
             :disabled="isTyping"
-            @click.stop="sendMessage"
+            @click.stop="($event: any) => sendMessage(undefined, $event)"
           >
             <el-icon size="16">
               <icon_send_filled />
@@ -477,6 +458,7 @@ import { debounce } from 'lodash-es'
 import { isMobile } from '@/utils/utils'
 import router from '@/router'
 import QuickQuestion from '@/views/chat/QuickQuestion.vue'
+import { useChatConfigStore } from '@/stores/chatConfig.ts'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
@@ -505,6 +487,9 @@ const customName = computed(() => {
   return ''
 })
 const { t } = useI18n()
+
+const chatConfig = useChatConfigStore()
+
 const isPhone = computed(() => {
   return isMobile()
 })
@@ -723,9 +708,7 @@ const quickQuestionRef = ref()
 
 function onChatCreated(chat: ChatInfo) {
   if (chat.records.length === 1 && !chat.records[0].recommended_question) {
-    nextTick(() => {
-      quickQuestionRef.value.getRecommendQuestions()
-    })
+    // do nothing
   }
 }
 
@@ -789,7 +772,10 @@ const assistantPrepareSend = async () => {
     }
   }
 }
-const sendMessage = async ($event: any = {}) => {
+const sendMessage = async (
+  regenerate_record_id: number | undefined = undefined,
+  $event: any = {}
+) => {
   if ($event?.isComposing) {
     return
   }
@@ -808,6 +794,7 @@ const sendMessage = async ($event: any = {}) => {
   currentRecord.create_time = new Date()
   currentRecord.chat_id = currentChatId.value
   currentRecord.question = inputMessage.value
+  currentRecord.regenerate_record_id = regenerate_record_id
   currentRecord.sql_answer = ''
   currentRecord.sql = ''
   currentRecord.chart_answer = ''
@@ -854,9 +841,21 @@ function onAnalysisAnswerError() {
 }
 
 function askAgain(message: ChatMessage) {
-  inputMessage.value = message.record?.question ?? ''
+  if (message.record?.question?.trim() === '') {
+    return
+  }
+  // regenerate
+  inputMessage.value = '/regenerate'
+  let regenerate_record_id = message.record?.id
+  if (message.record?.id == undefined && message.record?.regenerate_record_id) {
+    //只有当前对话内，上一次执行失败的重试会进这里
+    regenerate_record_id = message.record?.regenerate_record_id
+  }
+  if (regenerate_record_id) {
+    inputMessage.value = inputMessage.value + ' ' + regenerate_record_id
+  }
   nextTick(() => {
-    sendMessage()
+    sendMessage(regenerate_record_id)
   })
 }
 
@@ -1067,6 +1066,7 @@ function jumpCreatChat() {
 }
 
 onMounted(() => {
+  chatConfig.fetchGlobalConfig()
   if (isPhone.value) {
     chatListSideBarShow.value = false
     if (props.pageEmbedded) {
@@ -1197,7 +1197,7 @@ onMounted(() => {
       }
 
       .quick_question {
-        width: calc(100% - 2px);
+        min-width: 100px;
         position: absolute;
         margin-left: 1px;
         margin-top: 1px;
