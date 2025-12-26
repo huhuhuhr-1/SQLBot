@@ -21,8 +21,8 @@ from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
-from sqlbot_xpack.audit.models.log_model import OperationType, OperationModules
-from sqlbot_xpack.audit.schemas.logger_decorator import LogConfig, system_log
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 

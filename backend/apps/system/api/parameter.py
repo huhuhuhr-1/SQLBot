@@ -6,8 +6,8 @@ from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.deps import SessionDep
 
 router = APIRouter(tags=["system/parameter"], prefix="/system/parameter", include_in_schema=False)
-from sqlbot_xpack.audit.models.log_model import OperationType, OperationModules
-from sqlbot_xpack.audit.schemas.logger_decorator import LogConfig, system_log
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 @router.get("/login")
 async def get_login_args(session: SessionDep) -> list[SysArgModel]:

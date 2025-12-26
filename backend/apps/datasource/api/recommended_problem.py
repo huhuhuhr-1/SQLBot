@@ -5,8 +5,8 @@ from apps.datasource.crud.recommended_problem import get_datasource_recommended,
     save_recommended_problem, get_datasource_recommended_base
 from apps.datasource.models.datasource import RecommendedProblemBase
 from common.core.deps import SessionDep, CurrentUser
-from sqlbot_xpack.audit.models.log_model import OperationType, OperationModules
-from sqlbot_xpack.audit.schemas.logger_decorator import LogConfig, system_log
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 router = APIRouter(tags=["recommended_problem"], prefix="/recommended_problem")
 

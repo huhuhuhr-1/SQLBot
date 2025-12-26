@@ -19,8 +19,8 @@ from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.data_format import DataFormat
 from common.utils.excel import get_excel_column_count
-from sqlbot_xpack.audit.models.log_model import OperationType, OperationModules
-from sqlbot_xpack.audit.schemas.logger_decorator import LogConfig, system_log
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 router = APIRouter(tags=["Terminology"], prefix="/system/terminology")
 
 

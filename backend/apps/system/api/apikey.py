@@ -9,8 +9,8 @@ from common.utils.time import get_timestamp
 import secrets
 
 router = APIRouter(tags=["system_apikey"], prefix="/system/apikey", include_in_schema=False)
-from sqlbot_xpack.audit.models.log_model import OperationType, OperationModules
-from sqlbot_xpack.audit.schemas.logger_decorator import LogConfig, system_log
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 @router.get("")
 async def grid(session: SessionDep, current_user: CurrentUser) -> list[ApikeyGridItem]:

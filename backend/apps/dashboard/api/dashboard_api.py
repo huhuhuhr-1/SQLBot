@@ -3,8 +3,8 @@ from fastapi import APIRouter, File, UploadFile, HTTPException
 from apps.dashboard.crud.dashboard_service import list_resource, load_resource, \
     create_resource, create_canvas, validate_name, delete_resource, update_resource, update_canvas
 from apps.dashboard.models.dashboard_model import CreateDashboard, BaseDashboard, QueryDashboard, DashboardResponse
-from sqlbot_xpack.audit.models.log_model import OperationType, OperationModules
-from sqlbot_xpack.audit.schemas.logger_decorator import LogConfig, system_log
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import SessionDep, CurrentUser
 
 router = APIRouter(tags=["dashboard"], prefix="/dashboard")

@@ -12,8 +12,8 @@ from common.core.config import settings
 from common.core.schemas import Token
 from sqlbot_xpack.authentication.manage import logout as xpack_logout
 
-from sqlbot_xpack.audit.models.log_model import OperationType, OperationModules
-from sqlbot_xpack.audit.schemas.logger_decorator import system_log, LogConfig
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import system_log, LogConfig
 
 router = APIRouter(tags=["login"], prefix="/login")
 

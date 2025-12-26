@@ -21,8 +21,8 @@ from common.core.sqlbot_cache import clear_cache
 from common.utils.utils import get_origin_from_referer, origin_match_domain
 
 router = APIRouter(tags=["system_assistant"], prefix="/system/assistant")
-from sqlbot_xpack.audit.models.log_model import OperationType, OperationModules
-from sqlbot_xpack.audit.schemas.logger_decorator import LogConfig, system_log
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 
 @router.get("/info/{id}", include_in_schema=False)

@@ -16,8 +16,8 @@ from common.utils.time import get_timestamp
 from common.utils.utils import SQLBotLogUtil, prepare_model_arg
 
 router = APIRouter(tags=["system_model"], prefix="/system/aimodel")
-from sqlbot_xpack.audit.models.log_model import OperationType, OperationModules
-from sqlbot_xpack.audit.schemas.logger_decorator import LogConfig, system_log
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 @router.post("/status", include_in_schema=False)
 @require_permissions(permission=SqlbotPermission(role=['admin'])) 
