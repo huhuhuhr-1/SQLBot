@@ -123,7 +123,6 @@ class SystemLogger:
             return log
         except Exception as e:
             session.rollback()
-            print(f"[SystemLogger] Log -14 : {str(traceback.format_exc())}")
             print(f"Failed to create system log: {e}")
             return None
 
@@ -261,6 +260,14 @@ class SystemLogger:
 
                     # Process attribute expressions
                     return SystemLogger.extract_value_from_object(expression, func_args)
+                elif isinstance(source, dict):
+                        # Simple parameter name
+                        if expression in source:
+                            value = source[expression]
+                            return value if value is not None else None
+
+                        # complex expression
+                        return SystemLogger.extract_value_from_object(expression, source)
 
             elif source_type == "kwargs":
                 # Extract from keyword parameters
@@ -281,7 +288,7 @@ class SystemLogger:
     @staticmethod
     def extract_from_function_params(
             expression: Optional[str],
-            func_args: tuple,
+            func_args: any,
             func_kwargs: dict
     ):
         """Extract values from function parameters"""
@@ -386,7 +393,6 @@ class SystemLogger:
     ) -> Optional[SystemLog]:
         """Create log records"""
         try:
-            print(f"[SystemLogger] Log -9")
             # Obtain user information
             user_info = cls.get_current_user(request)
             user_id = user_info.id if user_info else -1
@@ -402,7 +408,6 @@ class SystemLogger:
             if config.extract_params:
                 request_params = cls.extract_request_params(request)
 
-            print(f"[SystemLogger-Info] :user_info {str(user_info)},oid {str(oid)}")
             # Create log object
             log = SystemLog(
                 operation_type=opt_type_ref if opt_type_ref else config.operation_type,
@@ -426,7 +431,6 @@ class SystemLogger:
             )
 
             with Session(engine) as session:
-                print(f"[SystemLogger] Log -10")
                 session.add(log)
                 session.commit()
                 session.refresh(log)
@@ -469,20 +473,22 @@ def system_log(config: Union[LogConfig, Dict]):
             try:
                 # Get current request
                 request = RequestContext.get_request()
-                print(f"[SystemLogger] Log -1 : {str(request)}")
+                func_signature = inspect.signature(func)
+                bound_args = func_signature.bind(*args, **kwargs)
+                bound_args.apply_defaults()
+                unified_kwargs = dict(bound_args.arguments)
 
                 # Step 1: Attempt to extract the resource ID from the parameters
                 if config.resource_id_expr:
                     resource_id = SystemLogger.extract_from_function_params(
                         config.resource_id_expr,
-                        args,
+                        unified_kwargs,
                         kwargs
                     )
-                print(f"[SystemLogger] Log -2 : {str(resource_id)}")
                 if config.remark_expr:
                     remark = SystemLogger.extract_from_function_params(
                         config.remark_expr,
-                        args,
+                        unified_kwargs,
                         kwargs
                     )
 
@@ -504,7 +510,6 @@ def system_log(config: Union[LogConfig, Dict]):
                             resource_id = -1
                             oid = -1
                             resource_name = '-' + input_account
-                print(f"[SystemLogger] Log -3 : {str(resource_id)}")
                 if config.operation_type == OperationType.DELETE:
                     with Session(engine) as session:
                         resource_name = get_resource_name_by_id_and_module(session, resource_id, config.module)
@@ -513,10 +518,8 @@ def system_log(config: Union[LogConfig, Dict]):
                     opt_type_ref = OperationType.UPDATE if resource_id is not None else OperationType.CREATE
                 else:
                     opt_type_ref = config.operation_type
-                print(f"[SystemLogger] Log -4 : {str(opt_type_ref)}")
                 # Execute the original function
                 result = await func(*args, **kwargs)
-                print(f"[SystemLogger] Log -5 : {str(result)}")
                 # Step 2: If the resource ID is configured to be extracted from the results and has not been extracted before
                 if config.result_id_expr and not resource_id and result:
                     resource_id = SystemLogger.extract_resource_id(
@@ -527,11 +530,9 @@ def system_log(config: Union[LogConfig, Dict]):
                 if config.operation_type != OperationType.DELETE:
                     with Session(engine) as session:
                         resource_name = get_resource_name_by_id_and_module(session, resource_id, config.module)
-                print(f"[SystemLogger] Log -6 : {str(resource_name)}")
                 return result
 
             except Exception as e:
-                print(f"[SystemLogger] Log -6 : {str(traceback.format_exc())}")
                 status = OperationStatus.FAILED
                 error_message = str(e)
 
@@ -552,7 +553,6 @@ def system_log(config: Union[LogConfig, Dict]):
 
                 # Calculate execution time
                 execution_time = int((time.time() - start_time) * 1000)
-                print(f"[SystemLogger] Log -8 ")
                 # Asynchronous creation of log records
                 try:
                     await SystemLogger.create_log_record(
@@ -568,7 +568,6 @@ def system_log(config: Union[LogConfig, Dict]):
                         opt_type_ref=opt_type_ref
                     )
                 except Exception as log_error:
-                    print(f"[SystemLogger] Log -12 : {str(traceback.format_exc())}")
                     print(f"[SystemLogger] Log creation failed: {log_error}")
 
         @functools.wraps(func)
@@ -584,12 +583,16 @@ def system_log(config: Union[LogConfig, Dict]):
             try:
                 # Get current request
                 request = RequestContext.get_request()
+                func_signature = inspect.signature(func)
+                bound_args = func_signature.bind(*args, **kwargs)
+                bound_args.apply_defaults()
+                unified_kwargs = dict(bound_args.arguments)
 
                 # Extract resource ID from parameters
                 if config.resource_id_expr:
                     resource_id = SystemLogger.extract_from_function_params(
                         config.resource_id_expr,
-                        args,
+                        unified_kwargs,
                         kwargs
                     )
 
@@ -661,7 +664,6 @@ def system_log(config: Union[LogConfig, Dict]):
                             )
                         )
                 except Exception as log_error:
-                    print(f"[SystemLogger] Log -13 : {str(traceback.format_exc())}")
                     print(f"[SystemLogger] Log creation failed: {log_error}")
 
         # Return appropriate wrapper based on function type
