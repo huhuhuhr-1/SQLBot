@@ -139,6 +139,8 @@ export class Chat {
   datasource?: number
   engine_type?: string
   ds_type?: string
+  recommended_question?: string | undefined
+  recommended_generate?: boolean | undefined
 
   constructor()
   constructor(
@@ -200,7 +202,9 @@ export class ChatInfo extends Chat {
     ds_type?: string,
     datasource_name?: string,
     datasource_exists: boolean = true,
-    records: Array<ChatRecord> = []
+    records: Array<ChatRecord> = [],
+    recommended_question?: string | undefined,
+    recommended_generate?: boolean | undefined
   ) {
     super()
     if (param1 !== undefined) {
@@ -213,6 +217,8 @@ export class ChatInfo extends Chat {
         this.datasource = param1.datasource
         this.engine_type = param1.engine_type
         this.ds_type = param1.ds_type
+        this.recommended_question = recommended_question
+        this.recommended_generate = recommended_generate
       } else {
         this.id = param1
         this.create_time = getDate(create_time)
@@ -222,6 +228,8 @@ export class ChatInfo extends Chat {
         this.datasource = datasource
         this.engine_type = engine_type
         this.ds_type = ds_type
+        this.recommended_question = recommended_question
+        this.recommended_generate = recommended_generate
       }
     }
     this.datasource_name = datasource_name
@@ -287,7 +295,9 @@ export const chatApi = {
       data.ds_type,
       data.datasource_name,
       data.datasource_exists,
-      toChatRecordList(data.records)
+      toChatRecordList(data.records),
+      data.recommended_question,
+      data.recommended_generate
     )
   },
   toChatInfoList: (list: any[] = []): ChatInfo[] => {

@@ -86,6 +86,9 @@ class Chat(SQLModel, table=True):
     origin: Optional[int] = Field(
         sa_column=Column(Integer, nullable=False, default=0))  # 0: default, 1: mcp, 2: assistant
     brief_generate: bool = Field(default=False)
+    recommended_question_answer: str = Field(sa_column=Column(Text, nullable=True))
+    recommended_question: str = Field(sa_column=Column(Text, nullable=True))
+    recommended_generate: bool = Field(default=False)
 
 
 class ChatRecord(SQLModel, table=True):
@@ -172,6 +175,8 @@ class ChatInfo(BaseModel):
     ds_type: str = ''
     datasource_name: str = ''
     datasource_exists: bool = True
+    recommended_question: Optional[str]  = None
+    recommended_generate: Optional[bool]  = False
     records: List[ChatRecord | dict] = []
 
 

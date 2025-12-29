@@ -12,7 +12,7 @@ from starlette.responses import JSONResponse
 
 from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, rename_chat, \
     delete_chat, get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data, get_chat_record_by_id, \
-    format_json_data, format_json_list_data, get_chart_config, list_recent_questions
+    format_json_data, format_json_list_data, get_chart_config, list_recent_questions,get_chat as get_chat_exec
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand, \
     ChatInfo, Chat, ChatFinishStep
 from apps.chat.task.llm import LLMService

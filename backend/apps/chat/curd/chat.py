@@ -1,5 +1,5 @@
 import datetime
-from typing import List
+from typing import List, Optional
 
 import orjson
 import sqlparse
@@ -650,7 +650,7 @@ def save_select_datasource_answer(session: SessionDep, record_id: int, answer: s
 
 
 def save_recommend_question_answer(session: SessionDep, record_id: int,
-                                   answer: dict = None) -> ChatRecord:
+                                   answer: dict = None, articles_number: Optional[int] = 4) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -673,12 +673,19 @@ def save_recommend_question_answer(session: SessionDep, record_id: int,
     )
 
     session.execute(stmt)
-
     session.commit()
 
     record = get_chat_record_by_id(session, record_id)
     record.recommended_question_answer = recommended_question_answer
     record.recommended_question = recommended_question
+    if articles_number > 4:
+        stmt_chat = update(Chat).where(and_(Chat.id == record.chat_id)).values(
+            recommended_question_answer=recommended_question_answer,
+            recommended_question=recommended_question,
+            recommended_generate=True
+        )
+        session.execute(stmt_chat)
+        session.commit()
 
     return record
 

@@ -397,7 +397,7 @@ class LLMService:
                                                                                   reasoning_content=full_thinking_text,
                                                                                   token_usage=token_usage)
         self.record = save_recommend_question_answer(session=_session, record_id=self.record.id,
-                                                     answer={'content': full_guess_text})
+                                                     answer={'content': full_guess_text}, articles_number=self.articles_number)
 
         yield {'recommended_question': self.record.recommended_question}
 

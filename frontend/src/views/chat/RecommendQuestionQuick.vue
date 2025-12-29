@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, toRefs } from 'vue'
 import { endsWith, startsWith } from 'lodash-es'
-import { chatApi } from '@/api/chat.ts'
+import { chatApi, ChatInfo } from '@/api/chat.ts'
 import { recommendedApi } from '@/api/recommendedApi.ts'
 
 const props = withDefaults(
@@ -9,13 +9,18 @@ const props = withDefaults(
     recordId?: number
     disabled?: boolean
     datasource?: number
+    currentChat?: ChatInfo
   }>(),
   {
     recordId: undefined,
     disabled: false,
     datasource: undefined,
+    chatRecommendedQuestions: undefined,
+    currentChat: () => new ChatInfo(),
   }
 )
+
+const { currentChat } = toRefs(props)
 
 const emits = defineEmits(['clickQuestion', 'stop', 'loadingOver'])
 
@@ -47,6 +52,8 @@ async function getRecommendQuestions(articles_number: number) {
   recommendedApi.get_datasource_recommended_base(props.datasource).then((res) => {
     if (res.recommended_config === 2) {
       questions.value = res.questions
+    } else if (currentChat.value.recommended_generate) {
+      questions.value = currentChat.value.recommended_question
     } else {
       getRecommendQuestionsLLM(articles_number)
     }
@@ -116,6 +123,8 @@ async function getRecommendQuestionsLLM(articles_number: number) {
                   endsWith(data.content.trim(), ']')
                 ) {
                   questions.value = data.content
+                  currentChat.value.recommended_question = data.content
+                  currentChat.value.recommended_generate = true
                   await nextTick()
                 }
             }
