@@ -301,7 +301,7 @@ const initOptions = () => {
           </el-table-column>
           <el-table-column prop="word" :label="$t('audit.oid_name')" width="120">
             <template #default="scope">
-              {{ scope.row.oid_name }}
+              {{ scope.row.oid_name === '-1' ? '-' : scope.row.oid_name }}
             </template>
           </el-table-column>
           <el-table-column prop="word" :label="$t('audit.operation_status')" width="100">

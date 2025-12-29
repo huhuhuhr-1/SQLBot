@@ -509,7 +509,7 @@ def system_log(config: Union[LogConfig, Dict]):
                         else:
                             resource_id = -1
                             oid = -1
-                            resource_name = '-' + input_account
+                            resource_name = input_account
                 if config.operation_type == OperationType.DELETE:
                     with Session(engine) as session:
                         resource_name = get_resource_name_by_id_and_module(session, resource_id, config.module)
