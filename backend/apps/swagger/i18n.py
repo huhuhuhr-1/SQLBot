@@ -50,6 +50,9 @@ tags_metadata = [
         "name": "Datasource",
         "description": f"{PLACEHOLDER_PREFIX}ds_api"
     },
+    {"name": "Dashboard",
+     "description": f"{PLACEHOLDER_PREFIX}db_api"
+     },
     {
         "name": "system_user",
         "description": f"{PLACEHOLDER_PREFIX}system_user_api"

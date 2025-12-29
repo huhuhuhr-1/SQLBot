@@ -178,5 +178,15 @@
   "delete_custom_prompt": "删除自定义提示词",
   "export_custom_prompt": "导出自定义提示词",
   "excel_template_custom_prompt": "下载模板",
-  "upload_custom_prompt": "导入自定义提示词"
+  "upload_custom_prompt": "导入自定义提示词",
+
+  "db_api": "仪表板接口",
+  "list_resource_api": "加载资源树",
+  "load_resource_api": "加载资源树明细",
+  "create_resource_api": "创建资源",
+  "update_resource": "更新资源",
+  "delete_resource_api": "删除资源",
+  "create_canvas_api": "新建仪表板",
+  "update_canvas_api": "更新仪表板",
+  "check_name_api": "名称校验"
 }
