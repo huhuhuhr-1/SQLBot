@@ -44,6 +44,14 @@ class OperationType(str, Enum):
     ANALYSIS = "analysis"
     PREDICTION = "prediction"
 
+class SystemLogsResource(SQLModel, table=True):
+    __tablename__ = "sys_logs_resource"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    log_id: Optional[int] = Field(default=None,sa_type=BigInteger())
+    resource_id: Optional[str] = Field(default=None)
+    resource_name: Optional[str] = Field(default=None)
+    module: Optional[str] = Field(default=None)
+
 
 class SystemLog(SQLModel, table=True):
     __tablename__ = "sys_logs"

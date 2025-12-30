@@ -176,7 +176,9 @@
     "log_setting": "登录认证",
     "setting": "设置",
     "system_management": "系统管理",
-    "opt_log": "操作日志"
+    "opt_log": "操作日志",
+    "prediction": "数据预测",
+    "analysis": "数据分析"
 
   },
   "i18n_table_not_exist": "当前表不存在"

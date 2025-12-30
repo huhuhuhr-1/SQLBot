@@ -2,14 +2,14 @@ import time
 import functools
 import json
 import inspect
-from typing import Callable, Any, Optional, Dict, Union
+from typing import Callable, Any, Optional, Dict, Union, List
 from fastapi import Request, HTTPException
 from datetime import datetime
 from pydantic import BaseModel
 from sqlmodel import Session, select
 import traceback
 from sqlbot_xpack.audit.curd.audit import build_resource_union_query
-from common.audit.models.log_model import OperationType, OperationStatus, SystemLog
+from common.audit.models.log_model import OperationType, OperationStatus, SystemLog, SystemLogsResource
 from common.audit.schemas.request_context import RequestContext
 from apps.system.crud.user import get_user_by_account
 from apps.system.schemas.system_schema import UserInfoDTO, BaseUserDTO
@@ -18,42 +18,36 @@ from sqlalchemy import and_, select
 from common.core.db import engine
 
 
-
-def get_resource_name_by_id_and_module(session, resource_id: Any, module: str) -> Optional[str]:
+def get_resource_name_by_id_and_module(session, resource_id: Any, module: str) -> List[Dict[str, str]]:
     resource_union_query = build_resource_union_query()
     resource_alias = resource_union_query.alias("resource")
 
-    if isinstance(resource_id, list):
-        # 处理列表情况
-        if not resource_id:
-            return None
+    # 统一处理为列表
+    if not isinstance(resource_id, list):
+        resource_id = [resource_id]
 
-        # 构建查询，使用 IN 条件
-        query = select(
-            resource_alias.c.name
-        ).where(
-            and_(
-                resource_alias.c.id.in_([str(id_) for id_ in resource_id]),
-                resource_alias.c.module == module
-            )
+    if not resource_id:
+        return []
+
+    # 构建查询，使用 IN 条件
+    query = select(
+        resource_alias.c.id,
+        resource_alias.c.name,
+        resource_alias.c.module
+    ).where(
+        and_(
+            resource_alias.c.id.in_([str(id_) for id_ in resource_id]),
+            resource_alias.c.module == module
         )
-        # 执行查询并获取所有结果
-        results = session.execute(query).scalars().all()
+    )
 
-        # 用逗号连接所有名称
-        return ",".join(results) if results else None
-    else:
-        # 处理单个字符串情况
-        query = select(
-            resource_alias.c.name
-        ).where(
-            and_(
-                resource_alias.c.id == str(resource_id),
-                resource_alias.c.module == module
-            )
-        )
-        return session.execute(query).scalar()
+    results = session.execute(query).fetchall()
 
+    return [{
+        'resource_id': str(row.id),
+        'resource_name': row.name or '',
+        'module': row.module or ''
+    } for row in results]
 
 class LogConfig(BaseModel):
     operation_type: OperationType
@@ -390,6 +384,7 @@ class SystemLogger:
             remark: Optional[str] = None,
             oid: int = -1,
             opt_type_ref : OperationType = None,
+            resource_info_list : Optional[List] = None,
     ) -> Optional[SystemLog]:
         """Create log records"""
         try:
@@ -422,7 +417,6 @@ class SystemLogger:
                 error_message=error_message,
                 module=config.module,
                 resource_id=str(resource_id),
-                resource_name=str(resource_name),
                 request_method=request.method if request else None,
                 request_path=request.url.path if request else None,
                 request_params=request_params,
@@ -430,13 +424,39 @@ class SystemLogger:
                 remark=remark
             )
 
+
             with Session(engine) as session:
                 session.add(log)
-                session.query(SystemLog).filter(SystemLog.resource_id == str(resource_id)).update({
-                    SystemLog.resource_name: str(resource_name)
-                }, synchronize_session='fetch')
                 session.commit()
                 session.refresh(log)
+                # 统一处理不同类型的 resource_id_info
+                if isinstance(resource_id, list):
+                    resource_ids = [str(rid) for rid in resource_id]
+                else:
+                    resource_ids = [str(resource_id)]
+                # 批量添加 SystemLogsResource
+                resource_entries = []
+                for resource_id_details in resource_ids:
+                    resource_entry = SystemLogsResource(
+                        resource_id=resource_id_details,
+                        log_id=log.id,
+                        module=config.module
+                    )
+                    resource_entries.append(resource_entry)
+                if resource_entries:
+                    session.bulk_save_objects(resource_entries)
+                    session.commit()
+
+                if config.operation_type == OperationType.DELETE and resource_info_list is not None:
+                    # 批量更新 SystemLogsResource 表的 resource_name
+                    for resource_info in resource_info_list:
+                        session.query(SystemLogsResource).filter(
+                            SystemLogsResource.resource_id == resource_info['resource_id'],
+                            SystemLogsResource.module == resource_info['module'],
+                        ).update({
+                            SystemLogsResource.resource_name: resource_info['resource_name']
+                        }, synchronize_session='fetch')
+                    session.commit()
                 return log
 
         except Exception as e:
@@ -472,6 +492,7 @@ def system_log(config: Union[LogConfig, Dict]):
             remark = None
             oid = -1
             opt_type_ref = None
+            resource_info_list = None
 
             try:
                 # Get current request
@@ -515,7 +536,7 @@ def system_log(config: Union[LogConfig, Dict]):
                             resource_name = input_account
                 if config.operation_type == OperationType.DELETE:
                     with Session(engine) as session:
-                        resource_name = get_resource_name_by_id_and_module(session, resource_id, config.module)
+                        resource_info_list = get_resource_name_by_id_and_module(session, resource_id, config.module)
 
                 if config.operation_type == OperationType.CREATE_OR_UPDATE:
                     opt_type_ref = OperationType.UPDATE if resource_id is not None else OperationType.CREATE
@@ -530,10 +551,6 @@ def system_log(config: Union[LogConfig, Dict]):
                         result,
                         "result"
                     )
-                if config.operation_type != OperationType.DELETE:
-                    with Session(engine) as session:
-                        resource_name = get_resource_name_by_id_and_module(session, resource_id, config.module)
-                return result
 
             except Exception as e:
                 status = OperationStatus.FAILED
@@ -568,7 +585,8 @@ def system_log(config: Union[LogConfig, Dict]):
                         remark=remark,
                         request=request,
                         oid=oid,
-                        opt_type_ref=opt_type_ref
+                        opt_type_ref=opt_type_ref,
+                        resource_info_list=resource_info_list
                     )
                 except Exception as log_error:
                     print(f"[SystemLogger] Log creation failed: {log_error}")
@@ -581,6 +599,7 @@ def system_log(config: Union[LogConfig, Dict]):
             request = None
             resource_id = None
             resource_name = None
+            resource_info_list = None
             result = None
 
             try:
@@ -602,7 +621,7 @@ def system_log(config: Union[LogConfig, Dict]):
                 # Obtain client information
                 if config.operation_type == OperationType.DELETE:
                     with Session(engine) as session:
-                        resource_name = get_resource_name_by_id_and_module(session, resource_id, config.module)
+                        resource_info_list = get_resource_name_by_id_and_module(session, resource_id, config.module)
 
                 # Execute the original function
                 result = func(*args, **kwargs)
@@ -614,10 +633,6 @@ def system_log(config: Union[LogConfig, Dict]):
                         result,
                         "result"
                     )
-
-                if config.operation_type != OperationType.DELETE:
-                    with Session(engine) as session:
-                        resource_name = get_resource_name_by_id_and_module(session, resource_id, config.module)
 
                 return result
 
@@ -652,7 +667,8 @@ def system_log(config: Union[LogConfig, Dict]):
                                 error_message=error_message,
                                 resource_id=resource_id,
                                 resource_name=resource_name,
-                                request=request
+                                request=request,
+                                resource_info_list=resource_info_list
                             )
                         )
                     else:
