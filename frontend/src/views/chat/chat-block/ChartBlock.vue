@@ -247,7 +247,7 @@ function exportToExcel() {
   if (chartRef.value && props.recordId) {
     loading.value = true
     chatApi
-      .export2Excel(props.recordId)
+      .export2Excel(props.recordId, props.message?.record?.chat_id || 0)
       .then((res) => {
         const blob = new Blob([res], {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

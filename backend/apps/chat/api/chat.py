@@ -167,6 +167,11 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
 
 
 @router.post("/assistant/start", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}assistant_start_chat")
+@system_log(LogConfig(
+    operation_type=OperationType.CREATE,
+    module=OperationModules.CHAT,
+    result_id_expr="id"
+))
 async def start_chat(session: SessionDep, current_user: CurrentUser):
     try:
         return create_chat(session, current_user, CreateChat(origin=2), False)
@@ -436,8 +441,9 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
         )
 
 
-@router.get("/record/{chat_record_id}/excel/export", summary=f"{PLACEHOLDER_PREFIX}export_chart_data")
-async def export_excel(session: SessionDep, current_user: CurrentUser, chat_record_id: int, trans: Trans):
+@router.get("/record/{chat_record_id}/excel/export/{chat_id}", summary=f"{PLACEHOLDER_PREFIX}export_chart_data")
+@system_log(LogConfig(operation_type=OperationType.EXPORT,module=OperationModules.CHAT,resource_id_expr="chat_id",))
+async def export_excel(session: SessionDep, current_user: CurrentUser, chat_record_id: int,chat_id: int,  trans: Trans):
     chat_record = session.get(ChatRecord, chat_record_id)
     if not chat_record:
         raise HTTPException(

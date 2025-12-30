@@ -356,8 +356,8 @@ export const chatApi = {
     return request.get(`/chat/recent_questions/${datasource_id}`)
   },
   checkLLMModel: () => request.get('/system/aimodel/default', { requestOptions: { silent: true } }),
-  export2Excel: (record_id: number | undefined) =>
-    request.get(`/chat/record/${record_id}/excel/export`, {
+  export2Excel: (record_id: number | undefined, chat_id: any) =>
+    request.get(`/chat/record/${record_id}/excel/export/${chat_id}`, {
       responseType: 'blob',
       requestOptions: { customError: true },
     }),

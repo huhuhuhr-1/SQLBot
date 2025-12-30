@@ -108,6 +108,7 @@ async def picture(file_id: str = Path(description="file_id")):
 
 
 @router.patch('/ui', summary=f"{PLACEHOLDER_PREFIX}assistant_ui_api", description=f"{PLACEHOLDER_PREFIX}assistant_ui_api")
+@system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.APPLICATION, result_id_expr="id"))
 async def ui(session: SessionDep, data: str = Form(), files: List[UploadFile] = []):
     json_data = json.loads(data)
     uiSchema = AssistantUiSchema(**json_data)
@@ -155,6 +156,7 @@ async def ui(session: SessionDep, data: str = Form(), files: List[UploadFile] = 
     session.add(db_model)
     session.commit()
     await clear_ui_cache(db_model.id)
+    return db_model
 
 
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")

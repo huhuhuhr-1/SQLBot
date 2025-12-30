@@ -178,7 +178,11 @@
     "system_management": "시스템 관리",
     "opt_log": "작업 로그",
     "prediction": "데이터 예측",
-    "analysis": "데이터 분석"
+    "analysis": "데이터 분석",
+    "reset_pwd": "비밀번호 재설정",
+    "update_pwd": "비밀번호 업데이트",
+    "update_status": "상태 업데이트",
+    "update_table_relation": "테이블 관계 변경"
   },
   "i18n_table_not_exist": "현재 테이블이 존재하지 않습니다"
 }

@@ -178,7 +178,11 @@
     "system_management": "System Management",
     "opt_log": "Operation Log",
     "prediction": "Data prediction",
-    "analysis": "Data analysis"
+    "analysis": "Data analysis",
+    "reset_pwd": "Reset Password",
+    "update_pwd": "Update Password",
+    "update_status": "Update Status",
+    "update_table_relation": "Change Table Relation"
   },
   "i18n_table_not_exist": "Table not exist"
 }
