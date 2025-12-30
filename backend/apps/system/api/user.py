@@ -253,6 +253,7 @@ async def delete(session: SessionDep, id: int = Path(description=f"{PLACEHOLDER_
 
 @router.delete("", summary=f"{PLACEHOLDER_PREFIX}user_batchdel_api", description=f"{PLACEHOLDER_PREFIX}user_batchdel_api")
 @require_permissions(permission=SqlbotPermission(role=['admin']))
+@system_log(LogConfig(operation_type=OperationType.DELETE,module=OperationModules.USER,resource_id_expr="id_list"))
 async def batch_del(session: SessionDep, id_list: list[int]):
     for id in id_list:
         await single_delete(session, id)

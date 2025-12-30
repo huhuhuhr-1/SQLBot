@@ -171,9 +171,13 @@
     "add": "添加",
     "create_or_update": "变更",
     "api_key": "API Key",
-    "params_setting": "参数设置",
+    "params_setting": "参数配置",
     "rules": "权限规则",
-    "log_setting": "登录认证"
+    "log_setting": "登录认证",
+    "setting": "设置",
+    "system_management": "系统管理",
+    "opt_log": "操作日志"
+
   },
   "i18n_table_not_exist": "当前表不存在"
 }

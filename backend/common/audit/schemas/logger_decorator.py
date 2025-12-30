@@ -432,6 +432,9 @@ class SystemLogger:
 
             with Session(engine) as session:
                 session.add(log)
+                session.query(SystemLog).filter(SystemLog.resource_id == str(resource_id)).update({
+                    SystemLog.resource_name: str(resource_name)
+                }, synchronize_session='fetch')
                 session.commit()
                 session.refresh(log)
                 return log

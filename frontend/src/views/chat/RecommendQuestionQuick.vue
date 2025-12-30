@@ -26,7 +26,7 @@ const emits = defineEmits(['clickQuestion', 'stop', 'loadingOver'])
 
 const loading = ref(false)
 
-const questions = ref('[]')
+const questions = ref<string | undefined>('[]')
 
 const computedQuestions = computed<string>(() => {
   if (

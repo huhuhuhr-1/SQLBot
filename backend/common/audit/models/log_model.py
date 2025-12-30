@@ -22,6 +22,9 @@ class OperationModules(str, Enum):
     PARAMS_SETTING = "params_setting"  # 参数配置
     API_KEY = "api_key"  # api key
     LOG_SETTING = "log_setting"  # api key
+    SETTING = "setting"  # 设置
+    SYSTEM_MANAGEMENT = "system_management"  # 系统管理
+    OPT_LOG = "opt_log"  # 操作日志
 
 class OperationStatus(str, Enum):
     SUCCESS = "success"
@@ -38,6 +41,8 @@ class OperationType(str, Enum):
     IMPORT = "import"
     ADD = "add"
     CREATE_OR_UPDATE = "create_or_update"
+    ANALYSIS = "analysis"
+    PREDICTION = "prediction"
 
 
 class SystemLog(SQLModel, table=True):

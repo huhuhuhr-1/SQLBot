@@ -171,9 +171,12 @@
     "add": "Add",
     "create_or_update": "Change",
     "api_key": "API Key",
-    "params_setting": "Parameters Setting",
+    "params_setting": "Parameter Configuration",
     "rules": "Permission Rules",
-    "log_setting": "Login Authentication"
+    "log_setting": "Login Authentication",
+    "setting": "Settings",
+    "system_management": "System Management",
+    "opt_log": "Operation Log"
   },
   "i18n_table_not_exist": "Table not exist"
 }
