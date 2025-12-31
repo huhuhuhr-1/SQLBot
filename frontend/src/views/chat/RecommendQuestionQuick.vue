@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
   stop()
 })
 
-defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
+defineExpose({ getRecommendQuestions, id: () => props.recordId, stop, getRecommendQuestionsLLM })
 </script>
 
 <template>

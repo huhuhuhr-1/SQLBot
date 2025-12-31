@@ -175,7 +175,7 @@ const filterOption = ref<any[]>([
     type: 'select',
     option: [],
     field: 'oid_list',
-    title: t('audit.operation_user_name'),
+    title: t('audit.oid_name'),
     operate: 'in',
     property: { placeholder: t('common.empty') + t('audit.oid_name') },
   },
