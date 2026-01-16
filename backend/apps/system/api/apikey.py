@@ -9,6 +9,8 @@ from common.utils.time import get_timestamp
 import secrets
 
 router = APIRouter(tags=["system_apikey"], prefix="/system/apikey", include_in_schema=False)
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 @router.get("")
 async def grid(session: SessionDep, current_user: CurrentUser) -> list[ApikeyGridItem]:
@@ -16,8 +18,9 @@ async def grid(session: SessionDep, current_user: CurrentUser) -> list[ApikeyGri
     return session.exec(query).all()
 
 @router.post("")
+@system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.API_KEY,result_id_expr='result.self'))
 async def create(session: SessionDep, current_user: CurrentUser):
-    count = session.exec(select(func.count()).select_from(ApiKeyModel)).one()
+    count = session.exec(select(func.count()).select_from(ApiKeyModel).where(ApiKeyModel.uid == current_user.id)).one()
     if count >= 5:
         raise ValueError("Maximum of 5 API keys allowed")
     access_key = secrets.token_urlsafe(16)
@@ -34,6 +37,7 @@ async def create(session: SessionDep, current_user: CurrentUser):
     return api_key.id
 
 @router.put("/status")
+@system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.API_KEY,resource_id_expr='id'))
 async def status(session: SessionDep, current_user: CurrentUser, dto: ApikeyStatus):
     api_key = session.get(ApiKeyModel, dto.id)
     if not api_key:
@@ -48,6 +52,7 @@ async def status(session: SessionDep, current_user: CurrentUser, dto: ApikeyStat
     session.commit()
 
 @router.delete("/{id}")
+@system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.API_KEY,resource_id_expr='id'))
 async def delete(session: SessionDep, current_user: CurrentUser, id: int):
     api_key = session.get(ApiKeyModel, id)
     if not api_key:

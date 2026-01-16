@@ -240,7 +240,7 @@ defineExpose({
       <el-form-item :label="t('authentication.user_filter')" prop="user_filter">
         <el-input
           v-model="state.form.user_filter"
-          :placeholder="t('authentication.user_filter_placeholder')"
+          :placeholder="t('authentication.user_filter_placeholder', ['|', '|'])"
         />
       </el-form-item>
 
@@ -254,7 +254,7 @@ defineExpose({
     <template #footer>
       <span class="dialog-footer">
         <el-button secondary @click="resetForm(ldapForm)">{{ t('common.cancel') }}</el-button>
-        <el-button secondary :disabled="!state.form.addr" @click="validate">
+        <el-button secondary :disabled="!state.form.server_address" @click="validate">
           {{ t('ds.test_connection') }}
         </el-button>
         <el-button type="primary" @click="submitForm(ldapForm)">

@@ -125,12 +125,10 @@ const saveHandler = () => {
         'Content-Type': 'multipart/form-data',
       },
     })
-    .then((res) => {
-      if (!res) {
-        ElMessage.success(t('system.setting_successfully'))
-        dialogVisible.value = false
-        emits('refresh')
-      }
+    .then(() => {
+      ElMessage.success(t('system.setting_successfully'))
+      dialogVisible.value = false
+      emits('refresh')
     })
 }
 const buildParam = () => {
@@ -156,12 +154,12 @@ const customColorChange = (val: any) => {
 }
 
 const setPageCustomColor = (val: any) => {
-  const ele = document.querySelector('.ui-main') as HTMLElement
+  const ele = document.querySelector('.left-preview') as HTMLElement
   setCurrentColor(val, ele)
 }
 
 const setPageHeaderFontColor = (val: any) => {
-  const ele = document.getElementsByClassName('ui-main')[0] as HTMLElement
+  const ele = document.getElementsByClassName('left-preview')[0] as HTMLElement
   ele.style.setProperty('--ed-text-color-primary', val)
 }
 const resetSqlBotForm = (reset2Default?: boolean) => {
@@ -375,7 +373,7 @@ defineExpose({
               "
               type="textarea"
               show-word-limit
-              maxlength="50"
+              maxlength="200"
             />
           </el-form-item>
         </el-form>
@@ -413,6 +411,7 @@ defineExpose({
     .right-form {
       width: 470px;
       height: 100%;
+      position: relative;
 
       .theme {
         width: 223px;
@@ -536,7 +535,10 @@ defineExpose({
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-top: 88px;
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 100%;
       }
     }
   }

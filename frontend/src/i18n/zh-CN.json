@@ -95,6 +95,8 @@
     "the_term_gmv": "是否删除术语：{msg}？"
   },
   "common": {
+    "start_time": "开始时间",
+    "end_time": "结束时间",
     "require": "必填",
     "zoom_in": "放大",
     "zoom_out": "缩小",
@@ -192,7 +194,7 @@
     "creator": "创建人",
     "dashboard_id": "仪表板ID",
     "create_time": "创建时间",
-    "updator": "更新人",
+    "updater": "更新人",
     "update_time": "更新时间",
     "edit": "编辑",
     "edit_title": "编辑标题",
@@ -213,7 +215,6 @@
     "chart_selected": "已选{0}"
   },
   "qa": {
-    "recommended_repetitive_tips": "Duplicate questions exist",
     "retrieve_error": "暂无内容",
     "retrieve_again": "重新获取",
     "recently": "最近",
@@ -446,7 +447,8 @@
     "enable": "启用",
     "disable": "禁用",
     "local_creation": "本地创建",
-    "feishu": "飞书",
+    "lark": "飞书",
+    "larksuite": "国际飞书",
     "dingtalk": "钉钉",
     "wechat_for_business": "企业微信",
     "1240_results": "{msg} 个结果 ",
@@ -455,6 +457,7 @@
     "enabled": "已启用",
     "edit_user": "编辑用户",
     "del_user": "是否删除用户: {msg}?",
+    "del_key": "是否删除key: {msg}?",
     "please_first": "请先",
     "download_the_template": "下载模板",
     "required_and_upload": "，按要求填写后上传",
@@ -464,6 +467,7 @@
     "import": "导入",
     "change_file": "更换文件",
     "data_import_completed": "数据导入完成",
+    "notes_import_completed": "备注导入完成",
     "imported_100_data": "成功导入数据 {msg} 条",
     "return_to_view": "返回查看",
     "continue_importing": "继续导入",
@@ -663,7 +667,10 @@
     "right": "右",
     "welcome_description": "欢迎语描述",
     "data_analysis_now": "我可以查询数据、生成图表、检测数据异常、预测数据等赶快开启智能问数吧～",
-    "window_entrance_icon": "浮窗入口图标"
+    "window_entrance_icon": "浮窗入口图标",
+    "preview_error": "当前页面禁止使用 Iframe 嵌入！",
+    "assistant_app": "小助手应用",
+    "auto_select_ds": "自动选择数据源"
   },
   "chat": {
     "type": "图表类型",
@@ -753,6 +760,13 @@
     "setting_successfully": "设置成功",
     "customize_theme_color": "自定义主题色"
   },
+  "platform": {
+    "title": "平台对接",
+    "status_open": "已开启",
+    "status_close": "已关闭",
+    "access_in": "接入",
+    "can_enable_it": "测试连接有效后，可开启"
+  },
   "authentication": {
     "invalid": "无效",
     "valid": "有效",
@@ -790,7 +804,7 @@
     "ou": "用户 OU",
     "ou_placeholder": "例如：ou=users,dc=example,dc=com",
     "user_filter": "用户过滤器",
-    "user_filter_placeholder": "例如：uid",
+    "user_filter_placeholder": "例如：uid 或 uid {0} email, 多属性以 {1} 分割",
     "ldap_field_mapping_placeholder": "例如：{'{'}\"account\": \"ldapAccount\", \"name\": \"ldapName\", \"email\": \"mail\"{'}'}",
     "be_turned_on": "测试连接有效后，可开启"
   },
@@ -805,7 +819,8 @@
     "platform_disable": "{0}设置未开启！",
     "input_account": "请输入账号",
     "redirect_2_auth": "正在跳转至 {0} 认证，{1} 秒...",
-    "redirect_immediately": "立即跳转"
+    "redirect_immediately": "立即跳转",
+    "permission_invalid": "认证无效【当前账号权限不够】"
   },
   "supplier": {
     "alibaba_cloud_bailian": "阿里云百炼",
@@ -841,21 +856,7 @@
     "success": "成功",
     "failed": "失败",
     "failed_info": "操作失败详情",
-    "create_qa": "新建问数",
-    "delete_qa": "删除问数",
-    "create_datasource": "新建数据源",
-    "update_datasource": "编辑数据源",
-    "delete_datasource": "删除数据源",
-    "create_dashboard": "新建仪表板",
-    "update_dashboard": "编辑仪表板",
-    "delete_dashboard": "删除仪表板",
-    "setting_create_user": "添加成员",
-    "setting_delete_user": "移除成员",
-    "setting_create_rule": "添加规则组",
-    "setting_delete_rule": "移除规则组",
-    "setting_update_rule": "设置规则",
-    "setting_update_rule_user": "设置用户",
-    "setting_create_terminology": "新建术语"
+    "opt_time": "操作时间"
   },
   "api_key": {
     "info_tips": "API Key 是您访问 SQLBot API 的密钥，具有账户的完全权限，请您务必妥善保管！不要以任何方式公开 API Key 到外部渠道，避免被他人利用造成安全威胁。",

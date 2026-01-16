@@ -1,5 +1,5 @@
 import datetime
-from typing import List
+from typing import List, Optional
 
 import orjson
 import sqlparse
@@ -11,7 +11,9 @@ from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, 
     TypeEnum, OperationEnum, ChatRecordResult
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
-from apps.system.crud.assistant import AssistantOutDsFactory
+from apps.db.constant import DB
+from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
+from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.utils import extract_nested_json
 
@@ -59,6 +61,21 @@ def list_recent_questions(session: SessionDep, current_user: CurrentUser, dataso
     )
     return [record[0] for record in chat_records] if chat_records else []
 
+def rename_chat_with_user(session: SessionDep, current_user: CurrentUser, rename_object: RenameChat) -> str:
+    chat = session.get(Chat, rename_object.id)
+    if not chat:
+        raise Exception(f"Chat with id {rename_object.id} not found")
+    if chat.create_by != current_user.id:
+        raise Exception(f"Chat with id {rename_object.id} not Owned by the current user")
+    chat.brief = rename_object.brief.strip()[:20]
+    chat.brief_generate = rename_object.brief_generate
+    session.add(chat)
+    session.flush()
+    session.refresh(chat)
+
+    brief = chat.brief
+    session.commit()
+    return brief
 
 def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
     chat = session.get(Chat, rename_object.id)
@@ -81,6 +98,17 @@ def delete_chat(session, chart_id) -> str:
     if not chat:
         return f'Chat with id {chart_id} has been deleted'
 
+    session.delete(chat)
+    session.commit()
+
+    return f'Chat with id {chart_id} has been deleted'
+
+def delete_chat_with_user(session, current_user: CurrentUser, chart_id) -> str:
+    chat = session.query(Chat).filter(Chat.id == chart_id).first()
+    if not chat:
+        return f'Chat with id {chart_id} has been deleted'
+    if chat.create_by != current_user.id:
+        raise Exception(f"Chat with id {chart_id} not Owned by the current user")
     session.delete(chat)
     session.commit()
 
@@ -173,6 +201,15 @@ def get_chat_chart_config(session: SessionDep, chat_record_id: int):
             pass
     return {}
 
+def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+    res = session.execute(stmt)
+    for row in res:
+        try:
+            return orjson.loads(row.data)
+        except Exception:
+            pass
+    return {}
 
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
     stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id))
@@ -184,6 +221,15 @@ def get_chat_chart_data(session: SessionDep, chat_record_id: int):
             pass
     return {}
 
+def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    stmt = select(ChatRecord.predict_data).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+    res = session.execute(stmt)
+    for row in res:
+        try:
+            return orjson.loads(row.predict_data)
+        except Exception:
+            pass
+    return {}
 
 def get_chat_predict_data(session: SessionDep, chat_record_id: int):
     stmt = select(ChatRecord.predict_data).where(and_(ChatRecord.id == chat_record_id))
@@ -210,7 +256,8 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     chat = session.get(Chat, chart_id)
     if not chat:
         raise Exception(f"Chat with id {chart_id} not found")
-
+    if chat.create_by != current_user.id:
+        raise Exception(f"Chat with id {chart_id} not Owned by the current user")
     chat_info = ChatInfo(**chat.model_dump())
 
     if current_assistant and current_assistant.type in dynamic_ds_types:
@@ -402,7 +449,7 @@ def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog
 
 
 def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat,
-                require_datasource: bool = True) -> ChatInfo:
+                require_datasource: bool = True, current_assistant: CurrentAssistant = None) -> ChatInfo:
     if not create_chat_obj.datasource and require_datasource:
         raise Exception("Datasource cannot be None")
 
@@ -414,10 +461,15 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
                 oid=current_user.oid if current_user.oid is not None else 1,
                 brief=create_chat_obj.question.strip()[:20],
                 origin=create_chat_obj.origin if create_chat_obj.origin is not None else 0)
-    ds: CoreDatasource | None = None
+    ds: CoreDatasource | AssistantOutDsSchema | None = None
     if create_chat_obj.datasource:
         chat.datasource = create_chat_obj.datasource
-        ds = session.get(CoreDatasource, create_chat_obj.datasource)
+        if current_assistant and current_assistant.type == 1:
+            out_ds_instance: AssistantOutDs = AssistantOutDsFactory.get_instance(current_assistant)
+            ds = out_ds_instance.get_ds(chat.datasource)
+            ds.type_name = DB.get_db(ds.type)
+        else:
+            ds = session.get(CoreDatasource, create_chat_obj.datasource)
 
         if not ds:
             raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
@@ -449,7 +501,7 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
         record.finish = True
         record.create_time = datetime.datetime.now()
         record.create_by = current_user.id
-        if ds.recommended_config == 2:
+        if isinstance(ds, CoreDatasource) and ds.recommended_config == 2:
             questions = get_datasource_recommended_chart(session, ds.id)
             record.recommended_question = orjson.dumps(questions).decode()
             record.recommended_question_answer = orjson.dumps({
@@ -650,7 +702,7 @@ def save_select_datasource_answer(session: SessionDep, record_id: int, answer: s
 
 
 def save_recommend_question_answer(session: SessionDep, record_id: int,
-                                   answer: dict = None) -> ChatRecord:
+                                   answer: dict = None, articles_number: Optional[int] = 4) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -673,12 +725,19 @@ def save_recommend_question_answer(session: SessionDep, record_id: int,
     )
 
     session.execute(stmt)
-
     session.commit()
 
     record = get_chat_record_by_id(session, record_id)
     record.recommended_question_answer = recommended_question_answer
     record.recommended_question = recommended_question
+    if articles_number > 4:
+        stmt_chat = update(Chat).where(and_(Chat.id == record.chat_id)).values(
+            recommended_question_answer=recommended_question_answer,
+            recommended_question=recommended_question,
+            recommended_generate=True
+        )
+        session.execute(stmt_chat)
+        session.commit()
 
     return record
 

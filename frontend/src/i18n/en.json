@@ -95,6 +95,8 @@
     "the_term_gmv": "Delete the term: {msg}?"
   },
   "common": {
+    "start_time": "Start Time",
+    "end_time": "End Time",
     "require": "Required",
     "zoom_in": "Zoom in",
     "zoom_out": "Zoom out",
@@ -192,7 +194,7 @@
     "creator": "Creator",
     "dashboard_id": "Dashboard ID",
     "create_time": "Create Time",
-    "updator": "Updater",
+    "updater": "Updater",
     "update_time": "Update Time",
     "edit": "Edit",
     "edit_title": "Edit Title",
@@ -445,7 +447,8 @@
     "enable": "Enabled",
     "disable": "Disabled",
     "local_creation": "Local",
-    "feishu": "Feishu",
+    "lark": "Lark",
+    "larksuite": "Larksuite",
     "dingtalk": "DingTalk",
     "wechat_for_business": "WeChat for business",
     "1240_results": "{msg} results",
@@ -454,6 +457,7 @@
     "enabled": "Enabled",
     "edit_user": "Edit User",
     "del_user": "Do you want to delete user: {msg}?",
+    "del_key": "Do you want to delete key: {msg}?",
     "please_first": "Please first",
     "download_the_template": "download the template",
     "required_and_upload": ", fill in as required and upload",
@@ -463,6 +467,7 @@
     "import": "Import",
     "change_file": "Change file",
     "data_import_completed": "Data import completed",
+    "notes_import_completed": "Import of notes complete",
     "imported_100_data": "Successfully imported {msg} data",
     "return_to_view": "Return to view",
     "continue_importing": "Continue importing",
@@ -591,8 +596,8 @@
     "embedded_page": "Embedded page",
     "no_application": "No application",
     "create_application": "Create application",
-    "basic_application": "Basic application",
-    "advanced_application": "Advanced application",
+    "basic_application": "Basic app",
+    "advanced_application": "Advanced app",
     "embed_third_party": "Embed third party",
     "support_is_required": "Applicable to scenarios where data verification is not required, just embed the embedded code into the third party code, no additional support is required",
     "data_permissions_etc": "Applicable to scenarios where data verification is required, requiring the third party system to provide data source interface, user interface data permissions, etc.",
@@ -662,7 +667,10 @@
     "right": "Right",
     "welcome_description": "Welcome Description",
     "data_analysis_now": "I can query data, generate charts, detect data anomalies, predict data, and more! Enable Smart Data Analysis now!",
-    "window_entrance_icon": "Floating window entrance icon"
+    "window_entrance_icon": "Floating window entrance icon",
+    "preview_error": "The current page prohibits embedding using Iframe!",
+    "assistant_app": "Assistant App",
+    "auto_select_ds": "Automatically select data source"
   },
   "chat": {
     "type": "Chart Type",
@@ -752,6 +760,13 @@
     "setting_successfully": "Setting Successfully",
     "customize_theme_color": "Customize theme color"
   },
+  "platform": {
+    "title": "Platform Integration",
+    "status_open": "Enabled",
+    "status_close": "Disabled",
+    "access_in": "Access",
+    "can_enable_it": "Can be enabled after successful test connection"
+  },
   "authentication": {
     "invalid": "Invalid",
     "valid": "Valid",
@@ -789,7 +804,7 @@
     "ou": "User OU",
     "ou_placeholder": "Example: ou=users,dc=example,dc=com",
     "user_filter": "User Filter",
-    "user_filter_placeholder": "Example: uid",
+    "user_filter_placeholder": "For example: uid or uid {0} email. Multiple attributes should be separated by {1}",
     "ldap_field_mapping_placeholder": "Example: {\"account\": \"ldapAccount\", \"name\": \"ldapName\", \"email\": \"mail\"}",
     "be_turned_on": "Once the test connection is confirmed to be effective, it can be enabled"
   },
@@ -804,7 +819,8 @@
     "platform_disable": "{0} settings are not enabled!",
     "input_account": "Please enter account",
     "redirect_2_auth": "Redirecting to {0} authentication, {1} seconds...",
-    "redirect_immediately": "Redirecting immediately"
+    "redirect_immediately": "Redirecting immediately",
+    "permission_invalid": "Authentication invalid [Current account has insufficient permissions]"
   },
   "supplier": {
     "alibaba_cloud_bailian": "Alibaba Cloud Bailian",
@@ -840,21 +856,7 @@
     "success": "Success",
     "failed": "Failed",
     "failed_info": "Operation Failure Details",
-    "create_qa": "Create Q&A",
-    "delete_qa": "Delete Q&A",
-    "create_datasource": "Create Datasource",
-    "update_datasource": "Edit Datasource",
-    "delete_datasource": "Delete Datasource",
-    "create_dashboard": "Create Dashboard",
-    "update_dashboard": "Edit Dashboard",
-    "delete_dashboard": "Delete Dashboard",
-    "setting_create_user": "Add Member",
-    "setting_delete_user": "Remove Member",
-    "setting_create_rule": "Add Rule Group",
-    "setting_delete_rule": "Remove Rule Group",
-    "setting_update_rule": "Configure Rules",
-    "setting_update_rule_user": "Configure Users",
-    "setting_create_terminology": "Create Terminology"
+    "opt_time": "Operation Time"
   },
   "api_key": {
     "info_tips": "The API Key is your credential for accessing the SQLBot API, with full permissions for your account. Please keep it secure! Do not disclose the API Key in any public channels to avoid security risks from unauthorized use.",

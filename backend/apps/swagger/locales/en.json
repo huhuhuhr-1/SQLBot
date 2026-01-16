@@ -27,6 +27,16 @@
 
   "mcp_api": "MCP Tools(It is not recommended to call via API)",
 
+  "recommended_problem_api": "Recommended Questions",
+  "rp_save": "Save the question",
+  "rp_get": "Get Recommended Questions",
+  "rp_base": "Obtain recommended queries for data sources",
+
+  "audit_api": "Log Audit",
+  "audit_export": "Export Log Audit",
+  "audit_get_log_page": "Pagination for Log Audit",
+  "audit_get_option": "Retrieve audit configuration",
+
   "system": "System Management",
   "system_user_api": "User APIs",
   "system_user_current_user": "Get Current User",
@@ -72,7 +82,7 @@
   "ws_del_api": "Delete Workspace",
 
   "weight": "Weight (1: Admin, 0: Regular User)",
-  
+
   "system_model_api": "Model Configuration APIs",
   "system_model_default": "Set Default Model",
   "system_model_grid": "Get Model List",
@@ -113,7 +123,7 @@
   "authentication_enable_api": "Enable Authentication",
   "authentication_status_api": "Get Authentication Status",
   "authentication_validate_api": "Validate Authentication",
-  
+
   "per_api": "Data Permission",
   "per_save": "Save Permission",
   "per_delete": "Delete Permission",
@@ -168,5 +178,15 @@
   "delete_custom_prompt": "Delete Custom Prompt",
   "export_custom_prompt": "Export Custom Prompts",
   "excel_template_custom_prompt": "Download Template",
-  "upload_custom_prompt": "Import Custom Prompts"
+  "upload_custom_prompt": "Import Custom Prompts",
+
+  "db_api": "Dashboard Interface",
+  "list_resource_api": "Load Resource Tree",
+  "load_resource_api": "Load Resource Tree Details",
+  "create_resource_api": "Create Resource",
+  "update_resource": "Update Resource",
+  "delete_resource_api": "Delete Resource",
+  "create_canvas_api": "Create Dashboard",
+  "update_canvas_api": "Update Dashboard",
+  "check_name_api": "Name Validation"
 }

@@ -50,6 +50,9 @@ tags_metadata = [
         "name": "Datasource",
         "description": f"{PLACEHOLDER_PREFIX}ds_api"
     },
+    {"name": "Dashboard",
+     "description": f"{PLACEHOLDER_PREFIX}db_api"
+     },
     {
         "name": "system_user",
         "description": f"{PLACEHOLDER_PREFIX}system_user_api"
@@ -74,9 +77,9 @@ tags_metadata = [
         "name": "system_authentication",
         "description": f"{PLACEHOLDER_PREFIX}system_authentication_api"
     },
-    {   "name": "Table Relation",
-        "description": f"{PLACEHOLDER_PREFIX}tr_api"
-    },
+    {"name": "Table Relation",
+     "description": f"{PLACEHOLDER_PREFIX}tr_api"
+     },
     {
         "name": "Data Permission",
         "description": f"{PLACEHOLDER_PREFIX}per_api"
@@ -97,6 +100,14 @@ tags_metadata = [
         "name": "mcp",
         "description": f"{PLACEHOLDER_PREFIX}mcp_api"
     },
+    {
+        "name": "recommended problem",
+        "description": f"{PLACEHOLDER_PREFIX}recommended_problem_api"
+    },
+    {
+        "name": "Audit",
+        "description": f"{PLACEHOLDER_PREFIX}audit_api"
+    }
 ]
 
 

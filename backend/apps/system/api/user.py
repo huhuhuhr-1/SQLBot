@@ -1,14 +1,16 @@
 from collections import defaultdict
 from typing import Optional
-from fastapi import APIRouter, Path, Query
-from pydantic import Field
+from fastapi import APIRouter, File, Path, Query, UploadFile
 from sqlmodel import SQLModel, or_, select, delete as sqlmodel_delete
 from apps.system.crud.user import check_account_exists, check_email_exists, check_email_format, check_pwd_format, get_db_user, single_delete, user_ws_options
+from apps.system.crud.user_excel import batchUpload, downTemplate, download_error_file
 from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserInfoDTO, UserLanguage, UserStatus, UserWs
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import CurrentUser, SessionDep, Trans
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
@@ -18,6 +20,23 @@ from common.core.config import settings
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 
 router = APIRouter(tags=["system_user"], prefix="/user")
+
+
+@router.get("/template", include_in_schema=False)
+@require_permissions(permission=SqlbotPermission(role=['admin']))
+async def templateExcel(trans: Trans):
+    return await downTemplate(trans)
+
+@router.post("/batchImport", include_in_schema=False)
+@require_permissions(permission=SqlbotPermission(role=['admin']))
+async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentUser, file: UploadFile = File(...)):
+    return await batchUpload(session, trans, file)
+
+
+@router.get("/errorRecord/{file_id}", include_in_schema=False)
+@require_permissions(permission=SqlbotPermission(role=['admin']))
+async def download_error(file_id: str):
+    return download_error_file(file_id)
 
 @router.get("/info", summary=f"{PLACEHOLDER_PREFIX}system_user_current_user", description=f"{PLACEHOLDER_PREFIX}system_user_current_user_desc")
 async def user_info(current_user: CurrentUser) -> UserInfoDTO:
@@ -117,6 +136,11 @@ async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Tran
 
 @router.put("/ws/{oid}", summary=f"{PLACEHOLDER_PREFIX}switch_oid_api", description=f"{PLACEHOLDER_PREFIX}switch_oid_api")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
+@system_log(LogConfig(
+    operation_type=OperationType.UPDATE,
+    module=OperationModules.USER,
+    resource_id_expr="editor.id"
+))
 async def ws_change(session: SessionDep, current_user: CurrentUser, trans:Trans, oid: int = Path(description=f"{PLACEHOLDER_PREFIX}oid")):
     ws_list: list[UserWs] = await user_ws_options(session, current_user.id)
     if not any(x.id == oid for x in ws_list):
@@ -141,8 +165,13 @@ async def query(session: SessionDep, trans: Trans, id: int = Path(description=f"
 
 @router.post("", summary=f"{PLACEHOLDER_PREFIX}user_create_api", description=f"{PLACEHOLDER_PREFIX}user_create_api")
 @require_permissions(permission=SqlbotPermission(role=['admin']))
+@system_log(LogConfig(
+    operation_type=OperationType.CREATE,
+    module=OperationModules.USER,
+    result_id_expr="id"
+))
 async def user_create(session: SessionDep, creator: UserCreator, trans: Trans):
-    await create(session=session, creator=creator, trans=trans)
+    return await create(session=session, creator=creator, trans=trans)
     
 async def create(session: SessionDep, creator: UserCreator, trans: Trans):
     if check_account_exists(session=session, account=creator.account):
@@ -169,11 +198,17 @@ async def create(session: SessionDep, creator: UserCreator, trans: Trans):
         session.add_all(db_model_list)
         user_model.oid = creator.oid_list[0]   
     session.add(user_model)
+    return user_model
 
     
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}user_update_api", description=f"{PLACEHOLDER_PREFIX}user_update_api")
 @require_permissions(permission=SqlbotPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
+@system_log(LogConfig(
+    operation_type=OperationType.UPDATE,
+    module=OperationModules.USER,
+    resource_id_expr="editor.id"
+))
 async def update(session: SessionDep, editor: UserEditor, trans: Trans):
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
     if not user_model:
@@ -207,12 +242,18 @@ async def update(session: SessionDep, editor: UserEditor, trans: Trans):
     session.add(user_model)
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}user_del_api", description=f"{PLACEHOLDER_PREFIX}user_del_api")
-@require_permissions(permission=SqlbotPermission(role=['admin'])) 
+@require_permissions(permission=SqlbotPermission(role=['admin']))
+@system_log(LogConfig(
+    operation_type=OperationType.DELETE,
+    module=OperationModules.USER,
+    resource_id_expr="id"
+))
 async def delete(session: SessionDep, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")):
     await single_delete(session, id)
 
 @router.delete("", summary=f"{PLACEHOLDER_PREFIX}user_batchdel_api", description=f"{PLACEHOLDER_PREFIX}user_batchdel_api")
 @require_permissions(permission=SqlbotPermission(role=['admin']))
+@system_log(LogConfig(operation_type=OperationType.DELETE,module=OperationModules.USER,resource_id_expr="id_list"))
 async def batch_del(session: SessionDep, id_list: list[int]):
     for id in id_list:
         await single_delete(session, id)
@@ -231,6 +272,7 @@ async def langChange(session: SessionDep, current_user: CurrentUser, trans: Tran
 @router.patch("/pwd/{id}", summary=f"{PLACEHOLDER_PREFIX}reset_pwd", description=f"{PLACEHOLDER_PREFIX}reset_pwd")
 @require_permissions(permission=SqlbotPermission(role=['admin'])) 
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
+@system_log(LogConfig(operation_type=OperationType.RESET_PWD,module=OperationModules.USER,resource_id_expr="id"))
 async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")):
     if not current_user.isAdmin:
         raise Exception(trans('i18n_permission.no_permission', url = " patch[/user/pwd/id],", msg = trans('i18n_permission.only_admin')))
@@ -240,6 +282,7 @@ async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans,
 
 @router.put("/pwd", summary=f"{PLACEHOLDER_PREFIX}update_pwd", description=f"{PLACEHOLDER_PREFIX}update_pwd")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
+@system_log(LogConfig(operation_type=OperationType.UPDATE_PWD,module=OperationModules.USER,result_id_expr="id"))
 async def pwdUpdate(session: SessionDep, current_user: CurrentUser, trans: Trans, editor: PwdEditor):
     new_pwd = editor.new_pwd
     if not check_pwd_format(new_pwd):
@@ -249,11 +292,13 @@ async def pwdUpdate(session: SessionDep, current_user: CurrentUser, trans: Trans
         raise Exception(trans('i18n_error', key = trans('i18n_user.password')))
     db_user.password = md5pwd(new_pwd)
     session.add(db_user)
+    return db_user
 
     
 @router.patch("/status", summary=f"{PLACEHOLDER_PREFIX}update_status", description=f"{PLACEHOLDER_PREFIX}update_status")
 @require_permissions(permission=SqlbotPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="statusDto.id")
+@system_log(LogConfig(operation_type=OperationType.UPDATE_STATUS,module=OperationModules.USER, resource_id_expr="statusDto.id"))
 async def statusChange(session: SessionDep, current_user: CurrentUser, trans: Trans, statusDto: UserStatus):
     if not current_user.isAdmin:
         raise Exception(trans('i18n_permission.no_permission', url = ", ", msg = trans('i18n_permission.only_admin')))

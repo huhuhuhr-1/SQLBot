@@ -10,9 +10,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, select
 from starlette.responses import JSONResponse
 
-from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, rename_chat, \
+from apps.chat.curd.chat import delete_chat_with_user, get_chart_data_with_user, get_chat_predict_data_with_user, list_chats, get_chat_with_records, create_chat, rename_chat, \
     delete_chat, get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data, get_chat_record_by_id, \
-    format_json_data, format_json_list_data, get_chart_config, list_recent_questions
+    format_json_data, format_json_list_data, get_chart_config, list_recent_questions,get_chat as get_chat_exec, rename_chat_with_user
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand, \
     ChatInfo, Chat, ChatFinishStep
 from apps.chat.task.llm import LLMService
@@ -21,8 +21,8 @@ from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
-from sqlbot_xpack.audit.models.log_model import OperationType, OperationDetails, OperationModules
-from sqlbot_xpack.audit.schemas.logger_decorator import system_log, LogConfig
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
@@ -52,7 +52,7 @@ async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, cha
     return await asyncio.to_thread(inner)
 
 
-@router.get("/record/{chat_record_id}/data", summary=f"{PLACEHOLDER_PREFIX}get_chart_data")
+""" @router.get("/record/{chat_record_id}/data", summary=f"{PLACEHOLDER_PREFIX}get_chart_data")
 async def chat_record_data(session: SessionDep, chat_record_id: int):
     def inner():
         data = get_chat_chart_data(chat_record_id=chat_record_id, session=session)
@@ -67,10 +67,32 @@ async def chat_predict_data(session: SessionDep, chat_record_id: int):
         data = get_chat_predict_data(chat_record_id=chat_record_id, session=session)
         return format_json_list_data(data)
 
+    return await asyncio.to_thread(inner) """
+
+@router.get("/record/{chat_record_id}/data", summary=f"{PLACEHOLDER_PREFIX}get_chart_data")
+async def chat_record_data(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    def inner():
+        data = get_chart_data_with_user(chat_record_id=chat_record_id, session=session, current_user=current_user)
+        return format_json_data(data)
+
     return await asyncio.to_thread(inner)
 
 
-@router.post("/rename", response_model=str, summary=f"{PLACEHOLDER_PREFIX}rename_chat")
+@router.get("/record/{chat_record_id}/predict_data", summary=f"{PLACEHOLDER_PREFIX}get_chart_predict_data")
+async def chat_predict_data(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    def inner():
+        data = get_chat_predict_data_with_user(chat_record_id=chat_record_id, session=session, current_user=current_user)
+        return format_json_list_data(data)
+
+    return await asyncio.to_thread(inner)
+
+
+""" @router.post("/rename", response_model=str, summary=f"{PLACEHOLDER_PREFIX}rename_chat")
+@system_log(LogConfig(
+    operation_type=OperationType.UPDATE,
+    module=OperationModules.CHAT,
+    resource_id_expr="chat.id"
+))
 async def rename(session: SessionDep, chat: RenameChat):
     try:
         return rename_chat(session=session, rename_object=chat)
@@ -78,14 +100,27 @@ async def rename(session: SessionDep, chat: RenameChat):
         raise HTTPException(
             status_code=500,
             detail=str(e)
+        ) """
+
+@router.post("/rename", response_model=str, summary=f"{PLACEHOLDER_PREFIX}rename_chat")
+@system_log(LogConfig(
+    operation_type=OperationType.UPDATE,
+    module=OperationModules.CHAT,
+    resource_id_expr="chat.id"
+))
+async def rename(session: SessionDep, current_user: CurrentUser, chat: RenameChat):
+    try:
+        return rename_chat_with_user(session=session, current_user=current_user, rename_object=chat)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
         )
 
-
-@router.delete("/{chart_id}/{brief}", response_model=str, summary=f"{PLACEHOLDER_PREFIX}delete_chat")
+""" @router.delete("/{chart_id}/{brief}", response_model=str, summary=f"{PLACEHOLDER_PREFIX}delete_chat")
 @system_log(LogConfig(
-    operation_type=OperationType.DELETE_QA,
-    operation_detail=OperationDetails.DELETE_QA_DETAILS,
-    module=OperationModules.QA,
+    operation_type=OperationType.DELETE,
+    module=OperationModules.CHAT,
     resource_id_expr="chart_id",
     remark_expr="brief"
 ))
@@ -96,15 +131,29 @@ async def delete(session: SessionDep, chart_id: int, brief: str):
         raise HTTPException(
             status_code=500,
             detail=str(e)
-        )
+        ) """
 
+@router.delete("/{chart_id}/{brief}", response_model=str, summary=f"{PLACEHOLDER_PREFIX}delete_chat")
+@system_log(LogConfig(
+    operation_type=OperationType.DELETE,
+    module=OperationModules.CHAT,
+    resource_id_expr="chart_id",
+    remark_expr="brief"
+))
+async def delete(session: SessionDep, current_user: CurrentUser, chart_id: int, brief: str):
+    try:
+        return delete_chat_with_user(session=session, current_user=current_user, chart_id=chart_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 @router.post("/start", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}start_chat")
 @require_permissions(permission=SqlbotPermission(type='ds', keyExpression="create_chat_obj.datasource"))
 @system_log(LogConfig(
-    operation_type=OperationType.CREATE_QA,
-    operation_detail=OperationDetails.CREATE_QA_DETAILS,
-    module=OperationModules.QA,
+    operation_type=OperationType.CREATE,
+    module=OperationModules.CHAT,
     result_id_expr="id"
 ))
 async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat):
@@ -118,9 +167,14 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
 
 
 @router.post("/assistant/start", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}assistant_start_chat")
-async def start_chat(session: SessionDep, current_user: CurrentUser):
+@system_log(LogConfig(
+    operation_type=OperationType.CREATE,
+    module=OperationModules.CHAT,
+    result_id_expr="id"
+))
+async def start_chat(session: SessionDep, current_user: CurrentUser, current_assistant: CurrentAssistant, create_chat_obj: CreateChat = CreateChat(origin=2)):
     try:
-        return create_chat(session, current_user, CreateChat(origin=2), False)
+        return create_chat(session, current_user, create_chat_obj, create_chat_obj and create_chat_obj.datasource, current_assistant)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -357,7 +411,11 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
         traceback.print_exc()
         if stream:
             def _err(_e: Exception):
-                yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+                if in_chat:
+                    yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
+                else:
+                    yield f'&#x274c; **ERROR:**\n'
+                    yield f'> {str(_e)}\n'
 
             return StreamingResponse(_err(e), media_type="text/event-stream")
         else:
@@ -383,15 +441,20 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
         )
 
 
-@router.get("/record/{chat_record_id}/excel/export", summary=f"{PLACEHOLDER_PREFIX}export_chart_data")
-async def export_excel(session: SessionDep, chat_record_id: int, trans: Trans):
+@router.get("/record/{chat_record_id}/excel/export/{chat_id}", summary=f"{PLACEHOLDER_PREFIX}export_chart_data")
+@system_log(LogConfig(operation_type=OperationType.EXPORT,module=OperationModules.CHAT,resource_id_expr="chat_id",))
+async def export_excel(session: SessionDep, current_user: CurrentUser, chat_record_id: int,chat_id: int,  trans: Trans):
     chat_record = session.get(ChatRecord, chat_record_id)
     if not chat_record:
         raise HTTPException(
             status_code=500,
             detail=f"ChatRecord with id {chat_record_id} not found"
         )
-
+    if chat_record.create_by != current_user.id:
+        raise HTTPException(
+            status_code=500,
+            detail=f"ChatRecord with id {chat_record_id} not Owned by the current user"
+        )
     is_predict_data = chat_record.predict_record_id is not None
 
     _origin_data = format_json_data(get_chat_chart_data(chat_record_id=chat_record_id, session=session))

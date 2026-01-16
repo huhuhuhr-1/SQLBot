@@ -86,6 +86,9 @@ class Chat(SQLModel, table=True):
     origin: Optional[int] = Field(
         sa_column=Column(Integer, nullable=False, default=0))  # 0: default, 1: mcp, 2: assistant
     brief_generate: bool = Field(default=False)
+    recommended_question_answer: str = Field(sa_column=Column(Text, nullable=True))
+    recommended_question: str = Field(sa_column=Column(Text, nullable=True))
+    recommended_generate: bool = Field(default=False)
 
 
 class ChatRecord(SQLModel, table=True):
@@ -172,6 +175,8 @@ class ChatInfo(BaseModel):
     ds_type: str = ''
     datasource_name: str = ''
     datasource_exists: bool = True
+    recommended_question: Optional[str]  = None
+    recommended_generate: Optional[bool]  = False
     records: List[ChatRecord | dict] = []
 
 
@@ -293,6 +298,7 @@ class McpQuestion(BaseModel):
     chat_id: int = Body(description='会话ID')
     token: str = Body(description='token')
     stream: Optional[bool] = Body(description='是否流式输出，默认为true开启, 关闭false则返回JSON对象', default=True)
+    lang: Optional[str] = Body(description='语言：zh-CN|en|ko-KR', default='zh-CN')
 
 
 class AxisObj(BaseModel):

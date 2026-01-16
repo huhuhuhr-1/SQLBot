@@ -18,6 +18,7 @@ import Apikey from './Apikey.vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { userApi } from '@/api/auth'
+import { toLoginPage } from '@/utils/utils'
 
 const router = useRouter()
 const appearanceStore = useAppearanceStoreWithOut()
@@ -34,6 +35,11 @@ const account = computed(() => userStore.getAccount)
 const currentLanguage = computed(() => userStore.getLanguage)
 const isAdmin = computed(() => userStore.isAdmin)
 const isLocalUser = computed(() => !userStore.getOrigin)
+
+const platFlag = computed(() => {
+  const platformInfo = userStore.getPlatformInfo
+  return platformInfo?.origin || 0
+})
 const dialogVisible = ref(false)
 const apikeyDialogVisible = ref(false)
 const aboutRef = ref()
@@ -90,7 +96,8 @@ const savePwdHandler = () => {
 }
 const logout = async () => {
   if (!(await userStore.logout())) {
-    router.push('/login')
+    router.push(toLoginPage(router?.currentRoute?.value?.fullPath || ''))
+    // router.push('/login')
   }
 }
 </script>
@@ -125,7 +132,7 @@ const logout = async () => {
           </el-icon>
           <div class="datasource-name">{{ $t('common.system_manage') }}</div>
         </div>
-        <div v-if="isLocalUser" class="popover-item" @click="openPwd">
+        <div v-if="isLocalUser && !platFlag" class="popover-item" @click="openPwd">
           <el-icon size="16">
             <icon_key_outlined></icon_key_outlined>
           </el-icon>
@@ -177,7 +184,7 @@ const logout = async () => {
           <div class="datasource-name">{{ $t('common.help') }}</div>
         </div>
         <div style="height: 4px; width: 100%"></div>
-        <div class="popover-item mr4" @click="logout">
+        <div v-if="platFlag <= 5" class="popover-item mr4" @click="logout">
           <el-icon size="16">
             <icon_logout_outlined></icon_logout_outlined>
           </el-icon>

@@ -25,6 +25,7 @@ onMounted(() => {
   search()
   initWorkspace()
   initUsers()
+  initOptions()
 })
 const multipleTableRef = ref()
 const fieldList = ref<any>([])
@@ -98,14 +99,17 @@ const toggleRowLoading = ref(false)
 
 const configParams = () => {
   let str = ''
+  let str_conditions = ''
   if (keywords.value) {
     str += `name=${keywords.value}`
   }
 
   state.conditions.forEach((ele: any) => {
+    str_conditions = ''
     ele.value.forEach((itx: any) => {
-      str += str ? `__${itx}` : `${ele.field}=${itx}`
+      str_conditions += str_conditions ? `__${itx}` : `${ele.field}=${itx}`
     })
+    str += str ? `&${str_conditions}` : `${str_conditions}`
   })
 
   if (str.length) {
@@ -150,27 +154,10 @@ const onErrorInfoOpen = (info: string) => {
 const onErrorInfoClose = () => {
   rowInfoDialog.value = false
 }
-const operationTypeOptions = [
-  { id: 'create_qa', name: t('audit.create_qa') },
-  { id: 'delete_qa', name: t('audit.delete_qa') },
-  { id: 'create_datasource', name: t('audit.create_datasource') },
-  { id: 'update_datasource', name: t('audit.update_datasource') },
-  { id: 'delete_datasource', name: t('audit.delete_datasource') },
-  { id: 'create_dashboard', name: t('audit.create_dashboard') },
-  { id: 'update_dashboard', name: t('audit.update_dashboard') },
-  { id: 'delete_dashboard', name: t('audit.delete_dashboard') },
-  { id: 'setting_create_user', name: t('audit.setting_create_user') },
-  { id: 'setting_delete_user', name: t('audit.setting_delete_user') },
-  { id: 'setting_create_rule', name: t('audit.setting_create_rule') },
-  { id: 'setting_delete_rule', name: t('audit.setting_delete_rule') },
-  { id: 'setting_update_rule', name: t('audit.setting_update_rule') },
-  { id: 'setting_update_rule_user', name: t('audit.setting_update_rule_user') },
-  { id: 'setting_create_terminology', name: t('audit.setting_create_terminology') },
-]
 const filterOption = ref<any[]>([
   {
-    type: 'select',
-    option: operationTypeOptions,
+    type: 'tree-select',
+    option: [],
     field: 'opt_type_list',
     title: t('audit.operation_type'),
     operate: 'in',
@@ -188,7 +175,7 @@ const filterOption = ref<any[]>([
     type: 'select',
     option: [],
     field: 'oid_list',
-    title: t('audit.operation_user_name'),
+    title: t('audit.oid_name'),
     operate: 'in',
     property: { placeholder: t('common.empty') + t('audit.oid_name') },
   },
@@ -201,6 +188,18 @@ const filterOption = ref<any[]>([
     field: 'log_status',
     title: t('user.user_status'),
     operate: 'in',
+  },
+  {
+    type: 'time',
+    option: [],
+    field: 'time_range',
+    title: t('audit.opt_time'),
+    operate: 'between',
+    property: {
+      showType: 'datetimerange',
+      format: 'YYYY-MM-DD HH:mm:ss',
+      valueFormat: 'x',
+    },
   },
 ])
 
@@ -246,6 +245,12 @@ const initUsers = () => {
     filterOption.value[1].option = [{ id: 1, name: 'Administrator' }, ...res.items]
   })
 }
+
+const initOptions = () => {
+  audit.getOptions().then((res: any) => {
+    filterOption.value[0].option = [...res]
+  })
+}
 </script>
 
 <template>
@@ -279,7 +284,7 @@ const initUsers = () => {
       />
       <div class="preview-or-schema">
         <el-table ref="multipleTableRef" :data="fieldList" style="width: 100%">
-          <el-table-column prop="word" :label="$t('audit.operation_type')" width="120">
+          <el-table-column prop="word" :label="$t('audit.operation_type')" width="140">
             <template #default="scope">
               {{ scope.row.operation_type_name }}
             </template>
@@ -296,7 +301,7 @@ const initUsers = () => {
           </el-table-column>
           <el-table-column prop="word" :label="$t('audit.oid_name')" width="120">
             <template #default="scope">
-              {{ scope.row.oid_name }}
+              {{ scope.row.oid_name === '-1' ? '-' : scope.row.oid_name }}
             </template>
           </el-table-column>
           <el-table-column prop="word" :label="$t('audit.operation_status')" width="100">
@@ -318,7 +323,7 @@ const initUsers = () => {
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="word" :label="$t('audit.ip_address')" width="120">
+          <el-table-column prop="word" :label="$t('audit.ip_address')" width="140">
             <template #default="scope">
               {{ scope.row.ip_address }}
             </template>

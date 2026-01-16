@@ -49,6 +49,7 @@ from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
 from common.error import SingleMessageError, SQLBotDBError, ParseSQLResultError, SQLBotDBConnectionError
 from common.utils.data_format import DataFormat
+from common.utils.locale import I18n, I18nHelper
 from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_orjson
 
 warnings.filterwarnings("ignore")
@@ -61,6 +62,8 @@ dynamic_ds_types = [1, 3]
 dynamic_subsql_prefix = 'select * from sqlbot_dynamic_temp_table_'
 
 session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
+
+i18n = I18n()
 
 
 class LLMService:
@@ -85,6 +88,8 @@ class LLMService:
 
     chunk_list: List[str] = []
     future: Future
+
+    trans: I18nHelper = None
 
     last_execute_sql_error: str = None
     articles_number: int = 4
@@ -125,6 +130,7 @@ class LLMService:
         self.change_title = not get_chat_brief_generate(session=session, chat_id=chat_id)
 
         chat_question.lang = get_lang_name(current_user.language)
+        self.trans = i18n(lang=current_user.language)
 
         self.ds = (
             ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None
@@ -391,7 +397,7 @@ class LLMService:
                                                                                   reasoning_content=full_thinking_text,
                                                                                   token_usage=token_usage)
         self.record = save_recommend_question_answer(session=_session, record_id=self.record.id,
-                                                     answer={'content': full_guess_text})
+                                                     answer={'content': full_guess_text}, articles_number=self.articles_number)
 
         yield {'recommended_question': self.record.recommended_question}
 
@@ -830,10 +836,27 @@ class LLMService:
                 if chart.get('axis'):
                     if chart.get('axis').get('x'):
                         chart.get('axis').get('x')['value'] = chart.get('axis').get('x').get('value').lower()
-                    if chart.get('axis').get('y'):
-                        chart.get('axis').get('y')['value'] = chart.get('axis').get('y').get('value').lower()
+                    y_axis = chart.get('axis').get('y')
+                    if y_axis:
+                        if isinstance(y_axis, list):
+                            # 数组格式: y: [{name, value}, ...]
+                            for item in y_axis:
+                                if item.get('value'):
+                                    item['value'] = item['value'].lower()
+                        elif isinstance(y_axis, dict) and y_axis.get('value'):
+                            # 旧格式: y: {name, value}
+                            y_axis['value'] = y_axis['value'].lower()
                     if chart.get('axis').get('series'):
                         chart.get('axis').get('series')['value'] = chart.get('axis').get('series').get('value').lower()
+                if chart.get('axis') and chart['axis'].get('multi-quota'):
+                    multi_quota = chart['axis']['multi-quota']
+                    if multi_quota.get('value'):
+                        if isinstance(multi_quota['value'], list):
+                            # 将数组中的每个值转换为小写
+                            multi_quota['value'] = [v.lower() if v else v for v in multi_quota['value']]
+                        elif isinstance(multi_quota['value'], str):
+                            # 如果是字符串，也转换为小写
+                            multi_quota['value'] = multi_quota['value'].lower()
             elif data['type'] == 'error':
                 message = data['reason']
                 error = True
@@ -972,7 +995,7 @@ class LLMService:
                     {'type': 'question', 'question': self.get_record().question}).decode() + '\n\n'
             else:
                 if stream:
-                    yield '> ID: ' + str(self.get_record().id) + '\n'
+                    yield '> ' + self.trans('i18n_chat.record_id_in_mcp') + str(self.get_record().id) + '\n'
                     yield '> ' + self.get_record().question + '\n\n'
             if not stream:
                 json_result['record_id'] = self.get_record().id
@@ -1173,7 +1196,7 @@ class LLMService:
                 # generate picture
                 try:
                     if chart.get('type') != 'table':
-                        yield '### generated chart picture\n\n'
+                        # yield '### generated chart picture\n\n'
                         image_url, error = request_picture(self.record.chat_id, self.record.id, chart,
                                                            format_json_data(result))
                         SQLBotLogUtil.info(image_url)
@@ -1185,6 +1208,8 @@ class LLMService:
                             raise error
                 except Exception as e:
                     if stream:
+                        if chart.get('type') != 'table':
+                            yield 'generate or fetch chart picture error.\n\n'
                         raise e
 
             if not stream:
@@ -1263,7 +1288,7 @@ class LLMService:
                 yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
             else:
                 if stream:
-                    yield '> ID: ' + str(self.get_record().id) + '\n'
+                    yield '> ' + self.trans('i18n_chat.record_id_in_mcp') + str(self.get_record().id) + '\n'
                     yield '> ' + self.get_record().question + '\n\n'
             if not stream:
                 json_result['record_id'] = self.get_record().id
@@ -1331,7 +1356,7 @@ class LLMService:
                         # generate picture
                         try:
                             if chart.get('type') != 'table':
-                                yield '### generated chart picture\n\n'
+                                # yield '### generated chart picture\n\n'
 
                                 _data = get_chat_chart_data(_session, self.record.id)
                                 _data['data'] = _data.get('data') + predict_data
@@ -1347,6 +1372,8 @@ class LLMService:
                                     raise error
                         except Exception as e:
                             if stream:
+                                if chart.get('type') != 'table':
+                                    yield 'generate or fetch chart picture error.\n\n'
                                 raise e
                 else:
                     if in_chat:
@@ -1441,10 +1468,18 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
     x = None
     y = None
     series = None
+    multi_quota_fields = []
+    multi_quota_name =None
+
     if chart.get('axis'):
-        x = chart.get('axis').get('x')
-        y = chart.get('axis').get('y')
-        series = chart.get('axis').get('series')
+        axis_data = chart.get('axis')
+        x = axis_data.get('x')
+        y = axis_data.get('y')
+        series = axis_data.get('series')
+        # 获取multi-quota字段列表
+        if axis_data.get('multi-quota') and 'value' in axis_data.get('multi-quota'):
+            multi_quota_fields = axis_data.get('multi-quota').get('value', [])
+            multi_quota_name = axis_data.get('multi-quota').get('name')
 
     axis = []
     for v in columns:
@@ -1452,9 +1487,23 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
     if x:
         axis.append({'name': x.get('name'), 'value': x.get('value'), 'type': 'x'})
     if y:
-        axis.append({'name': y.get('name'), 'value': y.get('value'), 'type': 'y'})
+        y_list = y if isinstance(y, list) else [y]
+
+        for y_item in y_list:
+            if isinstance(y_item, dict) and 'value' in y_item:
+                y_obj = {
+                    'name': y_item.get('name'),
+                    'value': y_item.get('value'),
+                    'type': 'y'
+                }
+                # 如果是multi-quota字段，添加标志
+                if y_item.get('value') in multi_quota_fields:
+                    y_obj['multi-quota'] = True
+                axis.append(y_obj)
     if series:
         axis.append({'name': series.get('name'), 'value': series.get('value'), 'type': 'series'})
+    if multi_quota_name:
+        axis.append({'name': multi_quota_name, 'value': multi_quota_name, 'type': 'other-info'})
 
     request_obj = {
         "path": os.path.join(settings.MCP_IMAGE_PATH, file_name),

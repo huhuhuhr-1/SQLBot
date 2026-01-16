@@ -95,6 +95,8 @@
     "the_term_gmv": "용어를 삭제하시겠습니까: {msg}?"
   },
   "common": {
+    "start_time": "시작 시간",
+    "end_time": "종료 시간",
     "require": "필수 입력 항목",
     "zoom_in": "확대",
     "zoom_out": "축소",
@@ -192,7 +194,7 @@
     "creator": "생성자",
     "dashboard_id": "대시보드 ID",
     "create_time": "생성 시간",
-    "updator": "업데이트자",
+    "updater": "업데이트자",
     "update_time": "업데이트 시간",
     "edit": "편집",
     "edit_title": "제목 편집",
@@ -445,7 +447,8 @@
     "enable": "활성화",
     "disable": "비활성화",
     "local_creation": "로컬 생성",
-    "feishu": "페이슈",
+    "lark": "페이슈",
+    "larksuite": "페이수 (Pei-su)",
     "dingtalk": "딩톡",
     "wechat_for_business": "기업용 위챗",
     "1240_results": "{msg}개 결과 ",
@@ -454,6 +457,7 @@
     "enabled": "활성화됨",
     "edit_user": "사용자 편집",
     "del_user": "사용자를 삭제하시겠습니까: {msg}?",
+    "del_key": "키를 삭제하시겠습니까?: {msg}?",
     "please_first": "먼저",
     "download_the_template": "템플릿 다운로드",
     "required_and_upload": "하여 요구 사항에 따라 작성한 후 업로드하십시오",
@@ -463,6 +467,7 @@
     "import": "가져오기",
     "change_file": "파일 변경",
     "data_import_completed": "데이터 가져오기 완료",
+    "notes_import_completed": "메모 가져오기 완료",
     "imported_100_data": "데이터 {msg}개를 성공적으로 가져왔습니다",
     "return_to_view": "돌아가서 보기",
     "continue_importing": "계속 가져오기",
@@ -662,7 +667,10 @@
     "right": "오른쪽",
     "welcome_description": "환영 메시지 설명",
     "data_analysis_now": "저는 데이터 조회, 차트 생성, 데이터 이상 감지, 데이터 예측 등을 할 수 있습니다. 빨리 스마트 데이터 조회를 시작하세요~",
-    "window_entrance_icon": "플로팅 윈도우 입구 아이콘"
+    "window_entrance_icon": "플로팅 윈도우 입구 아이콘",
+    "preview_error": "현재 페이지는 Iframe 임베딩을 허용하지 않습니다!",
+    "assistant_app": "어시스턴트 앱",
+    "auto_select_ds": "자동 데이터 소스 선택"
   },
   "chat": {
     "type": "차트 유형",
@@ -752,6 +760,13 @@
     "setting_successfully": "설정 성공",
     "customize_theme_color": "사용자 정의 테마 색상"
   },
+  "platform": {
+    "title": "플랫폼 연동",
+    "status_open": "활성화됨",
+    "status_close": "비활성화됨",
+    "access_in": "접속",
+    "can_enable_it": "연결 테스트 성공 후 활성화 가능"
+  },
   "authentication": {
     "invalid": "유효하지 않음",
     "valid": "유효함",
@@ -789,7 +804,7 @@
     "ou": "사용자 OU",
     "ou_placeholder": "예: ou=users,dc=example,dc=com",
     "user_filter": "사용자 필터",
-    "user_filter_placeholder": "예: uid",
+    "user_filter_placeholder": "예: uid 또는 uid {0} email. 여러 속성은 {1}로 구분합니다",
     "ldap_field_mapping_placeholder": "예: {\"account\": \"ldapAccount\", \"name\": \"ldapName\", \"email\": \"mail\"}",
     "be_turned_on": "테스트 연결이 유효한 것으로 확인되면 활성화할 수 있습니다"
   },
@@ -804,7 +819,8 @@
     "platform_disable": "{0} 설정이 활성화되지 않았습니다!",
     "input_account": "계정을 입력해 주세요",
     "redirect_2_auth": "{0} 인증으로 리디렉션 중입니다, {1}초...",
-    "redirect_immediately": "지금 이동"
+    "redirect_immediately": "지금 이동",
+    "permission_invalid": "인증 무효 [현재 계정의 권한이 부족합니다]"
   },
   "supplier": {
     "alibaba_cloud_bailian": "알리바바 클라우드 바이리엔",
@@ -840,21 +856,7 @@
     "success": "성공",
     "failed": "실패",
     "failed_info": "작업 실패 상세",
-    "create_qa": "Q&A 생성",
-    "delete_qa": "Q&A 삭제",
-    "create_datasource": "데이터 소스 생성",
-    "update_datasource": "데이터 소스 편집",
-    "delete_datasource": "데이터 소스 삭제",
-    "create_dashboard": "대시보드 생성",
-    "update_dashboard": "대시보드 편집",
-    "delete_dashboard": "대시보드 삭제",
-    "setting_create_user": "멤버 추가",
-    "setting_delete_user": "멤버 제거",
-    "setting_create_rule": "규칙 그룹 추가",
-    "setting_delete_rule": "규칙 그룹 제거",
-    "setting_update_rule": "규칙 설정",
-    "setting_update_rule_user": "사용자 설정",
-    "setting_create_terminology": "용어 생성"
+    "opt_time": "작업 시간"
   },
   "api_key": {
     "info_tips": "API 키는 SQLBot API에 액세스하는 비밀키로 계정의 모든 권한을 갖고 있습니다. 꼭 안전하게 보관하세요! 외부 채널에 어떠한 방식으로도 API 키를 공개하지 마시고, 타인이 악용하여 보안 위협이 발생하는 것을 방지하세요.",

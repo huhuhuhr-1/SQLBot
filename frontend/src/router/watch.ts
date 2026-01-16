@@ -4,19 +4,21 @@ import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useUserStore } from '@/stores/user'
 import { request } from '@/utils/request'
 import type { Router } from 'vue-router'
+import { generateDynamicRouters } from './dynamic'
+import { toLoginPage } from '@/utils/utils'
 
 const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
 const { wsCache } = useCache()
 const whiteList = ['/login', '/admin-login']
-const assistantWhiteList = ['/assistant', '/embeddedPage', '/401']
+const assistantWhiteList = ['/assistant', '/embeddedPage', '/embeddedCommon', '/401']
 export const watchRouter = (router: Router) => {
   router.beforeEach(async (to: any, from: any, next: any) => {
     await loadXpackStatic()
     await appearanceStore.setAppearance()
     LicenseGenerator.generateRouters(router)
     if (to.path.startsWith('/login') && userStore.getUid) {
-      next('/')
+      next(to?.query?.redirect || '/')
       return
     }
     if (assistantWhiteList.includes(to.path)) {
@@ -30,11 +32,18 @@ export const watchRouter = (router: Router) => {
     }
     if (!token) {
       // ElMessage.error('Please login first')
-      next('/login')
+      next(toLoginPage(to.fullPath))
       return
     }
+    let isFirstDynamicPath = false
     if (!userStore.getUid) {
       await userStore.info()
+      generateDynamicRouters(router)
+      isFirstDynamicPath = to?.path && ['/ds/index', '/as/index'].includes(to.path)
+      if (isFirstDynamicPath) {
+        next({ ...to, replace: true })
+        return
+      }
     }
     if (to.path === '/' || accessCrossPermission(to)) {
       next('/chat')

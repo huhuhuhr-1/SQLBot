@@ -24,7 +24,7 @@
           }}</span>
         </div>
         <div v-if="appearanceStore.getShowSlogan" class="welcome">
-          {{ appearanceStore.slogan || $t('common.intelligent_questioning_platform') }}
+          {{ appearanceStore.slogan ?? $t('common.intelligent_questioning_platform') }}
         </div>
         <div v-else class="welcome" style="height: 0"></div>
         <div class="login-form">
@@ -85,6 +85,7 @@ import login_image from '@/assets/embedded/login_image.png'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import loginImage from '@/assets/blue/login-image_blue.png'
 import Handler from './xpack/Handler.vue'
+import { toLoginSuccess } from '@/utils/utils'
 
 const showLoading = ref(true)
 const router = useRouter()
@@ -118,7 +119,7 @@ const submitForm = () => {
   loginFormRef.value.validate((valid: boolean) => {
     if (valid) {
       userStore.login(loginForm.value).then(() => {
-        router.push('/chat')
+        toLoginSuccess(router)
       })
     }
   })
