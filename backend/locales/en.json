@@ -13,7 +13,8 @@
     "no_associated_ws": "No associated workspace, {msg}",
     "user_disable": "Account is disabled, {msg}",
     "origin_error": "Invalid login method",
-    "prohibit_auto_create": "Automatically creating users is prohibited. Please synchronize users first"
+    "prohibit_auto_create": "Automatically creating users is prohibited. Please synchronize users first",
+    "no_platform_user": "Account does not exist. Please sync the user first."
   },
   "i18n_user": {
     "account": "Account",
@@ -40,7 +41,9 @@
     "only_admin": "Only administrators are allowed to call!",
     "no_permission": "No permission to call {url}{msg}",
     "authenticate_invalid": "Authentication invalid【{msg}】",
-    "token_expired": "Token expired"
+    "token_expired": "Token expired",
+    "only_ws_admin": "Workspace administrator access required!",
+    "permission_resource_limit": "Access denied or resource not found!"
   },
   "i18n_llm": {
     "validate_error": "Validation failed [{msg}]",
@@ -184,5 +187,11 @@
     "update_status": "Update Status",
     "update_table_relation": "Change Table Relation"
   },
-  "i18n_table_not_exist": "Table not exist"
+  "i18n_table_not_exist": "Table not exist",
+  "i18n_variable": {
+    "name_exist": "Name exist",
+    "name": "Name",
+    "account": "Account",
+    "email": "Email"
+  }
 }

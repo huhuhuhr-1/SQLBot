@@ -19,7 +19,7 @@ from common.core.config import settings
 from common.core.db import engine
 from common.core.sqlbot_cache import cache
 from common.utils.aes_crypto import simple_aes_decrypt
-from common.utils.utils import equals_ignore_case, get_domain_list, string_to_numeric_hash
+from common.utils.utils import SQLBotLogUtil, equals_ignore_case, get_domain_list, string_to_numeric_hash
 from common.core.deps import Trans
 
 
@@ -145,7 +145,8 @@ class AssistantOutDs:
             else:
                 raise Exception(f"Failed to get datasource list from {endpoint}, error: {result_json.get('message')}")
         else:
-            raise Exception(f"Failed to get datasource list from {endpoint}, status code: {res.status_code}")
+            SQLBotLogUtil.error(f"Failed to get datasource list from {endpoint}, response: {res}")
+            raise Exception(f"Failed to get datasource list from {endpoint}, response: {res}")
 
     def get_first_element(self, text: str):
         parts = re.split(r'[,;]', text.strip())
@@ -171,7 +172,8 @@ class AssistantOutDs:
         else:
             raise Exception("Datasource list is not found.")
 
-    def get_db_schema(self, ds_id: int, question: str, embedding: bool = True) -> str:
+    def get_db_schema(self, ds_id: int, question: str = '', embedding: bool = True,
+                      table_list: list[str] = None) -> str:
         ds = self.get_ds(ds_id)
         schema_str = ""
         db_name = ds.db_schema if ds.db_schema is not None and ds.db_schema != "" else ds.dataBase
@@ -179,6 +181,10 @@ class AssistantOutDs:
         tables = []
         i = 0
         for table in ds.tables:
+            # 如果传入了 table_list，则只处理在列表中的表
+            if table_list is not None and table.name not in table_list:
+                continue
+
             i += 1
             schema_table = ''
             schema_table += f"# Table: {db_name}.{table.name}" if ds.type != "mysql" and ds.type != "es" else f"# Table: {table.name}"
@@ -222,11 +228,11 @@ class AssistantOutDs:
 
     def convert2schema(self, ds_dict: dict, config: dict[any]) -> AssistantOutDsSchema:
         id_marker: str = ''
-        attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema']
+        attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema', 'mode']
         if config.get('encrypt', False):
             key = config.get('aes_key', None)
             iv = config.get('aes_iv', None)
-            aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema', 'schema']
+            aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema', 'schema', 'mode']
             for attr in aes_attrs:
                 if attr in ds_dict and ds_dict[attr]:
                     try:
@@ -234,10 +240,13 @@ class AssistantOutDs:
                     except Exception as e:
                         raise Exception(
                             f"Failed to encrypt {attr} for datasource {ds_dict.get('name')}, error: {str(e)}")
-        for attr in attr_list:
-            if attr in ds_dict:
-                id_marker += str(ds_dict.get(attr, '')) + '--sqlbot--'
-        id = string_to_numeric_hash(id_marker)
+        
+        id = ds_dict.get('id', None)
+        if not id:
+            for attr in attr_list:
+                if attr in ds_dict:
+                    id_marker += str(ds_dict.get(attr, '')) + '--sqlbot--'
+            id = string_to_numeric_hash(id_marker)
         db_schema = ds_dict.get('schema', ds_dict.get('db_schema', ''))
         ds_dict.pop("schema", None)
         return AssistantOutDsSchema(**{**ds_dict, "id": id, "db_schema": db_schema})
@@ -259,7 +268,8 @@ def get_out_ds_conf(ds: AssistantOutDsSchema, timeout: int = 30) -> str:
         "driver": '',
         "extraJdbc": ds.extraParams or '',
         "dbSchema": ds.db_schema or '',
-        "timeout": timeout or 30
+        "timeout": timeout or 30,
+        "mode": ds.mode or ''
     }
     conf["extraJdbc"] = ''
     return aes_encrypt(json.dumps(conf))

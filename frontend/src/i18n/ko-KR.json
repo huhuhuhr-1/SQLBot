@@ -7,12 +7,57 @@
     "AI Model Configuration": "모델 구성",
     "Details": "세부"
   },
+  "sync": {
+    "integration": "플랫폼 통합을 활성화해야 합니다.",
+    "the_existing_user": "해당 사용자가 이미 존재하는 경우 기존 사용자를 덮어씁니다.",
+    "sync_users": "사용자 동기화",
+    "sync_wechat_users": "위챗 사용자 동기화",
+    "sync_dingtalk_users": "딩톡 사용자 동기화",
+    "sync_lark_users": "라크 사용자 동기화",
+    "sync_complete": "동기화 완료",
+    "synced_10_users": "{num}명 동기화 성공",
+    "failed_3_users": "{failed}명 동기화 성공, {success}명 동기화 실패",
+    "download_failure_list": "실패 목록 다운로드",
+    "sync_failed": "동기화 실패",
+    "failed_10_users": "{failed}명 동기화 실패",
+    "continue_syncing": "동기화 계속",
+    "return_to_view": "화면으로 돌아가기"
+  },
+  "variables": {
+    "built_in": "내장형",
+    "normal_value": "정상값",
+    "​​cannot_be_empty": "변수 값은 비어 있을 수 없습니다.",
+    "1_to_100": "{name}, 숫자 범위는 {min}부터 {max}까지입니다.",
+    "1_to_100_de": "{name}, 날짜 범위는 {min}부터 {max}까지입니다.",
+    "system_variables": "시스템 변수",
+    "variables": "변수",
+    "system": "체계",
+    "search_variables": "변수 검색",
+    "add_variable": "변수 추가",
+    "variable_name": "변수 이름",
+    "variable_type": "변수 유형",
+    "variable_value": "변수 값",
+    "edit_variable": "변수 편집",
+    "no_variables_yet": "아직 변수가 없습니다",
+    "please_enter_value": "값을 입력하세요",
+    "date": "날짜",
+    "start_date": "시작일",
+    "end_date": "종료일",
+    "enter_variable_name": "변수 이름을 입력하세요",
+    "enter_variable_value": "변수 값을 입력하세요"
+  },
   "parameter": {
+    "execution_details": "실행 세부 정보",
+    "overview": "개요",
+    "tokens_required": "필요한 토큰 수",
+    "time_execution": "실행 시간",
     "export_notes": "수출 참고사항",
     "import_notes": "수입 참고사항",
     "memo": "메모 업데이트 규칙: 테이블 이름과 필드 이름이 일치하는지 확인합니다. 일치하는 항목이 있으면 테이블 메모와 필드 메모를 업데이트하고, 그렇지 않으면 메모를 변경하지 않고 그대로 둡니다.",
     "parameter_configuration": "매개변수 구성",
     "question_count_settings": "질문 수 설정",
+    "context_record_count": "컨텍스트 기록 수",
+    "context_record_count_hint": "사용자 질문 라운드 수",
     "model_thinking_process": "모델 사고 프로세스 확장",
     "rows_of_data": "데이터 1,000행 제한",
     "third_party_platform_settings": "타사 플랫폼 설정",
@@ -151,7 +196,8 @@
     "password_reset_successful": "비밀번호 재설정 성공",
     "or": "또는",
     "refresh": "새로고침",
-    "input_limit": "길이는 {0}자에서 {1}자 사이여야 합니다"
+    "input_limit": "길이는 {0}자에서 {1}자 사이여야 합니다",
+    "file_size_limit_error": "파일 크기가 제한을 초과했습니다 (최대 {limit})"
   },
   "dashboard": {
     "open_dashboard": "대시보드 열기",
@@ -342,7 +388,8 @@
         "failed": "연결 실패"
       },
       "timeout": "쿼리 시간 초과(초)",
-      "address": "주소"
+      "address": "주소",
+      "low_version": "낮은 버전 호환"
     },
     "sync_fields": "동기화된 테이블 구조"
   },
@@ -450,7 +497,7 @@
     "lark": "페이슈",
     "larksuite": "페이수 (Pei-su)",
     "dingtalk": "딩톡",
-    "wechat_for_business": "기업용 위챗",
+    "wecom": "기업용 위챗",
     "1240_results": "{msg}개 결과 ",
     "clear_conditions": "조건 지우기",
     "disabled": "비활성화됨",
@@ -681,6 +728,11 @@
       "line": "선 차트",
       "pie": "원형 차트"
     },
+    "hide_label": "라벨 숨기기",
+    "show_label": "라벨 표시",
+    "sort_asc": "오름차순",
+    "sort_desc": "내림차순",
+    "sort_none": "정렬 안 함",
     "show_sql": "SQL 보기",
     "export_to": "다음으로 내보내기",
     "excel": "Excel",
@@ -700,7 +752,31 @@
     "exec-sql-err": "SQL 실행 실패",
     "no_data": "데이터가 없습니다",
     "loading_data": "로딩 중 ...",
-    "show_error_detail": "구체적인 정보 보기"
+    "show_error_detail": "구체적인 정보 보기",
+    "log": {
+      "GENERATE_SQL": "SQL 생성",
+      "GENERATE_CHART": "차트 구조 생성",
+      "ANALYSIS": "분석",
+      "PREDICT_DATA": "예측",
+      "GENERATE_SQL_WITH_PERMISSIONS": "SQL에 행 권한 적용",
+      "CHOOSE_DATASOURCE": "데이터 소스 매칭",
+      "GENERATE_DYNAMIC_SQL": "동적 SQL 생성",
+      "CHOOSE_TABLE": "데이터 테이블 매칭 (스키마)",
+      "FILTER_TERMS": "용어 매칭",
+      "FILTER_SQL_EXAMPLE": "SQL 예시 매칭",
+      "FILTER_CUSTOM_PROMPT": "사용자 정의 프롬프트 매칭",
+      "EXECUTE_SQL": "SQL 실행",
+      "GENERATE_PICTURE": "이미지 생성"
+    },
+    "log_system": "대화 템플릿",
+    "log_question": "현재 질문",
+    "log_answer": "AI 응답",
+    "log_history": "기록",
+    "find_term_title": "{0}개의 용어 매칭됨",
+    "find_sql_sample_title": "{0}개의 SQL 예시 매칭됨",
+    "find_custom_prompt_title": "{0}개의 사용자 정의 프롬프트 매칭됨",
+    "query_count_title": "{0}개의 데이터 항목 발견됨",
+    "generate_picture_success": "이미지가 생성되었습니다"
   },
   "about": {
     "title": "정보",
@@ -820,7 +896,9 @@
     "input_account": "계정을 입력해 주세요",
     "redirect_2_auth": "{0} 인증으로 리디렉션 중입니다, {1}초...",
     "redirect_immediately": "지금 이동",
-    "permission_invalid": "인증 무효 [현재 계정의 권한이 부족합니다]"
+    "permission_invalid": "인증 무효 [현재 계정의 권한이 부족합니다]",
+    "scan_qr_login": " QR 코드 스캔",
+    "no_auth_error": "인증되지 않았습니다. {0}초 후 로그인 페이지로 이동합니다..."
   },
   "supplier": {
     "alibaba_cloud_bailian": "알리바바 클라우드 바이리엔",

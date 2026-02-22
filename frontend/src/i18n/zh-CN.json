@@ -7,12 +7,57 @@
     "AI Model Configuration": "模型配置",
     "Details": "详情"
   },
+  "sync": {
+    "integration": "需开启平台对接",
+    "the_existing_user": "若用户已存在，覆盖旧用户",
+    "sync_users": "同步用户",
+    "sync_wechat_users": "同步企业微信用户",
+    "sync_dingtalk_users": "同步钉钉用户",
+    "sync_lark_users": "同步飞书用户",
+    "sync_complete": "同步完成",
+    "synced_10_users": "成功同步 {num} 个用户",
+    "failed_3_users": "成功同步 {success} 个用户，同步失败 {failed} 个用户，",
+    "download_failure_list": "下载失败列表",
+    "sync_failed": "同步失败",
+    "failed_10_users": "同步失败 {num} 个用户，",
+    "continue_syncing": "继续同步",
+    "return_to_view": "返回查看"
+  },
+  "variables": {
+    "built_in": "已内置",
+    "normal_value": "常规值",
+    "​​cannot_be_empty": "变量值不能为空",
+    "1_to_100": "{name}数值范围 {min}～{max}",
+    "1_to_100_de": "{name}日期范围 {min}～{max}",
+    "system_variables": "系统变量",
+    "variables": "变量",
+    "system": "系统",
+    "search_variables": "搜索变量",
+    "add_variable": "添加变量",
+    "variable_name": "变量名称",
+    "variable_type": "变量类型",
+    "variable_value": "变量值",
+    "edit_variable": "编辑变量",
+    "no_variables_yet": "暂无变量",
+    "please_enter_value": "请输入数值",
+    "date": "日期",
+    "start_date": "开始日期",
+    "end_date": "结束日期",
+    "enter_variable_name": "请输入变量名称",
+    "enter_variable_value": "请输入变量值"
+  },
   "parameter": {
+    "execution_details": "执行详情",
+    "overview": "概览",
+    "tokens_required": "消耗 Tokens",
+    "time_execution": "耗时",
     "export_notes": "导出备注",
     "import_notes": "导入备注",
     "memo": "备注更新规则：根据表名和字段名匹配，如果匹配则更新表备注和字段备注；如果匹配不上，备注保持不变。",
     "parameter_configuration": "参数配置",
     "question_count_settings": "问数设置",
+    "context_record_count": "上下文记录数",
+    "context_record_count_hint": "用户提问轮数",
     "model_thinking_process": "展开模型思考过程",
     "rows_of_data": "限制 1000 行数据",
     "third_party_platform_settings": "第三方平台设置",
@@ -151,7 +196,8 @@
     "password_reset_successful": "重置密码成功",
     "or": "或者",
     "refresh": "刷新",
-    "input_limit": "长度在 {0} 到 {1} 个字符"
+    "input_limit": "长度在 {0} 到 {1} 个字符",
+    "file_size_limit_error": "文件大小超出限制（最大{limit}）"
   },
   "dashboard": {
     "open_dashboard": "打开仪表板",
@@ -342,7 +388,8 @@
         "failed": "连接失败"
       },
       "timeout": "查询超时(秒)",
-      "address": "地址"
+      "address": "地址",
+      "low_version": "兼容低版本"
     },
     "sync_fields": "同步表结构"
   },
@@ -450,7 +497,7 @@
     "lark": "飞书",
     "larksuite": "国际飞书",
     "dingtalk": "钉钉",
-    "wechat_for_business": "企业微信",
+    "wecom": "企业微信",
     "1240_results": "{msg} 个结果 ",
     "clear_conditions": "清空条件",
     "disabled": "已禁用",
@@ -681,6 +728,11 @@
       "line": "折线图",
       "pie": "饼图"
     },
+    "hide_label": "隐藏标签",
+    "show_label": "显示标签",
+    "sort_asc": "升序",
+    "sort_desc": "降序",
+    "sort_none": "不排序",
     "show_sql": "查看SQL",
     "export_to": "导出为",
     "excel": "Excel",
@@ -700,7 +752,31 @@
     "exec-sql-err": "执行SQL失败",
     "no_data": "暂无数据",
     "loading_data": "加载中...",
-    "show_error_detail": "查看具体信息"
+    "show_error_detail": "查看具体信息",
+    "log": {
+      "GENERATE_SQL": "生成 SQL",
+      "GENERATE_CHART": "生成图表结构",
+      "ANALYSIS": "分析",
+      "PREDICT_DATA": "预测",
+      "GENERATE_SQL_WITH_PERMISSIONS": "拼接 SQL 行权限",
+      "CHOOSE_DATASOURCE": "匹配数据源",
+      "GENERATE_DYNAMIC_SQL": "生成动态 SQL",
+      "CHOOSE_TABLE": "匹配数据表 (Schema)",
+      "FILTER_TERMS": "匹配术语",
+      "FILTER_SQL_EXAMPLE": "匹配 SQL 示例",
+      "FILTER_CUSTOM_PROMPT": "匹配自定义提示词",
+      "EXECUTE_SQL": "执行 SQL",
+      "GENERATE_PICTURE": "生成图片"
+    },
+    "log_system": "对话模板",
+    "log_question": "本次提问",
+    "log_answer": "AI 回答",
+    "log_history": "历史记录",
+    "find_term_title":"匹配到 {0} 个术语",
+    "find_sql_sample_title":"匹配到 {0} 个SQL示例",
+    "find_custom_prompt_title":"匹配到 {0} 个自定义提示词",
+    "query_count_title":"查询到 {0} 条数据",
+    "generate_picture_success":"已生成图片"
   },
   "about": {
     "title": "关于",
@@ -820,7 +896,9 @@
     "input_account": "请输入账号",
     "redirect_2_auth": "正在跳转至 {0} 认证，{1} 秒...",
     "redirect_immediately": "立即跳转",
-    "permission_invalid": "认证无效【当前账号权限不够】"
+    "permission_invalid": "认证无效【当前账号权限不够】",
+    "scan_qr_login": "扫码登录",
+    "no_auth_error": "未认证，即将跳转登录页面，{0} 秒..."
   },
   "supplier": {
     "alibaba_cloud_bailian": "阿里云百炼",

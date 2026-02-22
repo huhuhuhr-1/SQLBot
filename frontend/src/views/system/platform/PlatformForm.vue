@@ -162,6 +162,7 @@ defineExpose({
     modal-class="platform-info-drawer"
     size="600px"
     direction="rtl"
+    @close="resetForm(platformForm)"
   >
     <el-form
       ref="platformForm"
@@ -178,7 +179,7 @@ defineExpose({
         :prop="setting.realKey"
       >
         <el-input
-          v-if="setting.type === 'password'"
+          v-if="setting.type === 'pwd'"
           v-model="state.form[setting.realKey]"
           type="password"
           show-password

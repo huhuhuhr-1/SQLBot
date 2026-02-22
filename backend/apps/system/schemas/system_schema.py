@@ -1,5 +1,5 @@
 import re
-from typing import Optional
+from typing import Optional,List
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -58,6 +58,7 @@ class UserCreator(BaseUser):
     status: int = Field(default=1, description=f"{PLACEHOLDER_PREFIX}status")
     origin: Optional[int] = Field(default=0, description=f"{PLACEHOLDER_PREFIX}origin")
     oid_list: Optional[list[int]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}oid")
+    system_variables: Optional[List] = Field(default=None)
 
     """ @field_validator("email")
     def validate_email(cls, lang: str) -> str:
@@ -109,6 +110,7 @@ class AssistantBase(BaseModel):
     type: int = Field(default=0, description=f"{PLACEHOLDER_PREFIX}assistant_type")  # 0普通小助手 1高级 4页面嵌入
     configuration: Optional[str] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}assistant_configuration")
     description: Optional[str] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}assistant_description")
+    oid: Optional[int] = Field(default=1, description=f"{PLACEHOLDER_PREFIX}oid")
 
 
 class AssistantDTO(AssistantBase, BaseCreatorDTO):
@@ -192,6 +194,7 @@ class AssistantOutDsSchema(AssistantOutDsBase):
     password: Optional[str] = None
     db_schema: Optional[str] = None
     extraParams: Optional[str] = None
+    mode: Optional[str] = None
     tables: Optional[list[AssistantTableSchema]] = None
 
 

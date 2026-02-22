@@ -2,6 +2,7 @@
 # Date: 2025/7/1
 import json
 from datetime import timedelta
+from typing import Optional
 
 import jwt
 from fastapi import HTTPException, status, APIRouter
@@ -83,7 +84,16 @@ def get_user(session: SessionDep, token: str):
 @router.post("/mcp_ds_list", operation_id="mcp_datasource_list")
 async def datasource_list(session: SessionDep, token: str):
     session_user = get_user(session, token)
-    return get_datasource_list(session=session, user=session_user)
+    ds_list = get_datasource_list(session=session, user=session_user)
+    result = []
+    for item in ds_list:
+        dic = item.__dict__
+        dic.pop('embedding', None)
+        dic.pop('table_relation', None)
+        dic.pop('recommended_config', None)
+        dic.pop('configuration', None)
+        result.append(dic)
+    return result
 
 
 #
@@ -113,8 +123,22 @@ async def mcp_start(session: SessionDep, chat: ChatStart):
 @router.post("/mcp_question", operation_id="mcp_question")
 async def mcp_question(session: SessionDep, chat: McpQuestion):
     session_user = get_user(session, chat.token)
+    ds_id: Optional[int] = None
+    if chat.datasource_id:
+        if isinstance(chat.datasource_id, str):
+            if chat.datasource_id.strip() == "":
+                ds_id = None
+            else:
+                try:
+                    ds_id = int(chat.datasource_id.strip())
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid datasource ID")
+        elif isinstance(chat.datasource_id, int):
+            ds_id = chat.datasource_id
+        else:
+            raise HTTPException(status_code=400, detail="Invalid datasource ID")
 
-    mcp_chat = ChatMcp(token=chat.token, chat_id=chat.chat_id, question=chat.question)
+    mcp_chat = ChatMcp(token=chat.token, chat_id=chat.chat_id, question=chat.question, datasource_id=ds_id)
 
     return await question_answer_inner(session=session, current_user=session_user, request_question=mcp_chat,
                                        in_chat=False, stream=chat.stream)

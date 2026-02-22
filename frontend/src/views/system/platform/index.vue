@@ -29,7 +29,7 @@ const loadData = () => {
         item.config = JSON.parse(item.config)
         return item
       })
-      .filter((card: any) => card.type < 8)
+      .filter((card: any) => card.type < 9)
   })
 }
 onMounted(() => {
@@ -59,13 +59,14 @@ onMounted(() => {
   flex-direction: column;
 }
 .container-sys-platform {
-  padding: 24px;
+  padding: 16px;
   overflow: hidden;
-  //border-radius: 4px;
   background: var(--ContentBG, #ffffff);
 
   border-radius: 12px;
   border: 1px solid #dee0e3;
+  min-height: fit-content;
+  height: auto;
 }
 .not-first {
   margin-top: 16px;

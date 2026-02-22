@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { getChartInstance } from '@/views/chat/component/index.ts'
 import type { BaseChart, ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import { useEmitt } from '@/utils/useEmitt.ts'
@@ -14,6 +14,7 @@ const params = withDefaults(
     y?: Array<ChartAxis>
     series?: Array<ChartAxis>
     multiQuotaName?: string | undefined
+    showLabel?: boolean
   }>(),
   {
     data: () => [],
@@ -22,6 +23,7 @@ const params = withDefaults(
     y: () => [],
     series: () => [],
     multiQuotaName: undefined,
+    showLabel: false,
   }
 )
 
@@ -49,7 +51,12 @@ const axis = computed(() => {
     _list.push({ name: column.name, value: column.value, type: 'series' })
   })
   if (params.multiQuotaName) {
-    _list.push({ name: params.multiQuotaName, value: params.multiQuotaName, type: 'other-info' })
+    _list.push({
+      name: params.multiQuotaName,
+      value: params.multiQuotaName,
+      type: 'other-info',
+      hidden: true,
+    })
   }
   return _list
 })
@@ -59,10 +66,18 @@ let chartInstance: BaseChart | undefined
 function renderChart() {
   chartInstance = getChartInstance(params.type, chartId.value)
   if (chartInstance) {
+    chartInstance.showLabel = params.showLabel
     chartInstance.init(axis.value, params.data)
     chartInstance.render()
   }
 }
+
+watch(
+  () => params.showLabel,
+  () => {
+    renderChart()
+  }
+)
 
 function destroyChart() {
   if (chartInstance) {

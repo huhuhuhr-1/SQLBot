@@ -3,8 +3,8 @@ import json
 import os
 import platform
 import urllib.parse
+from datetime import datetime, date, time, timedelta
 from decimal import Decimal
-from datetime import timedelta
 from typing import Optional
 
 import oracledb
@@ -32,6 +32,9 @@ from common.utils.utils import SQLBotLogUtil, equals_ignore_case
 from fastapi import HTTPException
 from apps.db.es_engine import get_es_connect, get_es_index, get_es_fields, get_es_data_by_http
 from common.core.config import settings
+import sqlglot
+from sqlglot import expressions as exp
+from sqlalchemy.pool import NullPool
 
 try:
     if os.path.exists(settings.ORACLE_CLIENT_PATH):
@@ -69,7 +72,7 @@ def get_uri_from_config(type: str, conf: DatasourceConf) -> str:
         else:
             db_url = f"postgresql+psycopg2://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{conf.database}"
     elif equals_ignore_case(type, "oracle"):
-        if equals_ignore_case(conf.mode, "service_name"):
+        if equals_ignore_case(conf.mode, "service_name", "serviceName"):
             if conf.extraJdbc is not None and conf.extraJdbc != '':
                 db_url = f"oracle+oracledb://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}?service_name={conf.database}&{conf.extraJdbc}"
             else:
@@ -105,16 +108,28 @@ def get_extra_config(conf: DatasourceConf):
 def get_origin_connect(type: str, conf: DatasourceConf):
     extra_config_dict = get_extra_config(conf)
     if equals_ignore_case(type, "sqlServer"):
-        return pymssql.connect(
-            server=conf.host,
-            port=str(conf.port),
-            user=conf.username,
-            password=conf.password,
-            database=conf.database,
-            timeout=conf.timeout,
-            tds_version='7.0',  # options: '4.2', '7.0', '8.0' ...,
-            **extra_config_dict
-        )
+        # none or true, set tds_version = 7.0
+        if conf.lowVersion is None or conf.lowVersion:
+            return pymssql.connect(
+                server=conf.host,
+                port=str(conf.port),
+                user=conf.username,
+                password=conf.password,
+                database=conf.database,
+                timeout=conf.timeout,
+                tds_version='7.0',  # options: '4.2', '7.0', '8.0' ...,
+                **extra_config_dict
+            )
+        else:
+            return pymssql.connect(
+                server=conf.host,
+                port=str(conf.port),
+                user=conf.username,
+                password=conf.password,
+                database=conf.database,
+                timeout=conf.timeout,
+                **extra_config_dict
+            )
 
 
 # use sqlalchemy
@@ -125,24 +140,21 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
         conf.timeout = timeout
     if timeout > 0:
         conf.timeout = timeout
+
     if equals_ignore_case(ds.type, "pg"):
         if conf.dbSchema is not None and conf.dbSchema != "":
             engine = create_engine(get_uri(ds),
                                    connect_args={"options": f"-c search_path={urllib.parse.quote(conf.dbSchema)}",
-                                                 "connect_timeout": conf.timeout},
-                                   pool_timeout=conf.timeout)
+                                                 "connect_timeout": conf.timeout}, poolclass=NullPool)
         else:
-            engine = create_engine(get_uri(ds),
-                                   connect_args={"connect_timeout": conf.timeout},
-                                   pool_timeout=conf.timeout)
+            engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, poolclass=NullPool)
     elif equals_ignore_case(ds.type, 'sqlServer'):
         engine = create_engine('mssql+pymssql://', creator=lambda: get_origin_connect(ds.type, conf),
-                               pool_timeout=conf.timeout)
+                               poolclass=NullPool)
     elif equals_ignore_case(ds.type, 'oracle'):
-        engine = create_engine(get_uri(ds),
-                               pool_timeout=conf.timeout)
+        engine = create_engine(get_uri(ds), poolclass=NullPool)
     else:  # mysql, ck
-        engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, pool_timeout=conf.timeout)
+        engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, poolclass=NullPool)
     return engine
 
 
@@ -309,11 +321,14 @@ def get_schema(ds: CoreDatasource):
         with get_session(ds) as session:
             sql: str = ''
             if equals_ignore_case(ds.type, "sqlServer"):
-                sql = """select name from sys.schemas"""
+                sql = """select name
+                         from sys.schemas"""
             elif equals_ignore_case(ds.type, "pg", "excel"):
-                sql = """SELECT nspname FROM pg_namespace"""
+                sql = """SELECT nspname
+                         FROM pg_namespace"""
             elif equals_ignore_case(ds.type, "oracle"):
-                sql = """select * from all_users"""
+                sql = """select *
+                         from all_users"""
             with session.execute(text(sql)) as result:
                 res = result.fetchall()
                 res_list = [item[0] for item in res]
@@ -323,7 +338,9 @@ def get_schema(ds: CoreDatasource):
         if equals_ignore_case(ds.type, 'dm'):
             with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
                                   port=conf.port, **extra_config_dict) as conn, conn.cursor() as cursor:
-                cursor.execute("""select OBJECT_NAME from dba_objects where object_type='SCH'""", timeout=conf.timeout)
+                cursor.execute("""select OBJECT_NAME
+                                  from dba_objects
+                                  where object_type = 'SCH'""", timeout=conf.timeout)
                 res = cursor.fetchall()
                 res_list = [item[0] for item in res]
                 return res_list
@@ -331,7 +348,8 @@ def get_schema(ds: CoreDatasource):
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                             password=conf.password,
                                             timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
-                cursor.execute("""SELECT nspname FROM pg_namespace""")
+                cursor.execute("""SELECT nspname
+                                  FROM pg_namespace""")
                 res = cursor.fetchall()
                 res_list = [item[0] for item in res]
                 return res_list
@@ -340,7 +358,8 @@ def get_schema(ds: CoreDatasource):
                                   password=conf.password,
                                   options=f"-c statement_timeout={conf.timeout * 1000}",
                                   **extra_config_dict) as conn, conn.cursor() as cursor:
-                cursor.execute("""SELECT nspname FROM pg_namespace""")
+                cursor.execute("""SELECT nspname
+                                  FROM pg_namespace""")
                 res = cursor.fetchall()
                 res_list = [item[0] for item in res]
                 return res_list
@@ -448,15 +467,75 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
             return res_list
 
 
-def convert_value(value):
-    """转换值为JSON可序列化的类型"""
+def convert_value(value, datetime_format='space'):
+    """
+        将Python值转换为JSON可序列化的类型
+
+        :param value: 要转换的值
+        :param datetime_format: 日期时间格式
+            'iso' - 2024-01-15T14:30:45 (ISO标准，带T)
+            'space' - 2024-01-15 14:30:45 (空格分隔，更常见)
+            'auto' - 自动选择
+        """
+    if value is None:
+        return None
+        # 处理 bytes 类型（包括 BIT 字段）
+    if isinstance(value, bytes):
+        # 1. 尝试判断是否是 BIT 类型
+        if len(value) <= 8:  # BIT 类型通常不会很长
+            try:
+                # 转换为整数
+                int_val = int.from_bytes(value, 'big')
+
+                # 如果是 0 或 1，返回布尔值更直观
+                if int_val in (0, 1):
+                    return bool(int_val)
+                else:
+                    return int_val
+            except:
+                # 如果转换失败，尝试解码为字符串
+                pass
+
+        # 2. 尝试解码为 UTF-8 字符串
+        try:
+            return value.decode('utf-8')
+        except UnicodeDecodeError:
+            # 3. 如果包含非打印字符，返回十六进制
+            if any(b < 32 and b not in (9, 10, 13) for b in value):  # 非打印字符
+                return f"0x{value.hex()}"
+            else:
+                # 4. 尝试 Latin-1 解码（不会失败）
+                return value.decode('latin-1')
+
+    elif isinstance(value, bytearray):
+        # 处理 bytearray
+        return convert_value(bytes(value))
+
     if isinstance(value, timedelta):
         # 将 timedelta 转换为秒数（整数）或字符串
         return str(value)  # 或 value.total_seconds()
     elif isinstance(value, Decimal):
         return float(value)
-    elif hasattr(value, 'isoformat'):  # 处理 datetime/date/time
-        return value.isoformat()
+    # 4. 处理 datetime
+    elif isinstance(value, datetime):
+        if datetime_format == 'iso':
+            return value.isoformat()
+        elif datetime_format == 'space':
+            return value.strftime('%Y-%m-%d %H:%M:%S')
+        else:  # 'auto' 或其他
+            # 自动判断：没有时间部分只显示日期
+            if value.hour == 0 and value.minute == 0 and value.second == 0 and value.microsecond == 0:
+                return value.strftime('%Y-%m-%d')
+            else:
+                return value.strftime('%Y-%m-%d %H:%M:%S')
+
+    # 5. 处理 date
+    elif isinstance(value, date):
+        return value.isoformat()  # 总是 YYYY-MM-DD
+
+    # 6. 处理 time
+    elif isinstance(value, time):
+        return str(value)
     else:
         return value
 
@@ -464,6 +543,9 @@ def convert_value(value):
 def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
     while sql.endswith(';'):
         sql = sql[:-1]
+    # check execute sql only contain read operations
+    if not check_sql_read(sql, ds):
+        raise ValueError(f"SQL can only contain read operations")
 
     db = DB.get_db(ds.type)
     if db.connect_type == ConnectType.sqlalchemy:
@@ -569,3 +651,34 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                         "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
             except Exception as ex:
                 raise Exception(str(ex))
+
+
+def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema):
+    try:
+        dialect = None
+        if equals_ignore_case(ds.type, 'mysql', 'doris', 'starrocks'):
+            dialect = 'mysql'
+        elif equals_ignore_case(ds.type, 'sqlServer'):
+            dialect = 'tsql'
+
+        statements = sqlglot.parse(sql, dialect=dialect)
+
+        if not statements:
+            raise ValueError("Parse SQL Error")
+
+        write_types = (
+            exp.Insert, exp.Update, exp.Delete,
+            exp.Create, exp.Drop, exp.Alter,
+            exp.Merge, exp.Command
+        )
+
+        for stmt in statements:
+            if stmt is None:
+                continue
+            if isinstance(stmt, write_types):
+                return False
+
+        return True
+
+    except Exception as e:
+        raise ValueError(f"Parse SQL Error: {e}")

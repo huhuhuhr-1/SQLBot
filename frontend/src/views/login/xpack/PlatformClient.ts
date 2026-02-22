@@ -1,5 +1,5 @@
 import { loadScript } from '@/utils/RemoteJs'
-import { getQueryString } from '@/utils/utils'
+import { getCurrentRouter, getQueryString } from '@/utils/utils'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 
 // import { useI18n } from 'vue-i18n'
@@ -35,11 +35,11 @@ export const loadClient = (category: LoginCategory) => {
   const type = getQueryString('client')
   const corpid = getQueryString('corpid')
   if (type && !category[type as keyof LoginCategory]) {
-    ElMessageBox.confirm(t('login.platform_disable', [t(`threshold.${type}`)]), {
+    ElMessageBox.confirm(t('login.platform_disable', [t(`user.${type}`)]), {
       confirmButtonType: 'danger',
       type: 'warning',
       showCancelButton: false,
-      confirmButtonText: t('commons.refresh'),
+      confirmButtonText: t('common.refresh'),
       cancelButtonText: t('dataset.cancel'),
       autofocus: false,
       showClose: false,
@@ -101,14 +101,14 @@ const larkClientRequest = async () => {
     return
   }
   const res = await queryClientInfo(8)
-  if (!res?.appId) {
-    ElMessage.error('get appId error')
+  if (!res?.client_id) {
+    ElMessage.error('get client_id error')
     return
   }
-  const appId = res.data.appId
+  const clientId = res.client_id
   const callRequestAuthCode = () => {
     window['tt'].requestAuthCode({
-      appId: appId,
+      appId: clientId,
       success: (res: any) => {
         const { code } = res
         const state = `fit2cloud-lark-client`
@@ -122,7 +122,7 @@ const larkClientRequest = async () => {
   }
   if (window['tt'].requestAccess) {
     window['tt'].requestAccess({
-      appID: appId,
+      appID: clientId,
       scopeList: [],
       success: (res: any) => {
         const { code } = res
@@ -149,15 +149,15 @@ const larksuiteClientRequest = async () => {
     return
   }
   const res = await queryClientInfo(9)
-  if (!res?.data?.appId) {
-    ElMessage.error('get appId error')
+  if (!res?.client_id) {
+    ElMessage.error('get client_id error')
     return
   }
-  const appId = res.data.appId
+  const clientId = res.client_id
 
   window['h5sdk'].ready(() => {
     window['tt'].requestAuthCode({
-      appId: appId,
+      appId: clientId,
       success(res: any) {
         const code = res?.code || res
         const state = `fit2cloud-larksuite-client`
@@ -173,5 +173,19 @@ const larksuiteClientRequest = async () => {
 
 const toUrl = (url: string) => {
   const { origin, pathname } = window.location
-  window.location.href = origin + pathname + url
+  const redirect = getCurrentRouter()
+  window.location.href =
+    origin + pathname + url + (redirect?.includes('chatPreview') ? `#${redirect}` : '')
+}
+
+export const origin_mapping: { [key: number]: string } = {
+  1: 'cas',
+  2: 'oidc',
+  3: 'ldap',
+  4: 'oauth2',
+  5: 'saml2',
+  6: 'wecom',
+  7: 'dingtalk',
+  8: 'lark',
+  9: 'larksuite',
 }

@@ -7,12 +7,57 @@
     "AI Model Configuration": "AI Model Config",
     "Details": "Details"
   },
+  "variables": {
+    "built_in": "Built-in",
+    "normal_value": "Normal value",
+    "​​cannot_be_empty": "Variable values ​​cannot be empty.",
+    "1_to_100": "{name}, the numerical range is {min} to {max}.",
+    "1_to_100_de": "{name}, the date range is {min} to {max}.",
+    "system_variables": "System Variables",
+    "variables": "Variables",
+    "system": "System",
+    "search_variables": "Search Variables",
+    "add_variable": "Add Variable",
+    "variable_name": "Variable Name",
+    "variable_type": "Variable Type",
+    "variable_value": "Variable Value",
+    "edit_variable": "Edit Variable",
+    "no_variables_yet": "No Variables Yet",
+    "please_enter_value": "Please Enter Value",
+    "date": "Date",
+    "start_date": "Start Date",
+    "end_date": "End Date",
+    "enter_variable_name": "Please Enter Variable Name",
+    "enter_variable_value": "Please Enter Variable Value"
+  },
+  "sync": {
+    "integration": "Platform integration needs to be enabled.",
+    "the_existing_user": "If the user already exists, overwrite the existing user.",
+    "sync_users": "Sync Users",
+    "sync_wechat_users": "Sync WeChat Users",
+    "sync_dingtalk_users": "Sync DingTalk Users",
+    "sync_lark_users": "Sync Lark Users",
+    "sync_complete": "Sync Complete",
+    "synced_10_users": "Successfully synced {num} users",
+    "failed_3_users": "Successfully synced {success} users, sync failed {failed} users",
+    "download_failure_list": "Download Failure List",
+    "sync_failed": "Sync Failed",
+    "failed_10_users": "Sync failed {num} users",
+    "continue_syncing": "Continue Syncing",
+    "return_to_view": "Return to View"
+  },
   "parameter": {
+    "execution_details": "Execution Details",
+    "overview": "Overview",
+    "tokens_required": "Tokens Required",
+    "time_execution": "Time Execution",
     "export_notes": "Export notes",
     "import_notes": "Import notes",
     "memo": "Memo update rules: Match table name and field name. If a match is found, update the table memo and field memo; otherwise, leave the memo unchanged.",
     "parameter_configuration": "Parameter Config",
     "question_count_settings": "Question Count Settings",
+    "context_record_count": "Context Record Count",
+    "context_record_count_hint": "Number of user question rounds",
     "model_thinking_process": "Expand Model Thinking Process",
     "rows_of_data": "Limit 1000 Rows of Data",
     "third_party_platform_settings": "Third-Party Platform Settings",
@@ -151,7 +196,8 @@
     "password_reset_successful": "Password reset successful",
     "or": "Or",
     "refresh": "Refresh",
-    "input_limit": "Length cannot exceed {0} characters"
+    "input_limit": "Length cannot exceed {0} characters",
+    "file_size_limit_error": "File size exceeds the limit (maximum {limit})"
   },
   "dashboard": {
     "open_dashboard": "Open Dashboard",
@@ -342,7 +388,8 @@
         "failed": "Connect failed"
       },
       "timeout": "Timeout(second)",
-      "address": "Address"
+      "address": "Address",
+      "low_version": "Compatible with lower versions"
     },
     "sync_fields": "Sync Fields"
   },
@@ -450,7 +497,7 @@
     "lark": "Lark",
     "larksuite": "Larksuite",
     "dingtalk": "DingTalk",
-    "wechat_for_business": "WeChat for business",
+    "wecom": "WeCom",
     "1240_results": "{msg} results",
     "clear_conditions": "Clear conditions",
     "disabled": "Disabled",
@@ -681,6 +728,11 @@
       "line": "Line",
       "pie": "Pie"
     },
+    "hide_label": "Hide Label",
+    "show_label": "Show Label",
+    "sort_asc": "Ascending",
+    "sort_desc": "Descending",
+    "sort_none": "No Sort",
     "show_sql": "View SQL",
     "export_to": "Export As",
     "excel": "Excel",
@@ -700,7 +752,31 @@
     "exec-sql-err": "Execute SQL failed",
     "no_data": "No Data",
     "loading_data": "Loading ...",
-    "show_error_detail": "Show error info"
+    "show_error_detail": "Show error info",
+    "log": {
+      "GENERATE_SQL": "Generate SQL",
+      "GENERATE_CHART": "Generate Chart Structure",
+      "ANALYSIS": "Analyze",
+      "PREDICT_DATA": "Predict",
+      "GENERATE_SQL_WITH_PERMISSIONS": "Apply Row Permissions to SQL",
+      "CHOOSE_DATASOURCE": "Match Datasource",
+      "GENERATE_DYNAMIC_SQL": "Generate Dynamic SQL",
+      "CHOOSE_TABLE": "Match Data Table (Schema)",
+      "FILTER_TERMS": "Match Terms",
+      "FILTER_SQL_EXAMPLE": "Match SQL Examples",
+      "FILTER_CUSTOM_PROMPT": "Match Custom Prompts",
+      "EXECUTE_SQL": "Execute SQL",
+      "GENERATE_PICTURE": "Generate Picture"
+    },
+    "log_system": "Conversation Template",
+    "log_question": "Current Question",
+    "log_answer": "AI Response",
+    "log_history": "History",
+    "find_term_title": "Matched {0} terms",
+    "find_sql_sample_title": "Matched {0} SQL examples",
+    "find_custom_prompt_title": "Matched {0} custom prompts",
+    "query_count_title": "Found {0} data entries",
+    "generate_picture_success": "Image generated"
   },
   "about": {
     "title": "About",
@@ -820,7 +896,9 @@
     "input_account": "Please enter account",
     "redirect_2_auth": "Redirecting to {0} authentication, {1} seconds...",
     "redirect_immediately": "Redirecting immediately",
-    "permission_invalid": "Authentication invalid [Current account has insufficient permissions]"
+    "permission_invalid": "Authentication invalid [Current account has insufficient permissions]",
+    "scan_qr_login": " Scan QR Code",
+    "no_auth_error": "Not authenticated. Redirecting to login page in {0} seconds..."
   },
   "supplier": {
     "alibaba_cloud_bailian": "Alibaba Cloud Bailian",

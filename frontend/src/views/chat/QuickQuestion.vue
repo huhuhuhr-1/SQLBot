@@ -15,7 +15,7 @@ const getRecommendQuestions = () => {
 
 const questions = '[]'
 const retrieveQuestions = () => {
-  recommendQuestionRef.value.getRecommendQuestionsLLM(10)
+  recommendQuestionRef.value.getRecommendQuestions(10, true)
   recentQuestionRef.value.getRecentQuestions()
 }
 const quickAsk = (question: string) => {
@@ -149,7 +149,7 @@ const props = withDefaults(
     cursor: pointer;
     margin-left: 8px;
     &:hover {
-      color: #189e7a;
+      color: var(--ed-color-primary-15-d, #189e7a);
       background: #1f23291a;
     }
   }
@@ -185,6 +185,9 @@ const props = withDefaults(
     top: 30px;
     right: 4px;
     z-index: 1;
+    &:hover {
+      background-color: #1f23291a !important;
+    }
   }
 
   .tool-btn {

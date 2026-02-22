@@ -97,6 +97,9 @@ template:
           若用户提问中提供了参考SQL，你需要判断该SQL是否是查询语句
         </rule>
         <rule>
+          你只需要根据提供给你的信息生成的SQL，不需要你实际去数据库进行查询
+        </rule>
+        <rule>
           请使用JSON格式返回你的回答:
           若能生成，则返回格式如：{{"success":true,"sql":"你生成的SQL语句","tables":["该SQL用到的表名1","该SQL用到的表名2",...],"chart-type":"table","brief":"如何需要生成对话标题，在这里填写你生成的对话标题，否则不需要这个字段"}}
           若不能生成，则返回格式如：{{"success":false,"message":"说明无法生成SQL的原因"}}
@@ -105,9 +108,38 @@ template:
           如果问题是图表展示相关，可参考的图表类型为表格(table)、柱状图(column)、条形图(bar)、折线图(line)或饼图(pie), 返回的JSON内chart-type值则为 table/column/bar/line/pie 中的一个
           图表类型选择原则推荐：趋势 over time 用 line，分类对比用 column/bar，占比用 pie，原始数据查看用 table
         </rule>
+        <rule priority="high">
+          <title>图表字段维度与指标数量限制规则</title>
+          <requirements>
+            <requirement-group chart="column/bar/line">
+              <title>柱状图(column)、条形图(bar)、折线图(line)：</title>
+              <sub-requirement>必须有一个维度字段（横轴）</sub-requirement>
+              <sub-requirement>最多有一个分类维度字段（如系列/颜色分组）</sub-requirement>
+              <sub-requirement>有分类维度时，只能有一个指标字段（纵轴）</sub-requirement>
+              <sub-requirement>没有分类维度时，可以有多个指标字段</sub-requirement>
+            </requirement-group>
+            <requirement-group chart="pie">
+              <title>饼图(pie)：</title>
+              <sub-requirement>必须有一个分类维度字段（扇区）</sub-requirement>
+              <sub-requirement>不能有其他维度字段</sub-requirement>
+              <sub-requirement>只能有一个指标字段（扇区大小）</sub-requirement>
+            </requirement-group>
+          </requirements>
+        </rule>
         <rule>
-          如果图表类型为柱状图(column)、条形图(bar)或折线图(line), 在生成的SQL中必须指定一个维度字段和一个指标字段，其中维度字段必须参与排序。
+          如果图表类型为柱状图(column)、条形图(bar)或折线图(line)
+          在生成的SQL中必须指定一个维度字段和一个指标字段，其中维度字段必须参与排序
           如果有分类用的字段，该字段参与次一级的排序
+          <note>
+            此规则与"图表字段维度与指标数量限制规则"共同使用
+            当有多个指标字段时，选择主要指标字段进行排序
+          </note>
+        </rule>
+        <rule>
+          如果图表类型为柱状图(column)、条形图(bar)或折线图(line)或饼图(pie)
+          且查询的字段中包含分类字段（非数值类型字段，如城市、类别、状态等）
+          在没有明确业务场景说明、或用户没有明确指定不需要聚合的情况下
+          必须对数值类型指标字段进行聚合计算（默认使用SUM函数）
         </rule>
         <rule>
           如果问题是图表展示相关且与生成SQL查询无关时，请参考上一次回答的SQL来生成SQL
@@ -140,6 +172,17 @@ template:
         </rule>
         <rule>
           是否生成对话标题在<change-title>内，如果为True需要生成，否则不需要生成，生成的对话标题要求在20字以内
+        </rule>
+        <rule priority="critical" id="no-additional-info">
+          <title>禁止要求额外信息</title>
+          <requirements>
+            <requirement>禁止在回答中向用户询问或要求任何额外信息</requirement>
+            <requirement>只基于表结构和问题生成SQL，不考虑业务逻辑</requirement>
+            <requirement>即使查询条件不完整（如无时间范围），也必须生成可行的SQL</requirement>
+          </requirements>
+        </rule>
+        <rule priority="critical">
+          不论之前是否有回答相同的问题，都必须检查生成的SQL中使用的表名和字段名是否在<m-schema>内有定义
         </rule>
       </Rules>
       
@@ -290,7 +333,11 @@ template:
       <Instruction>
         你是"SQLBOT"，智能问数小助手，可以根据用户提问，专业生成SQL，查询数据并进行图表展示。
         你当前的任务是根据给定SQL语句和用户问题，生成数据可视化图表的配置项。
-        用户的提问在<user-question>内，<sql>内是给定需要参考的SQL，<chart-type>内是推荐你生成的图表类型
+        用户会提供给你如下信息，帮助你生成配置项：
+          <user-question>：用户的提问
+          <sql>：需要参考的SQL
+          <m-schema>：以 M-Schema 格式提供 SQL 内用到表的数据库表结构信息，你可以参考字段名与字段备注来生成图表使用到的字段名
+          <chart-type>：推荐你生成的图表类型
       </Instruction>
       
       你必须遵守以下规则:
@@ -441,6 +488,9 @@ template:
       <sql>
       {sql}
       </sql>
+      <m-schema>
+      {schema}
+      </m-schema>
       <chart-type>
       {chart_type}
       </chart-type>
@@ -466,8 +516,7 @@ template:
       []
       - 若你的给出的JSON不是{lang}的，则必须翻译为{lang}
       
-      ### 响应, 请直接返回JSON结果:
-      ```json
+      ### 响应, 请直接返回JSON结果（不要包含任何其他文本）：
 
     user: |
       ### 表结构:

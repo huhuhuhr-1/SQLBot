@@ -3,6 +3,7 @@ export interface ChartAxis {
   value: string
   type?: 'x' | 'y' | 'series' | 'other-info'
   'multi-quota'?: boolean
+  hidden?: boolean
 }
 
 export interface ChartData {
@@ -16,6 +17,7 @@ export abstract class BaseChart {
   _name: string = 'base-chart'
   axis: Array<ChartAxis> = []
   data: Array<ChartData> = []
+  showLabel: boolean = false
 
   constructor(id: string, name: string) {
     this.id = id

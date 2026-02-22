@@ -31,7 +31,6 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "SQLBot"
     #CONTEXT_PATH: str = "/sqlbot"
     CONTEXT_PATH: str = ""
-    API_V1_STR: str = CONTEXT_PATH + "/api/v1"
     SECRET_KEY: str = secrets.token_urlsafe(32)
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
@@ -47,6 +46,11 @@ class Settings(BaseSettings):
         return [str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS] + [
             self.FRONTEND_HOST
         ]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def API_V1_STR(self) -> str:
+        return self.CONTEXT_PATH + "/api/v1"
 
     POSTGRES_SERVER: str = 'localhost'
     POSTGRES_PORT: int = 5432
@@ -105,6 +109,7 @@ class Settings(BaseSettings):
 
     # 是否启用SQL查询行数限制，默认值，可被参数配置覆盖
     GENERATE_SQL_QUERY_LIMIT_ENABLED: bool = True
+    GENERATE_SQL_QUERY_HISTORY_ROUND_COUNT: int = 3
 
     PARSE_REASONING_BLOCK_ENABLED: bool = True
     DEFAULT_REASONING_CONTENT_START: str = '<think>'

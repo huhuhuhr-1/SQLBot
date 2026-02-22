@@ -1,5 +1,5 @@
 import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import orjson
 import sqlparse
@@ -8,7 +8,7 @@ from sqlalchemy import desc, func
 from sqlalchemy.orm import aliased
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
-    TypeEnum, OperationEnum, ChatRecordResult
+    TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
@@ -52,7 +52,8 @@ def list_recent_questions(session: SessionDep, current_user: CurrentUser, dataso
         .join(Chat, ChatRecord.chat_id == Chat.id)  # 关联Chat表
         .filter(
             Chat.datasource == datasource_id,  # 使用Chat表的datasource字段
-            ChatRecord.question.isnot(None)
+            ChatRecord.question.isnot(None),
+            ChatRecord.create_by == current_user.id
         )
         .group_by(ChatRecord.question)
         .order_by(desc(func.max(ChatRecord.create_time)))
@@ -60,6 +61,7 @@ def list_recent_questions(session: SessionDep, current_user: CurrentUser, dataso
         .all()
     )
     return [record[0] for record in chat_records] if chat_records else []
+
 
 def rename_chat_with_user(session: SessionDep, current_user: CurrentUser, rename_object: RenameChat) -> str:
     chat = session.get(Chat, rename_object.id)
@@ -76,6 +78,7 @@ def rename_chat_with_user(session: SessionDep, current_user: CurrentUser, rename
     brief = chat.brief
     session.commit()
     return brief
+
 
 def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
     chat = session.get(Chat, rename_object.id)
@@ -103,6 +106,7 @@ def delete_chat(session, chart_id) -> str:
 
     return f'Chat with id {chart_id} has been deleted'
 
+
 def delete_chat_with_user(session, current_user: CurrentUser, chart_id) -> str:
     chat = session.query(Chat).filter(Chat.id == chart_id).first()
     if not chat:
@@ -126,23 +130,41 @@ def get_chart_config(session: SessionDep, chart_record_id: int):
     return {}
 
 
-def format_chart_fields(chart_info: dict):
+def _format_column(column: dict) -> str:
+    """格式化单个column字段"""
+    value = column.get('value', '')
+    name = column.get('name', '')
+    if value != name and name:
+        return f"{value}({name})"
+    return value
+
+
+def format_chart_fields(chart_info: dict) -> list:
     fields = []
-    if chart_info.get('columns') and len(chart_info.get('columns')) > 0:
-        for column in chart_info.get('columns'):
-            column_str = column.get('value')
-            if column.get('value') != column.get('name'):
-                column_str = column_str + '(' + column.get('name') + ')'
-            fields.append(column_str)
-    if chart_info.get('axis'):
-        for _type in ['x', 'y', 'series']:
-            if chart_info.get('axis').get(_type):
-                column = chart_info.get('axis').get(_type)
-                column_str = column.get('value')
-                if column.get('value') != column.get('name'):
-                    column_str = column_str + '(' + column.get('name') + ')'
-                fields.append(column_str)
-    return fields
+
+    # 处理 columns
+    for column in chart_info.get('columns') or []:
+        fields.append(_format_column(column))
+
+    # 处理 axis
+    if axis := chart_info.get('axis'):
+        # 处理 x 轴
+        if x_axis := axis.get('x'):
+            fields.append(_format_column(x_axis))
+
+        # 处理 y 轴
+        if y_axis := axis.get('y'):
+            if isinstance(y_axis, list):
+                for column in y_axis:
+                    fields.append(_format_column(column))
+            else:
+                fields.append(_format_column(y_axis))
+
+        # 处理 series
+        if series := axis.get('series'):
+            fields.append(_format_column(series))
+
+    return [field for field in fields if field]  # 过滤空字符串
 
 
 def get_last_execute_sql_error(session: SessionDep, chart_id: int):
@@ -201,6 +223,7 @@ def get_chat_chart_config(session: SessionDep, chat_record_id: int):
             pass
     return {}
 
+
 def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
     stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
     res = session.execute(stmt)
@@ -210,6 +233,7 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
         except Exception:
             pass
     return {}
+
 
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
     stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id))
@@ -221,8 +245,10 @@ def get_chat_chart_data(session: SessionDep, chat_record_id: int):
             pass
     return {}
 
+
 def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
-    stmt = select(ChatRecord.predict_data).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+    stmt = select(ChatRecord.predict_data).where(
+        and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
     res = session.execute(stmt)
     for row in res:
         try:
@@ -230,6 +256,7 @@ def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUs
         except Exception:
             pass
     return {}
+
 
 def get_chat_predict_data(session: SessionDep, chat_record_id: int):
     stmt = select(ChatRecord.predict_data).where(and_(ChatRecord.id == chat_record_id))
@@ -318,11 +345,61 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
     result = session.execute(stmt).all()
     record_list: list[ChatRecordResult] = []
+
+    # 批量获取所有ChatRecord的token消耗
+    record_ids = [row.id for row in result]
+    token_usage_map = {}
+
+    if record_ids:
+        # 查询所有相关ChatLog的token_usage
+        log_stmt = select(ChatLog.pid, ChatLog.token_usage).where(
+            and_(
+                ChatLog.pid.in_(record_ids),
+                ChatLog.local_operation == False,
+                ChatLog.operate != OperationEnum.GENERATE_RECOMMENDED_QUESTIONS,
+                ChatLog.token_usage.is_not(None)  # 排除token_usage为空的记录
+            )
+        )
+        log_results = session.execute(log_stmt).all()
+
+        # 按pid分组计算total_tokens总和
+        for pid, token_usage in log_results:
+            if pid and token_usage is not None:
+                tokens_to_add = 0
+
+                if isinstance(token_usage, dict):
+                    # 处理字典类型: {"input_tokens": 961, "total_tokens": 1006, "output_tokens": 45}
+                    if token_usage:  # 非空字典
+                        if "total_tokens" in token_usage:
+                            token_value = token_usage["total_tokens"]
+                            if isinstance(token_value, (int, float)):
+                                tokens_to_add = int(token_value)
+                elif isinstance(token_usage, (int, float)):
+                    tokens_to_add = int(token_usage)
+                if tokens_to_add > 0:
+                    if pid not in token_usage_map:
+                        token_usage_map[pid] = 0
+                    token_usage_map[pid] += tokens_to_add
+
     for row in result:
+        # 计算耗时
+        duration = None
+        if row.create_time and row.finish_time:
+            try:
+                time_diff = row.finish_time - row.create_time
+                duration = time_diff.total_seconds()  # 转换为秒
+            except Exception:
+                duration = None
+
+        # 获取token总消耗
+        total_tokens = token_usage_map.get(row.id, 0)
+
         if not with_data:
             record_list.append(
                 ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
                                  finish_time=row.finish_time,
+                                 duration=duration,
+                                 total_tokens=total_tokens,
                                  question=row.question, sql_answer=row.sql_answer, sql=row.sql,
                                  chart_answer=row.chart_answer, chart=row.chart,
                                  analysis=row.analysis, predict=row.predict,
@@ -340,6 +417,8 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
             record_list.append(
                 ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
                                  finish_time=row.finish_time,
+                                 duration=duration,
+                                 total_tokens=total_tokens,
                                  question=row.question, sql_answer=row.sql_answer, sql=row.sql,
                                  chart_answer=row.chart_answer, chart=row.chart,
                                  analysis=row.analysis, predict=row.predict,
@@ -411,7 +490,149 @@ def format_record(record: ChatRecordResult):
         except Exception:
             pass
 
+    # 格式化duration字段，保留2位小数
+    if 'duration' in _dict and _dict['duration'] is not None:
+        try:
+            # 可以格式化为更易读的形式
+            _dict['duration'] = round(_dict['duration'], 2)  # 保留2位小数
+        except Exception:
+            pass
+
+    # 格式化total_tokens字段
+    if 'total_tokens' in _dict and _dict['total_tokens'] is not None:
+        try:
+            # 确保是整数类型
+            _dict['total_tokens'] = int(_dict['total_tokens']) if _dict['total_tokens'] else 0
+        except Exception:
+            _dict['total_tokens'] = 0
+
+    # 去除返回前端多余的字段
+    _dict.pop('sql_reasoning_content', None)
+    _dict.pop('chart_reasoning_content', None)
+    _dict.pop('analysis_reasoning_content', None)
+    _dict.pop('predict_reasoning_content', None)
+
     return _dict
+
+
+def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user: CurrentUser,
+                         without_steps: bool = False) -> ChatLogHistory:
+    """
+    获取ChatRecord的详细历史记录
+
+    Args:
+        session: 数据库会话
+        chat_record_id: ChatRecord的ID
+        current_user: 当前用户
+        without_steps
+
+    Returns:
+        ChatLogHistory: 包含历史步骤和时间信息的对象
+    """
+    # 1. 首先验证ChatRecord存在且属于当前用户
+    chat_record = session.get(ChatRecord, chat_record_id)
+    if not chat_record:
+        raise Exception(f"ChatRecord with id {chat_record_id} not found")
+
+    if chat_record.create_by != current_user.id:
+        raise Exception(f"ChatRecord with id {chat_record_id} not owned by the current user")
+
+    # 2. 查询与该ChatRecord相关的所有ChatLog记录
+    chat_logs = session.query(ChatLog).filter(
+        ChatLog.pid == chat_record_id,
+        ChatLog.operate != OperationEnum.GENERATE_RECOMMENDED_QUESTIONS
+    ).order_by(ChatLog.start_time).all()
+
+    # 3. 计算总的时间和token信息
+    total_tokens = 0
+    steps = []
+
+    for log in chat_logs:
+        # 计算单条记录的token消耗
+        log_tokens = 0
+        if log.token_usage is not None:
+            if isinstance(log.token_usage, dict):
+                if log.token_usage and "total_tokens" in log.token_usage:
+                    token_value = log.token_usage["total_tokens"]
+                    if isinstance(token_value, (int, float)):
+                        log_tokens = int(token_value)
+            elif isinstance(log.token_usage, (int, float)):
+                log_tokens = log.token_usage
+
+        # 累加到总token消耗
+        total_tokens += log_tokens
+
+        if not without_steps:
+            # 计算单条记录的耗时
+            duration = None
+            if log.start_time and log.finish_time:
+                try:
+                    time_diff = log.finish_time - log.start_time
+                    duration = round(time_diff.total_seconds(), 2)
+                except Exception:
+                    duration = None
+
+            # 获取操作类型的枚举名称
+            operate_name = None
+            message = None
+            if log.operate:
+                # 如果是OperationEnum枚举实例
+                if isinstance(log.operate, OperationEnum):
+                    operate_name = log.operate.name
+                # 如果是字符串，尝试从枚举值获取名称
+                elif isinstance(log.operate, str):
+                    try:
+                        # 通过枚举值找到对应的枚举实例
+                        for enum_item in OperationEnum:
+                            if enum_item.value == log.operate:
+                                operate_name = enum_item.name
+                                break
+                    except Exception:
+                        operate_name = log.operate
+                else:
+                    operate_name = str(log.operate)
+
+                if log.messages is not None:
+                    message = log.messages
+                    if not log.operate == OperationEnum.CHOOSE_TABLE:
+                        try:
+                            message = orjson.loads(log.messages)
+                        except Exception:
+                            pass
+
+            # 创建ChatLogHistoryItem
+            history_item = ChatLogHistoryItem(
+                start_time=log.start_time,
+                finish_time=log.finish_time,
+                duration=duration,
+                total_tokens=log_tokens,
+                operate=operate_name,
+                local_operation=log.local_operation,
+                error=log.error,
+                message=message,
+            )
+
+            steps.append(history_item)
+
+    # 4. 计算总耗时（使用ChatRecord的时间）
+    total_duration = None
+    if chat_record.create_time and chat_record.finish_time:
+        try:
+            time_diff = chat_record.finish_time - chat_record.create_time
+            total_duration = round(time_diff.total_seconds(), 2)
+        except Exception:
+            total_duration = None
+
+    # 5. 创建并返回ChatLogHistory对象
+    chat_log_history = ChatLogHistory(
+        start_time=chat_record.create_time,  # 使用ChatRecord的create_time
+        finish_time=chat_record.finish_time,  # 使用ChatRecord的finish_time
+        duration=total_duration,
+        total_tokens=total_tokens,
+        steps=steps
+    )
+
+    return chat_log_history
 
 
 def get_chat_brief_generate(session: SessionDep, chat_id: int):
@@ -470,6 +691,8 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
             ds.type_name = DB.get_db(ds.type)
         else:
             ds = session.get(CoreDatasource, create_chat_obj.datasource)
+            if ds.oid != current_user.oid:
+                raise Exception(f"Datasource with id {create_chat_obj.datasource} does not belong to current workspace")
 
         if not ds:
             raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
@@ -581,10 +804,11 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
     return result
 
 
-def start_log(session: SessionDep, ai_modal_id: int, ai_modal_name: str, operate: OperationEnum, record_id: int,
-              full_message: list[dict]) -> ChatLog:
+def start_log(session: SessionDep, ai_modal_id: int = None, ai_modal_name: str = None, operate: OperationEnum = None,
+              record_id: int = None, full_message: Union[list[dict], dict] = None,
+              local_operation: bool = False) -> ChatLog:
     log = ChatLog(type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
-                  messages=full_message, start_time=datetime.datetime.now())
+                  messages=full_message, start_time=datetime.datetime.now(), local_operation=local_operation)
 
     result = ChatLog(**log.model_dump())
 
@@ -597,7 +821,8 @@ def start_log(session: SessionDep, ai_modal_id: int, ai_modal_name: str, operate
     return result
 
 
-def end_log(session: SessionDep, log: ChatLog, full_message: list[dict], reasoning_content: str = None,
+def end_log(session: SessionDep, log: ChatLog, full_message: Union[list[dict], dict, str],
+            reasoning_content: str = None,
             token_usage=None) -> ChatLog:
     if token_usage is None:
         token_usage = {}
@@ -611,6 +836,17 @@ def end_log(session: SessionDep, log: ChatLog, full_message: list[dict], reasoni
         token_usage=log.token_usage,
         finish_time=log.finish_time,
         reasoning_content=log.reasoning_content
+    )
+    session.execute(stmt)
+    session.commit()
+
+    return log
+
+
+def trigger_log_error(session: SessionDep, log: ChatLog) -> ChatLog:
+    log.error = True
+    stmt = update(ChatLog).where(and_(ChatLog.id == log.id)).values(
+        error=True
     )
     session.execute(stmt)
     session.commit()
@@ -839,6 +1075,14 @@ def save_error_message(session: SessionDep, record_id: int, message: str) -> Cha
 
     session.execute(stmt)
 
+    session.commit()
+
+    # log error finish
+    stmt = update(ChatLog).where(and_(ChatLog.pid == record.id, ChatLog.finish_time.is_(None))).values(
+        finish_time=record.finish_time,
+        error=True
+    )
+    session.execute(stmt)
     session.commit()
 
     return result

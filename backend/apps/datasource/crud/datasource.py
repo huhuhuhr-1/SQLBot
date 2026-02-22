@@ -13,10 +13,12 @@ from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
 from apps.db.db import get_tables, get_fields, exec_sql, check_connection
 from apps.db.engine import get_engine_config, get_engine_conn
+from apps.system.schemas.auth import CacheName, CacheNamespace
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.embedding_threads import run_save_table_embeddings, run_save_ds_embeddings
-from common.utils.utils import deepcopy_ignore_extra
+from common.utils.utils import SQLBotLogUtil, deepcopy_ignore_extra
+from common.core.sqlbot_cache import cache, clear_cache
 from .table import get_tables_by_ds_id
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
@@ -63,8 +65,8 @@ def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDat
         if ds_list is not None and len(ds_list) > 0:
             raise HTTPException(status_code=500, detail=trans('i18n_ds_name_exist'))
 
-
-def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create_ds: CreateDatasource):
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="user.oid")
+async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create_ds: CreateDatasource):
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
     check_name(session, trans, user, ds)
@@ -117,7 +119,7 @@ def update_ds_recommended_config(session: SessionDep, datasource_id: int, recomm
     session.commit()
 
 
-def delete_ds(session: SessionDep, id: int):
+async def delete_ds(session: SessionDep, id: int):
     term = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
     if term.type == "excel":
         # drop all tables for current datasource
@@ -132,6 +134,8 @@ def delete_ds(session: SessionDep, id: int):
     session.commit()
     delete_table_by_ds_id(session, id)
     delete_field_by_ds_id(session, id)
+    if term:
+        await clear_ws_ds_cache(term.oid)
     return {
         "message": f"Datasource with ID {id} deleted successfully."
     }
@@ -425,7 +429,7 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
 
 
 def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
-                     embedding: bool = True) -> str:
+                     embedding: bool = True, table_list: list[str] = None) -> str:
     schema_str = ""
     table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
     if len(table_objs) == 0:
@@ -435,6 +439,10 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
     tables = []
     all_tables = []  # temp save all tables
     for obj in table_objs:
+        # 如果传入了table_list，则只处理在列表中的表
+        if table_list is not None and obj.table.table_name not in table_list:
+            continue
+
         schema_table = ''
         schema_table += f"# Table: {db_name}.{obj.table.table_name}" if ds.type != "mysql" and ds.type != "es" else f"# Table: {obj.table.table_name}"
         table_comment = ''
@@ -461,6 +469,10 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
         t_obj = {"id": obj.table.id, "schema_table": schema_table, "embedding": obj.table.embedding}
         tables.append(t_obj)
         all_tables.append(t_obj)
+
+    # 如果没有符合过滤条件的表，直接返回
+    if not tables:
+        return schema_str
 
     # do table embedding
     if embedding and tables and settings.TABLE_EMBEDDING_ENABLED:
@@ -518,3 +530,12 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
                     schema_str += f"{table_dict.get(int(ele.get('source').get('cell')))}.{field_dict.get(int(ele.get('source').get('port')))}={table_dict.get(int(ele.get('target').get('cell')))}.{field_dict.get(int(ele.get('target').get('port')))}\n"
 
     return schema_str
+
+@cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="oid")
+async def get_ws_ds(session, oid) -> list:
+    stmt = select(CoreDatasource.id).distinct().where(CoreDatasource.oid == oid)
+    db_list = session.exec(stmt).all()
+    return db_list
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="oid")
+async def clear_ws_ds_cache(oid):
+    SQLBotLogUtil.info(f"ds cache for ws [{oid}] has been cleaned")

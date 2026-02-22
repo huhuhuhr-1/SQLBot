@@ -8,10 +8,13 @@ import re
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlmodel import Session, select
 from apps.chat.models.chat_model import Chat
+from apps.datasource.crud.datasource import get_ws_ds
 from apps.datasource.models.datasource import CoreDatasource
 from common.core.db import engine
 from apps.system.schemas.system_schema import UserInfoDTO
 
+from common.utils.locale import I18n
+i18n = I18n()
 
 class SqlbotPermission(BaseModel):
     role: Optional[list[str]] = None
@@ -22,7 +25,7 @@ async def get_ws_resource(oid, type) -> list:
     with Session(engine) as session:
         stmt = None
         if type == 'ds' or type == 'datasource':
-            stmt = select(CoreDatasource.id).where(CoreDatasource.oid == oid)
+            return await get_ws_ds(session, oid)
         if type == 'chat':
             stmt = select(Chat.id).where(Chat.oid == oid) 
         if stmt is not None:
@@ -32,6 +35,9 @@ async def get_ws_resource(oid, type) -> list:
             
 
 async def check_ws_permission(oid, type, resource) -> bool:
+    if not resource or (isinstance(resource, list) and len(resource) == 0):
+        return True
+    
     resource_id_list = await get_ws_resource(oid, type)
     if not resource_id_list:
         return False
@@ -45,6 +51,7 @@ def require_permissions(permission: SqlbotPermission):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             request = RequestContext.get_request()
+            
             current_user: UserInfoDTO = getattr(request.state, 'current_user', None)
             if not current_user:
                 raise HTTPException(
@@ -53,7 +60,9 @@ def require_permissions(permission: SqlbotPermission):
                 )
             current_oid = current_user.oid
             
-            if current_user.isAdmin:
+            trans = i18n(request)
+            
+            if current_user.isAdmin and not permission.type:
                 return await func(*args, **kwargs)
             role_list = permission.role
             keyExpression = permission.keyExpression
@@ -61,9 +70,11 @@ def require_permissions(permission: SqlbotPermission):
             
             if role_list:
                 if 'admin' in role_list and not current_user.isAdmin:
-                    raise Exception('no permission to execute, only for admin')
-                if 'ws_admin' in role_list and current_user.weight == 0:
-                    raise Exception('no permission to execute, only for workspace admin')
+                    #raise Exception('no permission to execute, only for admin')
+                    raise Exception(trans('i18n_permission.only_admin'))
+                if 'ws_admin' in role_list and current_user.weight == 0 and not current_user.isAdmin:
+                    #raise Exception('no permission to execute, only for workspace admin')
+                    raise Exception(trans('i18n_permission.only_ws_admin'))
             if not resource_type:
                 return await func(*args, **kwargs)
             if keyExpression:
@@ -77,7 +88,8 @@ def require_permissions(permission: SqlbotPermission):
                         value = bound_args.args[index]
                         if await check_ws_permission(current_oid, resource_type, value):
                             return await func(*args, **kwargs)
-                        raise Exception('no permission to execute or resource do not exist!')
+                        #raise Exception('no permission to execute or resource do not exist!')
+                        raise Exception(trans('i18n_permission.permission_resource_limit'))
                             
                 parts = keyExpression.split('.')
                 if not bound_args.arguments.get(parts[0]):
@@ -87,7 +99,7 @@ def require_permissions(permission: SqlbotPermission):
                     value = getattr(value, part)
                 if await check_ws_permission(current_oid, resource_type, value):
                     return await func(*args, **kwargs)
-                raise Exception('no permission to execute or resource do not exist!')
+                raise Exception(trans('i18n_permission.permission_resource_limit'))
             
             return await func(*args, **kwargs)
         

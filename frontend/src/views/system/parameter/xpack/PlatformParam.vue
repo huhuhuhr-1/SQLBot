@@ -73,7 +73,7 @@
       </div>
       <div class="value">
         <el-radio-group v-model="formData['login.default_login']">
-          <el-radio v-for="item in loginTypeOptions" :key="item.value" :label="item.value">{{
+          <el-radio v-for="item in loginTypeOptions" :key="item.value" :value="item.value">{{
             item.label
           }}</el-radio>
         </el-radio-group>
@@ -145,7 +145,7 @@ onMounted(async () => {
   organizations.value = wsRes
   const platformStatusRes: any = await queryCategoryStatus()
   platformStatusRes.forEach((item: any) => {
-    if (item.enable) {
+    if (item.enable && platformMapping[item.name]) {
       loginTypeOptions.value.push(platformMapping[item.name])
       anyPlatformEnable.value = true
     }

@@ -3,15 +3,13 @@
     <div class="platform-setting-head">
       <div class="platform-setting-head-left">
         <div class="lead-left-icon">
-          <el-icon>
-            <Icon name="logo_wechat-work"><component :is="state.cardIcon" class="svg-icon" /></Icon>
+          <el-icon style="margin-right: 8px" size="24px">
+            <component :is="state.cardIcon" class="svg-icon" />
           </el-icon>
           <span>{{ cardTitle }}</span>
         </div>
         <div v-if="existInfo" class="lead-left-status" :class="{ invalid: !info.valid }">
-          <span>{{
-            info.valid ? t('authentication.valid') : info.corpid ? t('authentication.invalid') : ''
-          }}</span>
+          <span>{{ info.valid ? t('authentication.valid') : t('authentication.invalid') }}</span>
         </div>
       </div>
       <div v-if="existInfo" class="platform-setting-head-right">
@@ -142,7 +140,7 @@ const edit = () => {
   editor?.value.edit(data)
 }
 const validate = () => {
-  if (info.value?.agent_id && info.value?.corpsecret) {
+  if (info.value) {
     validateHandler()
   }
 }
@@ -184,18 +182,13 @@ const validateHandler = () => {
 
   .platform-setting-head-left {
     display: flex;
+    align-items: center;
     .lead-left-icon {
       display: flex;
       line-height: 24px;
       align-items: center;
-      i {
-        width: 24px;
-        height: 24px;
-        font-size: 20px;
-      }
+
       span {
-        margin-left: 4px;
-        font-family: var(--de-custom_font, 'PingFang');
         font-size: 16px;
         font-style: normal;
         font-weight: 500;
@@ -203,15 +196,15 @@ const validateHandler = () => {
       }
     }
     .lead-left-status {
-      margin-left: 4px;
-      height: 24px;
+      margin-left: 8px;
+      height: 20px;
       background: #34c72433;
-      padding: 0 6px;
-      font-size: 14px;
+      padding: 0 4px;
+      font-size: 12px;
       border-radius: 2px;
       overflow: hidden;
       span {
-        line-height: 24px;
+        line-height: 20px;
         color: #2ca91f;
       }
     }

@@ -141,6 +141,8 @@
   "get_chat_with_data": "Get Chat Details (With Data)",
   "get_chart_data": "Get Chart Data",
   "get_chart_predict_data": "Get Chart Prediction Data",
+  "get_record_log": "Get Chart Record Log",
+  "get_record_usage": "Get Chart Record Token Usage & Duration",
   "rename_chat": "Rename Chat",
   "delete_chat": "Delete Chat",
   "start_chat": "Create Chat",
@@ -188,5 +190,11 @@
   "delete_resource_api": "Delete Resource",
   "create_canvas_api": "Create Dashboard",
   "update_canvas_api": "Update Dashboard",
-  "check_name_api": "Name Validation"
+  "check_name_api": "Name Validation",
+
+  "variable_api": "System Variable",
+  "variable_save": "Save",
+  "variable_delete": "Delete",
+  "variable_list": "List",
+  "variable_page": "Pager"
 }
