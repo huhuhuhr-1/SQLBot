@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "fields": [
+    "任务ID",
+    "任务名称",
+    "执行次数",
+    "平均耗时_秒"
+  ],
+  "data": [
+    {
+      "任务ID": "stream_test",
+      "任务名称": "Stream to Stream 测试任务",
+      "执行次数": 53,
+      "平均耗时_秒": 0.0
+    }
+  ],
+  "row_count": 1
+}

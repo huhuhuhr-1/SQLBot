@@ -1,0 +1,19 @@
+#!/bin/bash
+#
+# test-skill-exec - 测试 skill-exec 脚本
+#
+
+echo "测试 skill-exec 脚本..."
+echo ""
+
+# 测试 1：简单命令
+echo "测试 1：执行简单命令"
+.claude/skills/shared/bin/skill-exec \
+  test echo-output "测试 echo 命令" -- \
+  echo "Hello from skill-exec!"
+
+echo ""
+echo "✓ 测试完成"
+echo ""
+echo "检查会话目录："
+ls -la tmp/test/

@@ -1,0 +1,196 @@
+[
+  {
+    "title": "执行状态分布",
+    "type": "pie",
+    "data": [
+      {
+        "执行状态": "执行成功",
+        "任务数量": 52,
+        "占比": 98.11
+      },
+      {
+        "执行状态": "执行失败",
+        "任务数量": 1,
+        "占比": 1.89
+      }
+    ],
+    "axis": {
+      "series": {
+        "name": "执行状态",
+        "value": "执行状态"
+      },
+      "y": {
+        "name": "任务数量",
+        "value": "任务数量"
+      }
+    },
+    "sql": "SELECT \"status\" AS \"执行状态\", COUNT(\"id\") AS \"任务数量\" FROM \"public\".\"execution_records\" GROUP BY \"status\"",
+    "description": "统计各个执行状态的任务数量和占比"
+  },
+  {
+    "title": "任务执行频率 TOP 10",
+    "type": "column",
+    "data": [
+      {
+        "任务ID": "stream_test",
+        "任务名称": "Stream to Stream 测试任务",
+        "执行次数": 53,
+        "平均耗时_秒": 0.0
+      }
+    ],
+    "axis": {
+      "x": {
+        "name": "任务ID",
+        "value": "任务ID"
+      },
+      "y": {
+        "name": "执行次数",
+        "value": "执行次数"
+      }
+    },
+    "sql": "SELECT \"task_id\", \"task_name\", COUNT(\"id\") AS \"执行次数\" FROM \"public\".\"execution_records\" GROUP BY \"task_id\", \"task_name\" ORDER BY \"执行次数\" DESC LIMIT 10",
+    "description": "按 task_id 统计执行次数最多的前10个任务"
+  },
+  {
+    "title": "执行耗时统计",
+    "type": "table",
+    "data": [
+      {
+        "平均耗时_秒": 0.0,
+        "最大耗时_秒": 0.0,
+        "最小耗时_秒": 0.0,
+        "中位数耗时_秒": 0.0,
+        "标准差_秒": 0.0
+      }
+    ],
+    "columns": [
+      {
+        "name": "平均耗时_秒",
+        "value": "平均耗时_秒"
+      },
+      {
+        "name": "最大耗时_秒",
+        "value": "最大耗时_秒"
+      },
+      {
+        "name": "最小耗时_秒",
+        "value": "最小耗时_秒"
+      },
+      {
+        "name": "中位数耗时_秒",
+        "value": "中位数耗时_秒"
+      },
+      {
+        "name": "标准差_秒",
+        "value": "标准差_秒"
+      }
+    ],
+    "sql": "SELECT ROUND(AVG(\"elapsed_time\"::numeric) / 1000.0, 2) AS \"平均耗时_秒\", ROUND(MAX(\"elapsed_time\"::numeric) / 1000.0, 2) AS \"最大耗时_秒\" FROM \"public\".\"execution_records\"",
+    "description": "计算所有任务的平均耗时、最大耗时、最小耗时、中位数耗时"
+  },
+  {
+    "title": "每日执行趋势",
+    "type": "line",
+    "data": [
+      {
+        "日期": "2026-01-14",
+        "执行次数": 53,
+        "平均耗时_秒": 0.0,
+        "成功数": 0,
+        "失败数": 53
+      }
+    ],
+    "axis": {
+      "x": {
+        "name": "日期",
+        "value": "日期"
+      },
+      "y": {
+        "name": "执行次数",
+        "value": "执行次数"
+      }
+    },
+    "sql": "SELECT TO_CHAR(TO_TIMESTAMP(\"start_time\" / 1000), 'YYYY-MM-DD') AS \"日期\", COUNT(\"id\") AS \"执行次数\" FROM \"public\".\"execution_records\" GROUP BY \"日期\" ORDER BY \"日期\"",
+    "description": "按日期统计任务执行数量和平均耗时"
+  },
+  {
+    "title": "触发类型分布",
+    "type": "pie",
+    "data": [
+      {
+        "触发类型": "CRON",
+        "任务数量": 53,
+        "占比": 100.0,
+        "平均耗时_秒": 0.0
+      }
+    ],
+    "axis": {
+      "series": {
+        "name": "触发类型",
+        "value": "触发类型"
+      },
+      "y": {
+        "name": "任务数量",
+        "value": "任务数量"
+      }
+    },
+    "sql": "SELECT COALESCE(\"trigger_type\", '未知') AS \"触发类型\", COUNT(\"id\") AS \"任务数量\" FROM \"public\".\"execution_records\" GROUP BY \"trigger_type\"",
+    "description": "统计不同触发类型的任务数量和占比"
+  },
+  {
+    "title": "执行队列分布",
+    "type": "column",
+    "data": [
+      {
+        "队列名称": "fast",
+        "任务数量": 53,
+        "平均耗时_秒": 0.0,
+        "最大耗时_秒": 0.0
+      }
+    ],
+    "axis": {
+      "x": {
+        "name": "队列名称",
+        "value": "队列名称"
+      },
+      "y": {
+        "name": "任务数量",
+        "value": "任务数量"
+      }
+    },
+    "sql": "SELECT COALESCE(\"execute_queue_name\", '默认队列') AS \"队列名称\", COUNT(\"id\") AS \"任务数量\" FROM \"public\".\"execution_records\" GROUP BY \"execute_queue_name\"",
+    "description": "统计各执行队列的任务数量和平均耗时"
+  },
+  {
+    "title": "状态与耗时关系",
+    "type": "column",
+    "data": [
+      {
+        "执行状态": "执行成功",
+        "任务数量": 52,
+        "平均耗时_秒": 0.0,
+        "最小耗时_秒": 0.0,
+        "最大耗时_秒": 0.0
+      },
+      {
+        "执行状态": "执行失败",
+        "任务数量": 1,
+        "平均耗时_秒": 0.0,
+        "最小耗时_秒": 0.0,
+        "最大耗时_秒": 0.0
+      }
+    ],
+    "axis": {
+      "x": {
+        "name": "执行状态",
+        "value": "执行状态"
+      },
+      "y": {
+        "name": "任务数量",
+        "value": "任务数量"
+      }
+    },
+    "sql": "SELECT \"status\", COUNT(\"id\") AS \"任务数量\", ROUND(AVG(\"elapsed_time\"::numeric) / 1000.0, 2) AS \"平均耗时_秒\" FROM \"public\".\"execution_records\" WHERE \"elapsed_time\" IS NOT NULL GROUP BY \"status\"",
+    "description": "分析不同状态下的平均耗时"
+  }
+]

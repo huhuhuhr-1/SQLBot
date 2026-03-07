@@ -1,0 +1,24 @@
+{
+  "title": "任务执行频率 TOP 10",
+  "type": "column",
+  "data": [
+    {
+      "任务ID": "stream_test",
+      "任务名称": "Stream to Stream 测试任务",
+      "执行次数": 53,
+      "平均耗时_秒": 0.0
+    }
+  ],
+  "axis": {
+    "x": {
+      "name": "任务ID",
+      "value": "任务ID"
+    },
+    "y": {
+      "name": "执行次数",
+      "value": "执行次数"
+    }
+  },
+  "sql": "SELECT \"task_id\", \"task_name\", COUNT(\"id\") AS \"执行次数\" FROM \"public\".\"execution_records\" GROUP BY \"task_id\", \"task_name\" ORDER BY \"执行次数\" DESC LIMIT 10",
+  "description": "按 task_id 统计执行次数最多的前10个任务"
+}

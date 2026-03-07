@@ -1,0 +1,32 @@
+{
+  "title": "状态与耗时关系",
+  "type": "column",
+  "data": [
+    {
+      "执行状态": "执行成功",
+      "任务数量": 52,
+      "平均耗时_秒": 0.0,
+      "最小耗时_秒": 0.0,
+      "最大耗时_秒": 0.0
+    },
+    {
+      "执行状态": "执行失败",
+      "任务数量": 1,
+      "平均耗时_秒": 0.0,
+      "最小耗时_秒": 0.0,
+      "最大耗时_秒": 0.0
+    }
+  ],
+  "axis": {
+    "x": {
+      "name": "执行状态",
+      "value": "执行状态"
+    },
+    "y": {
+      "name": "任务数量",
+      "value": "任务数量"
+    }
+  },
+  "sql": "SELECT \"status\", COUNT(\"id\") AS \"任务数量\", ROUND(AVG(\"elapsed_time\"::numeric) / 1000.0, 2) AS \"平均耗时_秒\" FROM \"public\".\"execution_records\" WHERE \"elapsed_time\" IS NOT NULL GROUP BY \"status\"",
+  "description": "分析不同状态下的平均耗时"
+}

@@ -1,0 +1,160 @@
+#!/bin/bash
+#
+# skill-exec - 统一的技能执行入口
+#
+# 用法：
+#   .claude/skills/shared/bin/skill-exec <skill-name> <action-type> <description> -- <command>
+#
+# 示例：
+#   skill-exec meta-ops test-conn "测试连接" -- \
+#     java -jar .claude/skills/meta-ops/assets/tool.jar -o test
+#
+
+set -euo pipefail
+
+# 颜色输出
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# 显示帮助
+show_help() {
+    cat << EOF
+${BLUE}skill-exec${NC} - 统一的技能执行入口
+
+${YELLOW}用法：${NC}
+  $0 <skill-name> <action-type> <description> -- <command>
+
+${YELLOW}参数：${NC}
+  skill-name     技能名称（如 meta-ops, data-quality）
+  action-type    操作类型（如 test-conn, discovery-full）
+  description    操作描述
+  --             分隔符，之后是执行的命令
+
+${YELLOW}示例：${NC}
+  # 测试数据库连接
+  $0 meta-ops test-conn "测试连接" -- \
+    java -jar .claude/skills/meta-ops/assets/meta-discovery.jar \
+      -u sqlbot -p sqlbot -j jdbc:postgresql://localhost:8086/sqlbot \
+      --driver .claude/skills/database-drivers/drivers/postgresql-42.3.8.jar \
+      --driverClass org.postgresql.Driver \
+      -o test
+
+  # 完整探查数据库
+  $0 meta-ops discovery-full "完整探查" -- \
+    java -jar .claude/skills/meta-ops/assets/meta-discovery.jar \
+      -u sqlbot -p sqlbot -j jdbc:postgresql://localhost:8086/sqlbot \
+      --driver .claude/skills/database-drivers/drivers/postgresql-42.3.8.jar \
+      --driverClass org.postgresql.Driver \
+      -o full --format json \
+      --output "\$REPORT_FILE"
+
+${YELLOW}环境变量：${NC}
+  PRESERVE_SESSION  设置为 true 保留会话（默认询问）
+  AUTO_CLEANUP      设置为 true 自动清理（默认 false）
+
+${YELLOW}输出：${NC}
+  会话目录：tmp/<skill-name>/<action-type>_YYYYMMDD_HHMMSS/
+    - reports/     输出报告
+    - logs/        执行日志
+    - README.md    会话说明
+
+EOF
+}
+
+# 解析参数
+if [[ $# -lt 4 ]]; then
+    show_help
+    exit 1
+fi
+
+SKILL_NAME="$1"
+ACTION_TYPE="$2"
+DESCRIPTION="$3"
+shift 3
+
+# 检查分隔符
+if [[ "$1" != "--" ]]; then
+    echo -e "${RED}错误：参数格式错误，请在命令前添加 -- 分隔符${NC}" >&2
+    exit 1
+fi
+shift
+
+# 获取命令
+COMMAND="$@"
+
+# 检查项目根目录
+if [[ ! -d ".claude/skills" ]]; then
+    echo -e "${RED}错误：不在项目根目录（找不到 .claude/skills）${NC}" >&2
+    exit 1
+fi
+
+# 加载函数库
+LIBRARY_SCRIPT=".claude/skills/shared/skill-session-lib.sh"
+if [[ ! -f "$LIBRARY_SCRIPT" ]]; then
+    echo -e "${RED}错误：找不到函数库 $LIBRARY_SCRIPT${NC}" >&2
+    exit 1
+fi
+
+# 在同一 shell 中加载函数库
+source "$LIBRARY_SCRIPT"
+
+# 初始化会话
+echo -e "${BLUE}初始化会话...${NC}"
+skill_session_init "$SKILL_NAME" "$ACTION_TYPE" "$DESCRIPTION"
+
+# 获取会话目录
+SESSION_INFO=$(cat tmp/.skill-session)
+eval "$SESSION_INFO"
+# SESSION_DIR 已经在 SESSION_INFO 中定义
+
+# 获取路径
+LOG_FILE="$SESSION_DIR/logs/execution.log"
+REPORT_FILE="$SESSION_DIR/reports/result.md"
+
+# 创建目录
+mkdir -p "$SESSION_DIR"/{reports,logs}
+
+# 显示执行信息
+echo -e "${GREEN}✓ 会话已创建${NC}"
+echo -e "  技能: ${BLUE}$SKILL_NAME${NC}"
+echo -e "  操作: ${BLUE}$ACTION_TYPE${NC}"
+echo -e "  描述: $DESCRIPTION"
+echo -e "  会话: ${BLUE}$SESSION_ID${NC}"
+echo -e "  目录: $SESSION_DIR"
+echo ""
+
+# 执行命令
+echo -e "${BLUE}执行命令：${NC}"
+echo -e "$COMMAND"
+echo ""
+
+# 设置环境变量供命令使用
+export SESSION_ID
+export SESSION_DIR
+export LOG_FILE
+export REPORT_FILE
+export SKILL_NAME
+export ACTION_TYPE
+
+# 执行命令
+set +e  # 允许命令失败
+eval "$COMMAND" 2>&1 | tee "$LOG_FILE"
+EXIT_CODE=${PIPESTATUS[0]}
+set -e
+
+# 判断执行结果
+if [[ $EXIT_CODE -eq 0 ]]; then
+    echo -e "\n${GREEN}✓ 命令执行成功${NC}"
+else
+    echo -e "\n${RED}✗ 命令执行失败（退出码：$EXIT_CODE）${NC}"
+fi
+
+# 完成会话
+echo ""
+skill_session_finish "操作完成"
+
+# 返回退出码
+exit $EXIT_CODE

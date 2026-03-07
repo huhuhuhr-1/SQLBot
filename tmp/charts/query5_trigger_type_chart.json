@@ -1,0 +1,24 @@
+{
+  "title": "触发类型分布",
+  "type": "pie",
+  "data": [
+    {
+      "触发类型": "CRON",
+      "任务数量": 53,
+      "占比": 100.0,
+      "平均耗时_秒": 0.0
+    }
+  ],
+  "axis": {
+    "series": {
+      "name": "触发类型",
+      "value": "触发类型"
+    },
+    "y": {
+      "name": "任务数量",
+      "value": "任务数量"
+    }
+  },
+  "sql": "SELECT COALESCE(\"trigger_type\", '未知') AS \"触发类型\", COUNT(\"id\") AS \"任务数量\" FROM \"public\".\"execution_records\" GROUP BY \"trigger_type\"",
+  "description": "统计不同触发类型的任务数量和占比"
+}

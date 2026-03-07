@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>execution_records 多维度分析可视化</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-card h3 {
+            color: #667eea;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #764ba2;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .chart-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .chart-container h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .chart {
+            width: 100%;
+            height: 400px;
+        }
+
+        .section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #764ba2;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-left: 5px solid #667eea;
+            padding-left: 15px;
+        }
+
+        .footer {
+            text-align: center;
+            color: white;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            margin-top: 30px;
+        }
+
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 1.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 execution_records 表多维度分析可视化</h1>
+        <p>数据库: dix_scheduler | 主机: localhost:17082 | Schema: public</p>
+        <p>总记录数: 53 | 分析维度: 7 | 生成时间: <span id="generate-time"></span></p>
+    </div>
+
+    <!-- 关键指标卡片 -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>执行成功率</h3>
+            <div class="value">98.11%</div>
+        </div>
+        <div class="stat-card">
+            <h3>总执行次数</h3>
+            <div class="value">53</div>
+        </div>
+        <div class="stat-card">
+            <h3>执行成功</h3>
+            <div class="value">52</div>
+        </div>
+        <div class="stat-card">
+            <h3>执行失败</h3>
+            <div class="value">1</div>
+        </div>
+        <div class="stat-card">
+            <h3>任务类型</h3>
+            <div class="value">1</div>
+        </div>
+        <div class="stat-card">
+            <h3>触发方式</h3>
+            <div class="value">CRON</div>
+        </div>
+    </div>
+
+    <!-- 1. 执行状态分布 -->
+    <div class="section">
+        <h2>1️⃣ 执行状态分布分析</h2>
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h3>饼图</h3>
+                <div id="status_pie" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <h3>柱状图</h3>
+                <div id="status_column" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <h3>条形图</h3>
+                <div id="status_bar" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <h3>成功率仪表盘</h3>
+                <div id="success_gauge" class="chart"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 任务执行频率 -->
+    <div class="section">
+        <h2>2️⃣ 任务执行频率 TOP 10</h2>
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h3>柱状图 - 按任务ID</h3>
+                <div id="task_frequency_column" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <h3>条形图 - 按任务名称</h3>
+                <div id="task_frequency_bar" class="chart"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 触发类型分布 -->
+    <div class="section">
+        <h2>3️⃣ 触发类型分布分析</h2>
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h3>饼图</h3>
+                <div id="trigger_pie" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <h3>柱状图</h3>
+                <div id="trigger_column" class="chart"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. 队列分布 -->
+    <div class="section">
+        <h2>4️⃣ 执行队列分布分析</h2>
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h3>任务数量 - 柱状图</h3>
+                <div id="queue_column" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <h3>平均耗时 - 条形图</h3>
+                <div id="queue_avg_time_bar" class="chart"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. 状态与耗时关系 -->
+    <div class="section">
+        <h2>5️⃣ 状态与耗时关系分析</h2>
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h3>各状态任务数量 - 柱状图</h3>
+                <div id="status_elapsed_column" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <h3>各状态平均耗时 - 条形图</h3>
+                <div id="status_avg_time_bar" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <h3>状态与耗时关系 - 散点图</h3>
+                <div id="status_elapsed_scatter" class="chart"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>生成工具: SQLBot Analysis System | 数据库: PostgreSQL 17.6 | 报告生成时间: <span id="report-time"></span></p>
+    </div>
+
+    <script>
+        // 设置生成时间
+        document.getElementById('generate-time').textContent = new Date().toLocaleString('zh-CN');
+        document.getElementById('report-time').textContent = new Date().toLocaleString('zh-CN');
+
+        // 数据
+        const analysisData = {
+            statusDistribution: [
+                { name: '执行成功', value: 52 },
+                { name: '执行失败', value: 1 }
+            ],
+            taskFrequency: [
+                { name: 'stream_test', value: 53 }
+            ],
+            triggerType: [
+                { name: 'CRON', value: 53 }
+            ],
+            queueDistribution: [
+                { name: 'fast', count: 53, avgTime: 0 }
+            ],
+            statusElapsed: [
+                { name: '执行成功', count: 52, avgTime: 0, minTime: 0, maxTime: 0 },
+                { name: '执行失败', count: 1, avgTime: 0, minTime: 0, maxTime: 0 }
+            ]
+        };
+
+        // 颜色方案
+        const colors = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'];
+
+        // 1. 执行状态分布 - 饼图
+        const statusPieChart = echarts.init(document.getElementById('status_pie'));
+        statusPieChart.setOption({
+            title: { text: '执行状态分布', left: 'center' },
+            tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+            legend: { orient: 'vertical', left: 'left' },
+            series: [{
+                type: 'pie',
+                radius: '50%',
+                data: analysisData.statusDistribution,
+                emphasis: {
+                    itemStyle: {
+                        shadowBlur: 10,
+                        shadowOffsetX: 0,
+                        shadowColor: 'rgba(0, 0, 0, 0.5)'
+                    }
+                }
+            }]
+        });
+
+        // 2. 执行状态分布 - 柱状图
+        const statusColumnChart = echarts.init(document.getElementById('status_column'));
+        statusColumnChart.setOption({
+            title: { text: '执行状态分布 - 柱状图', left: 'center' },
+            tooltip: { trigger: 'axis' },
+            xAxis: {
+                type: 'category',
+                data: analysisData.statusDistribution.map(item => item.name)
+            },
+            yAxis: { type: 'value' },
+            series: [{
+                type: 'bar',
+                data: analysisData.statusDistribution.map(item => ({
+                    value: item.value,
+                    itemStyle: { color: item.name === '执行成功' ? '#67e0e3' : '#fd666d' }
+                })),
+                barWidth: '50%'
+            }]
+        });
+
+        // 3. 执行状态分布 - 条形图
+        const statusBarChart = echarts.init(document.getElementById('status_bar'));
+        statusBarChart.setOption({
+            title: { text: '执行状态分布 - 条形图', left: 'center' },
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'value' },
+            yAxis: {
+                type: 'category',
+                data: analysisData.statusDistribution.map(item => item.name)
+            },
+            series: [{
+                type: 'bar',
+                data: analysisData.statusDistribution.map(item => ({
+                    value: item.value,
+                    itemStyle: { color: item.name === '执行成功' ? '#67e0e3' : '#fd666d' }
+                })),
+                barWidth: '50%'
+            }]
+        });
+
+        // 4. 成功率仪表盘
+        const successGaugeChart = echarts.init(document.getElementById('success_gauge'));
+        successGaugeChart.setOption({
+            title: { text: '执行成功率', left: 'center' },
+            series: [{
+                type: 'gauge',
+                startAngle: 180,
+                endAngle: 0,
+                min: 0,
+                max: 100,
+                splitNumber: 10,
+                axisLine: {
+                    lineStyle: {
+                        width: 20,
+                        color: [[0.3, '#67e0e3'], [0.7, '#37a2da'], [1, '#fd666d']]
+                    }
+                },
+                pointer: {
+                    icon: 'path://M12.8,0.7l12,40.1H0.7L12.8,0.7z',
+                    length: '12%',
+                    width: 20,
+                    offsetCenter: [0, '-60%'],
+                    itemStyle: { color: 'auto' }
+                },
+                axisTick: { length: 12, lineStyle: { color: 'auto', width: 2 } },
+                splitLine: { length: 20, lineStyle: { color: 'auto', width: 5 } },
+                axisLabel: { color: '#464646', fontSize: 16, distance: -50 },
+                title: { offsetCenter: [0, '-20%'], fontSize: 16 },
+                detail: {
+                    fontSize: 40,
+                    offsetCenter: [0, '0%'],
+                    valueAnimation: true,
+                    formatter: '{value}%',
+                    color: 'auto'
+                },
+                data: [{ value: 98.11, name: '成功率' }]
+            }]
+        });
+
+        // 5. 任务执行频率 - 柱状图
+        const taskFreqColumnChart = echarts.init(document.getElementById('task_frequency_column'));
+        taskFreqColumnChart.setOption({
+            title: { text: '任务执行次数', left: 'center' },
+            tooltip: { trigger: 'axis' },
+            xAxis: {
+                type: 'category',
+                data: analysisData.taskFrequency.map(item => item.name)
+            },
+            yAxis: { type: 'value', name: '执行次数' },
+            series: [{
+                type: 'bar',
+                data: analysisData.taskFrequency.map(item => item.value),
+                itemStyle: { color: '#5470c6' },
+                barWidth: '50%'
+            }]
+        });
+
+        // 6. 任务执行频率 - 条形图
+        const taskFreqBarChart = echarts.init(document.getElementById('task_frequency_bar'));
+        taskFreqBarChart.setOption({
+            title: { text: '任务执行次数', left: 'center' },
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'value', name: '执行次数' },
+            yAxis: {
+                type: 'category',
+                data: analysisData.taskFrequency.map(item => item.name)
+            },
+            series: [{
+                type: 'bar',
+                data: analysisData.taskFrequency.map(item => item.value),
+                itemStyle: { color: '#5470c6' },
+                barWidth: '50%'
+            }]
+        });
+
+        // 7. 触发类型 - 饼图
+        const triggerPieChart = echarts.init(document.getElementById('trigger_pie'));
+        triggerPieChart.setOption({
+            title: { text: '触发类型分布', left: 'center' },
+            tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+            legend: { orient: 'vertical', left: 'left' },
+            series: [{
+                type: 'pie',
+                radius: '50%',
+                data: analysisData.triggerType,
+                emphasis: {
+                    itemStyle: {
+                        shadowBlur: 10,
+                        shadowOffsetX: 0,
+                        shadowColor: 'rgba(0, 0, 0, 0.5)'
+                    }
+                }
+            }]
+        });
+
+        // 8. 触发类型 - 柱状图
+        const triggerColumnChart = echarts.init(document.getElementById('trigger_column'));
+        triggerColumnChart.setOption({
+            title: { text: '触发类型任务数量', left: 'center' },
+            tooltip: { trigger: 'axis' },
+            xAxis: {
+                type: 'category',
+                data: analysisData.triggerType.map(item => item.name)
+            },
+            yAxis: { type: 'value', name: '任务数量' },
+            series: [{
+                type: 'bar',
+                data: analysisData.triggerType.map(item => item.value),
+                itemStyle: { color: '#91cc75' },
+                barWidth: '50%'
+            }]
+        });
+
+        // 9. 队列分布 - 柱状图
+        const queueColumnChart = echarts.init(document.getElementById('queue_column'));
+        queueColumnChart.setOption({
+            title: { text: '各队列任务数量', left: 'center' },
+            tooltip: { trigger: 'axis' },
+            xAxis: {
+                type: 'category',
+                data: analysisData.queueDistribution.map(item => item.name)
+            },
+            yAxis: { type: 'value', name: '任务数量' },
+            series: [{
+                type: 'bar',
+                data: analysisData.queueDistribution.map(item => item.count),
+                itemStyle: { color: '#fac858' },
+                barWidth: '50%'
+            }]
+        });
+
+        // 10. 队列平均耗时 - 条形图
+        const queueAvgTimeBarChart = echarts.init(document.getElementById('queue_avg_time_bar'));
+        queueAvgTimeBarChart.setOption({
+            title: { text: '各队列平均耗时', left: 'center' },
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'value', name: '平均耗时(秒)' },
+            yAxis: {
+                type: 'category',
+                data: analysisData.queueDistribution.map(item => item.name)
+            },
+            series: [{
+                type: 'bar',
+                data: analysisData.queueDistribution.map(item => item.avgTime),
+                itemStyle: { color: '#ee6666' },
+                barWidth: '50%'
+            }]
+        });
+
+        // 11. 各状态任务数量 - 柱状图
+        const statusElapsedColumnChart = echarts.init(document.getElementById('status_elapsed_column'));
+        statusElapsedColumnChart.setOption({
+            title: { text: '各状态任务数量', left: 'center' },
+            tooltip: { trigger: 'axis' },
+            xAxis: {
+                type: 'category',
+                data: analysisData.statusElapsed.map(item => item.name)
+            },
+            yAxis: { type: 'value', name: '任务数量' },
+            series: [{
+                type: 'bar',
+                data: analysisData.statusElapsed.map(item => item.count),
+                itemStyle: { color: '#73c0de' },
+                barWidth: '50%'
+            }]
+        });
+
+        // 12. 各状态平均耗时 - 条形图
+        const statusAvgTimeBarChart = echarts.init(document.getElementById('status_avg_time_bar'));
+        statusAvgTimeBarChart.setOption({
+            title: { text: '各状态平均耗时', left: 'center' },
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'value', name: '平均耗时(秒)' },
+            yAxis: {
+                type: 'category',
+                data: analysisData.statusElapsed.map(item => item.name)
+            },
+            series: [{
+                type: 'bar',
+                data: analysisData.statusElapsed.map(item => item.avgTime),
+                itemStyle: { color: '#3ba272' },
+                barWidth: '50%'
+            }]
+        });
+
+        // 13. 状态与耗时 - 散点图
+        const statusElapsedScatterChart = echarts.init(document.getElementById('status_elapsed_scatter'));
+        statusElapsedScatterChart.setOption({
+            title: { text: '状态与耗时关系', left: 'center' },
+            tooltip: {
+                trigger: 'item',
+                formatter: function(params) {
+                    return `${params.data[2]}<br/>数量: ${params.data[0]}<br/>平均耗时: ${params.data[1]}s`;
+                }
+            },
+            xAxis: { type: 'value', name: '任务数量', scale: true },
+            yAxis: { type: 'value', name: '平均耗时(秒)', scale: true },
+            series: [{
+                type: 'scatter',
+                data: analysisData.statusElapsed.map(item => [item.count, item.avgTime, item.name]),
+                symbolSize: 20,
+                itemStyle: { color: '#fc8452' },
+                label: {
+                    show: true,
+                    position: 'top',
+                    formatter: '{c}'
+                }
+            }]
+        });
+
+        // 响应式调整
+        window.addEventListener('resize', function() {
+            statusPieChart.resize();
+            statusColumnChart.resize();
+            statusBarChart.resize();
+            successGaugeChart.resize();
+            taskFreqColumnChart.resize();
+            taskFreqBarChart.resize();
+            triggerPieChart.resize();
+            triggerColumnChart.resize();
+            queueColumnChart.resize();
+            queueAvgTimeBarChart.resize();
+            statusElapsedColumnChart.resize();
+            statusAvgTimeBarChart.resize();
+            statusElapsedScatterChart.resize();
+        });
+    </script>
+</body>
+</html>

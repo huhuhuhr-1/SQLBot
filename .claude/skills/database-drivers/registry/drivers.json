@@ -1,0 +1,567 @@
+{
+  "_comment": "数据库驱动注册表 - AI 友好格式 - 包含主流关系型数据库",
+  "_meta": {
+    "version": "2.0",
+    "lastUpdated": "2026-01-09T20:00:00+08:00",
+    "description": "统一管理所有数据库驱动的元数据，便于 AI 解析和使用。包含国内外主流关系型数据库驱动。"
+  },
+  "drivers": [
+    {
+      "name": "PostgreSQL",
+      "aliases": ["postgres", "postgresql", "pgsql"],
+      "databaseType": "postgresql",
+      "category": "开源数据库",
+      "description": "PostgreSQL 开源对象关系数据库系统",
+
+      "driver": {
+        "class": "org.postgresql.Driver",
+        "jarFile": "drivers/postgresql-42.3.8.jar",
+        "supported": true,
+        "fileSize": "1017K",
+        "downloaded": true
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:postgresql://[host]:[port]/[database]",
+        "defaultPort": 5432,
+        "urlExample": "jdbc:postgresql://localhost:5432/mydb"
+      },
+
+      "maven": {
+        "groupId": "org.postgresql",
+        "artifactId": "postgresql",
+        "version": "42.3.8",
+        "downloadUrl": "https://repo.maven.apache.org/maven2/org/postgresql/postgresql/42.3.8/postgresql-42.3.8.jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "10.x, 11.x, 12.x, 13.x, 14.x, 15.x, 16.x"
+      }
+    },
+    {
+      "name": "MySQL",
+      "aliases": ["mysql"],
+      "databaseType": "mysql",
+      "category": "开源数据库",
+      "description": "MySQL 开源关系数据库管理系统",
+
+      "driver": {
+        "class": "com.mysql.jdbc.Driver",
+        "jarFile": "drivers/mysql-connector-java-5.1.47.jar",
+        "supported": true,
+        "fileSize": "984K",
+        "downloaded": true
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:mysql://[host]:[port]/[database]",
+        "defaultPort": 3306,
+        "urlExample": "jdbc:mysql://localhost:3306/mydb"
+      },
+
+      "maven": {
+        "groupId": "mysql",
+        "artifactId": "mysql-connector-java",
+        "version": "5.1.47",
+        "downloadUrl": "https://repo.maven.apache.org/maven2/mysql/mysql-connector-java/5.1.47/mysql-connector-java-5.1.47.jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "5.5, 5.6, 5.7, 8.0"
+      }
+    },
+    {
+      "name": "Oracle Database",
+      "aliases": ["oracle", "oracle db"],
+      "databaseType": "oracle",
+      "category": "商业数据库",
+      "description": "Oracle Database 企业级关系数据库管理系统",
+
+      "driver": {
+        "class": "oracle.jdbc.OracleDriver",
+        "jarFile": "drivers/ojdbc11-23.26.0.0.0.jar",
+        "supported": true,
+        "fileSize": "7.6MB",
+        "downloaded": true
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:oracle:thin:@//[host]:[port]/[service]",
+        "defaultPort": 1521,
+        "urlExample": "jdbc:oracle:thin:@//localhost:1521/ORCL"
+      },
+
+      "maven": {
+        "groupId": "com.oracle.database.jdbc",
+        "artifactId": "ojdbc11",
+        "version": "23.26.0.0.0",
+        "downloadUrl": "https://repo.maven.apache.org/maven2/com/oracle/database/jdbc/ojdbc11/23.26.0.0.0/ojdbc11-23.26.0.0.0.jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "11+",
+        "databaseVersions": "19c, 21c, 23c"
+      }
+    },
+    {
+      "name": "Microsoft SQL Server",
+      "aliases": ["sqlserver", "mssql", "sql server"],
+      "databaseType": "sqlserver",
+      "category": "商业数据库",
+      "description": "Microsoft SQL Server 关系数据库管理系统",
+
+      "driver": {
+        "class": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+        "jarFile": "drivers/mssql-jdbc-12.8.0.jre8.jar",
+        "supported": true,
+        "fileSize": "1.2MB",
+        "downloaded": true
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:sqlserver://[host]:[port];databaseName=[database]",
+        "defaultPort": 1433,
+        "urlExample": "jdbc:sqlserver://localhost:1433;databaseName=mydb"
+      },
+
+      "maven": {
+        "groupId": "com.microsoft.sqlserver",
+        "artifactId": "mssql-jdbc",
+        "version": "12.8.0.jre8",
+        "downloadUrl": "https://repo.maven.apache.org/maven2/com/microsoft/sqlserver/mssql-jdbc/12.8.0.jre8/mssql-jdbc-12.8.0.jre8.jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "2012, 2014, 2016, 2017, 2019, 2022"
+      }
+    },
+    {
+      "name": "MariaDB",
+      "aliases": ["mariadb"],
+      "databaseType": "mariadb",
+      "category": "开源数据库",
+      "description": "MariaDB 开源关系数据库（MySQL 分支）",
+
+      "driver": {
+        "class": "org.mariadb.jdbc.Driver",
+        "jarFile": "drivers/mariadb-java-client-3.5.2.jar",
+        "supported": true,
+        "fileSize": "600KB",
+        "downloaded": true
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:mariadb://[host]:[port]/[database]",
+        "defaultPort": 3306,
+        "urlExample": "jdbc:mariadb://localhost:3306/mydb"
+      },
+
+      "maven": {
+        "groupId": "org.mariadb.jdbc",
+        "artifactId": "mariadb-java-client",
+        "version": "3.5.2",
+        "downloadUrl": "https://repo.maven.apache.org/maven2/org/mariadb/jdbc/mariadb-java-client/3.5.2/mariadb-java-client-3.5.2.jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "10.x, 11.x"
+      }
+    },
+    {
+      "name": "H2 Database",
+      "aliases": ["h2"],
+      "databaseType": "h2",
+      "category": "内存数据库",
+      "description": "H2 轻量级内存数据库，用于测试和开发",
+
+      "driver": {
+        "class": "org.h2.Driver",
+        "jarFile": "drivers/h2-2.4.240.jar",
+        "supported": true,
+        "fileSize": "2.5MB",
+        "downloaded": true
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:h2:[mem:file:][database]",
+        "defaultPort": 9092,
+        "urlExample": "jdbc:h2:mem:testdb"
+      },
+
+      "maven": {
+        "groupId": "com.h2database",
+        "artifactId": "h2",
+        "version": "2.4.240",
+        "downloadUrl": "https://repo.maven.apache.org/maven2/com/h2database/h2/2.4.240/h2-2.4.240.jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "2.x"
+      }
+    },
+    {
+      "name": "IBM DB2",
+      "aliases": ["db2", "ibm db2"],
+      "databaseType": "db2",
+      "category": "商业数据库",
+      "description": "IBM DB2 企业级关系数据库",
+
+      "driver": {
+        "class": "com.ibm.db2.jcc.DB2Driver",
+        "jarFile": "drivers/jcc-12.1.3.0.jar",
+        "supported": true,
+        "fileSize": "4.2MB",
+        "downloaded": true
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:db2://[host]:[port]/[database]",
+        "defaultPort": 50000,
+        "urlExample": "jdbc:db2://localhost:50000/mydb"
+      },
+
+      "maven": {
+        "groupId": "com.ibm.db2",
+        "artifactId": "jcc",
+        "version": "12.1.3.0",
+        "downloadUrl": "https://repo.maven.apache.org/maven2/com/ibm/db2/jcc/12.1.3.0/jcc-12.1.3.0.jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "10.x, 11.x"
+      }
+    },
+    {
+      "name": "达梦数据库",
+      "aliases": ["dm", "dameng", "达梦"],
+      "databaseType": "dm",
+      "category": "国产数据库",
+      "description": "达梦数据库国产关系数据库",
+
+      "driver": {
+        "class": "dm.jdbc.driver.DmDriver",
+        "jarFile": "drivers/DmJdbcDriver18.jar",
+        "supported": false,
+        "fileSize": "~2MB",
+        "downloaded": false,
+        "manualDownloadRequired": true,
+        "manualDownloadNote": "从达梦数据库安装目录 drivers/jdbc 文件夹获取，或联系达梦官方"
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:dm://[host]:[port]",
+        "defaultPort": 5236,
+        "urlExample": "jdbc:dm://localhost:5236"
+      },
+
+      "maven": {
+        "groupId": "com.dameng",
+        "artifactId": "DmJdbcDriver18",
+        "version": "8.1.2.192",
+        "installCommand": "mvn install:install-file -Dfile=DmJdbcDriver18.jar -DgroupId=com.dameng -DartifactId=DmJdbcDriver18 -Dversion=8.1.2.192 -Dpackaging=jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "7.x, 8.x"
+      }
+    },
+    {
+      "name": "人大金仓",
+      "aliases": ["kingbase", "kingbasees", "人大金仓"],
+      "databaseType": "kingbase",
+      "category": "国产数据库",
+      "description": "人大金仓 KingbaseES 国产关系数据库",
+
+      "driver": {
+        "class": "com.kingbase8.Driver",
+        "jarFile": "drivers/kingbase8jdbc.jar",
+        "supported": false,
+        "fileSize": "~1.5MB",
+        "downloaded": false,
+        "manualDownloadRequired": true,
+        "manualDownloadNote": "从 KingbaseES 安装目录获取 jdbc 驱动，或联系人大金仓官方"
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:kingbase8://[host]:[port]/[database]",
+        "defaultPort": 54321,
+        "urlExample": "jdbc:kingbase8://localhost:54321/mydb"
+      },
+
+      "maven": {
+        "groupId": "com.kingbase",
+        "artifactId": "kingbase8",
+        "version": "8.6.0",
+        "installCommand": "mvn install:install-file -Dfile=kingbase8jdbc.jar -DgroupId=com.kingbase -DartifactId=kingbase8 -Dversion=8.6.0 -Dpackaging=jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "V8R3, V8R6"
+      }
+    },
+    {
+      "name": "OceanBase",
+      "aliases": ["oceanbase"],
+      "databaseType": "oceanbase",
+      "category": "国产数据库",
+      "description": "OceanBase 分布式关系数据库（阿里/蚂蚁集团）",
+
+      "driver": {
+        "class": "com.oceanbase.jdbc.Driver",
+        "jarFile": "drivers/oceanbase-client-2.4.15.jar",
+        "supported": true,
+        "fileSize": "800KB",
+        "downloaded": true
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:oceanbase://[host]:[port]/[database]",
+        "defaultPort": 2881,
+        "urlExample": "jdbc:oceanbase://localhost:2881/mydb"
+      },
+
+      "maven": {
+        "groupId": "com.oceanbase",
+        "artifactId": "oceanbase-client",
+        "version": "2.4.15",
+        "downloadUrl": "https://repo.maven.apache.org/maven2/com/oceanbase/oceanbase-client/2.4.15/oceanbase-client-2.4.15.jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "3.x, 4.x",
+        "modes": "MySQL模式, Oracle模式"
+      }
+    },
+    {
+      "name": "ClickHouse",
+      "aliases": ["clickhouse"],
+      "databaseType": "clickhouse",
+      "category": "分析型数据库",
+      "description": "ClickHouse 列式分析型数据库",
+
+      "driver": {
+        "class": "com.clickhouse.jdbc.ClickHouseDriver",
+        "jarFile": "drivers/clickhouse-jdbc-0.6.0.jar",
+        "supported": true,
+        "fileSize": "500KB",
+        "downloaded": true
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:clickhouse://[host]:[port]/[database]",
+        "defaultPort": 8123,
+        "urlExample": "jdbc:clickhouse://localhost:8123/mydb"
+      },
+
+      "maven": {
+        "groupId": "com.clickhouse",
+        "artifactId": "clickhouse-jdbc",
+        "version": "0.6.0",
+        "downloadUrl": "https://repo.maven.apache.org/maven2/com/clickhouse/clickhouse-jdbc/0.6.0/clickhouse-jdbc-0.6.0.jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "11+",
+        "databaseVersions": "22.x, 23.x, 24.x"
+      }
+    },
+    {
+      "name": "Apache Hive",
+      "aliases": ["hive"],
+      "databaseType": "hive",
+      "category": "大数据",
+      "description": "Apache Hive 数据仓库软件",
+
+      "driver": {
+        "class": "org.apache.hive.jdbc.HiveDriver",
+        "jarFile": "drivers/hive-jdbc-4.2.0.jar",
+        "supported": true,
+        "fileSize": "167KB",
+        "downloaded": true
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:hive2://[host]:[port]/[database]",
+        "defaultPort": 10000,
+        "urlExample": "jdbc:hive2://localhost:10000/mydb"
+      },
+
+      "maven": {
+        "groupId": "org.apache.hive",
+        "artifactId": "hive-jdbc",
+        "version": "4.2.0",
+        "downloadUrl": "https://repo.maven.apache.org/maven2/org/apache/hive/hive-jdbc/4.2.0/hive-jdbc-4.2.0.jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "21+",
+        "databaseVersions": "3.x, 4.x"
+      }
+    },
+    {
+      "name": "GaussDB/openGauss",
+      "aliases": ["gaussdb", "opengauss", "华为高斯"],
+      "databaseType": "opengauss",
+      "category": "国产数据库",
+      "description": "华为 GaussDB/openGauss 企业级关系数据库",
+
+      "driver": {
+        "class": "org.opengauss.Driver",
+        "jarFile": "drivers/opengauss-jdbc-5.1.0.jar",
+        "supported": false,
+        "fileSize": "~1MB",
+        "downloaded": false,
+        "manualDownloadRequired": true,
+        "manualDownloadNote": "从华为云 Kunpir 镜像仓库或 openGauss 官网下载，兼容 PostgreSQL 协议但需专用驱动"
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:opengauss://[host]:[port]/[database]",
+        "defaultPort": 5432,
+        "urlExample": "jdbc:opengauss://localhost:5432/mydb"
+      },
+
+      "maven": {
+        "groupId": "org.opengauss",
+        "artifactId": "opengauss-jdbc",
+        "version": "5.1.0"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "2.x, 3.x, 5.x"
+      }
+    },
+    {
+      "name": "Sybase ASE",
+      "aliases": ["sybase", "sap sybase"],
+      "databaseType": "sybase",
+      "category": "商业数据库",
+      "description": "SAP Sybase Adaptive Server Enterprise",
+
+      "driver": {
+        "class": "com.sybase.jdbc4.jdbc.SybDriver",
+        "jarFile": "drivers/jconn4.jar",
+        "supported": false,
+        "fileSize": "~1.2MB",
+        "downloaded": false,
+        "manualDownloadRequired": true,
+        "manualDownloadNote": "需从 SAP/Sybase 官网下载 jConnect，不在 Maven 中央仓库"
+      },
+
+      "connection": {
+        "jdbcUrlPattern": "jdbc:sybase:Tds:[host]:[port]/[database]",
+        "defaultPort": 5000,
+        "urlExample": "jdbc:sybase:Tds:localhost:5000/mydb"
+      },
+
+      "maven": {
+        "groupId": "jdbc.sybase",
+        "artifactId": "jconn4",
+        "version": "7.07",
+        "installCommand": "mvn install:install-file -Dfile=jconn4.jar -DgroupId=jdbc.sybase -DartifactId=jconn4 -Dversion=7.07 -Dpackaging=jar"
+      },
+
+      "compatibility": {
+        "javaVersion": "8+",
+        "databaseVersions": "15.x, 16.x"
+      }
+    }
+  ],
+
+  "quickReference": {
+    "byName": {
+      "postgresql": {
+        "driverClass": "org.postgresql.Driver",
+        "jarFile": "drivers/postgresql-42.3.8.jar"
+      },
+      "mysql": {
+        "driverClass": "com.mysql.jdbc.Driver",
+        "jarFile": "drivers/mysql-connector-java-5.1.47.jar"
+      },
+      "oracle": {
+        "driverClass": "oracle.jdbc.OracleDriver",
+        "jarFile": "drivers/ojdbc11-23.26.0.0.0.jar"
+      },
+      "sqlserver": {
+        "driverClass": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+        "jarFile": "drivers/mssql-jdbc-12.8.0.jre8.jar"
+      },
+      "mariadb": {
+        "driverClass": "org.mariadb.jdbc.Driver",
+        "jarFile": "drivers/mariadb-java-client-3.5.2.jar"
+      },
+      "h2": {
+        "driverClass": "org.h2.Driver",
+        "jarFile": "drivers/h2-2.4.240.jar"
+      },
+      "db2": {
+        "driverClass": "com.ibm.db2.jcc.DB2Driver",
+        "jarFile": "drivers/jcc-12.1.3.0.jar"
+      },
+      "dm": {
+        "driverClass": "dm.jdbc.driver.DmDriver",
+        "jarFile": "drivers/DmJdbcDriver18.jar",
+        "manualDownload": true
+      },
+      "kingbase": {
+        "driverClass": "com.kingbase8.Driver",
+        "jarFile": "drivers/kingbase8jdbc.jar",
+        "manualDownload": true
+      },
+      "oceanbase": {
+        "driverClass": "com.oceanbase.jdbc.Driver",
+        "jarFile": "drivers/oceanbase-client-2.4.15.jar"
+      },
+      "clickhouse": {
+        "driverClass": "com.clickhouse.jdbc.ClickHouseDriver",
+        "jarFile": "drivers/clickhouse-jdbc-0.6.0.jar"
+      },
+      "hive": {
+        "driverClass": "org.apache.hive.jdbc.HiveDriver",
+        "jarFile": "drivers/hive-jdbc-4.2.0.jar"
+      }
+    },
+    "byDriverClass": {
+      "org.postgresql.Driver": "PostgreSQL",
+      "com.mysql.jdbc.Driver": "MySQL",
+      "oracle.jdbc.OracleDriver": "Oracle Database",
+      "com.microsoft.sqlserver.jdbc.SQLServerDriver": "Microsoft SQL Server",
+      "org.mariadb.jdbc.Driver": "MariaDB",
+      "org.h2.Driver": "H2 Database",
+      "com.ibm.db2.jcc.DB2Driver": "IBM DB2",
+      "dm.jdbc.driver.DmDriver": "达梦数据库",
+      "com.kingbase8.Driver": "人大金仓",
+      "com.oceanbase.jdbc.Driver": "OceanBase",
+      "com.clickhouse.jdbc.ClickHouseDriver": "ClickHouse",
+      "org.apache.hive.jdbc.HiveDriver": "Apache Hive"
+    }
+  },
+
+  "categories": {
+    "开源数据库": ["PostgreSQL", "MySQL", "MariaDB", "H2 Database"],
+    "商业数据库": ["Oracle Database", "Microsoft SQL Server", "IBM DB2", "Sybase ASE"],
+    "国产数据库": ["达梦数据库", "人大金仓", "OceanBase", "GaussDB/openGauss"],
+    "分析型数据库": ["ClickHouse"],
+    "大数据": ["Apache Hive"],
+    "内存数据库": ["H2 Database"]
+  },
+
+  "statistics": {
+    "total": 14,
+    "downloaded": 8,
+    "manualDownloadRequired": 4,
+    "opensource": 4,
+    "commercial": 4,
+    "domestic": 4
+  }
+}
