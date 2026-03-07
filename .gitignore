@@ -186,6 +186,10 @@ cython_debug/
 .DS_Store
 test.py
 
+# 临时与产出目录（分析脚本、会话输出、构建临时文件）
+/tmp/
+/build/tmp/
+
 
 !/.venv/
 /backend/offline_packages/

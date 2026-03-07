@@ -1,68 +1,93 @@
-# SQLBot 优化构建方案
+# SQLBot 构建与打包
+
+本目录包含 Docker 镜像构建与多平台打包脚本，用于本地开发、离线部署及 CI 使用。
 
 ## 构建思路
 
-这个构建方案解决了离线环境包构建困难的问题：
+- **阶段一：完整构建（依赖 + 代码）**  
+  使用项目根目录的 `Dockerfile`，生成包含系统依赖、Python 环境、前端构建、数据库驱动等的基础镜像。  
+  适合：首次构建、依赖或前端变更后。
 
-### 阶段1：完整构建（依赖+代码）
-- **使用**: 根目录的原始`Dockerfile`
-- **目标镜像**: `sqlbot-dev-20251130:latest`
-- **包含内容**:
-  - 所有系统依赖、Python环境（uv sync）
-  - 前端构建结果（npm build）
-  - 数据库驱动和模型文件
-  - g2-ssr服务
-  - 完整的backend代码
+- **阶段二：快速构建（仅代码更新）**  
+  基于阶段一的基础镜像，仅覆盖 backend 代码，复用所有依赖。  
+  适合：日常开发、仅改后端代码时，构建耗时约 1–2 分钟。
 
-### 阶段2：快速构建（仅代码更新）
-- **目标镜像**: `zf-sqlbot:latest`
-- **基础镜像**: `sqlbot-dev-20251130:latest`
-- **操作**: 只覆盖backend代码，复用所有依赖
-- **优势**: 构建速度极快（1-2分钟），适合频繁开发
+## 脚本一览
 
-## 文件说明
+| 脚本 | 说明 | 使用场景 |
+|------|------|----------|
+| `build-base.sh` | 构建基础镜像（根目录 Dockerfile） | 首次构建或依赖/前端变更 |
+| `build-quick.sh` | 快速构建（仅覆盖 backend） | 日常后端代码更新 |
+| `build-quick-x86.sh` | 仅 x86 快速构建 | 本机 x86 开发 |
+| `build-quick-arm64.sh` | 仅 ARM64 快速构建 | 本机 ARM64 开发 |
+| `build-multiplatform.sh` | 多平台基础镜像（x86 + arm64） | 需同时产出多架构镜像 |
+| `build-multiplatform-optimized.sh` | 多平台构建（优化缓存） | 多架构 + 利用本地缓存 |
 
-- `build-base.sh`: 基础镜像构建脚本，使用根目录Dockerfile
-- `build-quick.sh`: 快速构建脚本，基于基础镜像只更新backend代码
-- `Dockerfile.update`: 快速构建用的Dockerfile，只覆盖backend代码
+根目录的 `quick.sh` 为单脚本一键构建当前平台最终镜像（不区分基础/快速，适合快速试跑）。
 
 ## 使用方法
 
-### 首次构建或依赖更新时：
+### 推荐：使用统一入口
+
+```bash
+cd build
+./build.sh [目标]
+```
+
+**目标**（可选）：
+
+- `base` — 执行 `build-base.sh`
+- `quick` — 执行 `build-quick.sh`
+- `quick-x86` — 执行 `build-quick-x86.sh`
+- `quick-arm64` — 执行 `build-quick-arm64.sh`
+- `multiplatform` — 执行 `build-multiplatform.sh`
+- `multiplatform-optimized` — 执行 `build-multiplatform-optimized.sh`
+- 不传参数 — 打印上述用法说明
+
+### 直接调用具体脚本
+
+**首次或依赖/前端变更后：**
+
 ```bash
 cd build
 ./build-base.sh
 ```
 
-### 后续backend代码更新时：
+**仅后端代码更新：**
+
 ```bash
 cd build
 ./build-quick.sh
 ```
 
-### 手动构建：
-```bash
-# 构建基础镜像（使用根目录Dockerfile）
-cd .. && docker build -t sqlbot-dev-20251130:latest .
+**仅构建当前平台（根目录）：**
 
-# 快速构建（仅backend代码）
+```bash
+./quick.sh
+```
+
+### 手动构建示例
+
+```bash
+# 基础镜像（使用根目录 Dockerfile）
+docker build -t sqlbot-dev-20251130:latest .
+
+# 快速构建（仅 backend）
 docker build -t zf-sqlbot:latest -f build/Dockerfile.update .
 ```
 
-## 优势
+## 镜像与文件说明
 
-1. **构建效率高**: 后续更新只需复制backend代码，无需重新安装依赖
-2. **离线友好**: 基础镜像包含所有依赖，离线环境只需要代码覆盖
-3. **版本管理**: 基础镜像带有版本号，便于管理和回滚
-4. **灵活性强**: 可以选择性构建，节省时间
-
-## 镜像大小说明
-
-- 基础镜像：~2-3GB（包含所有依赖）
-- 最终镜像：与基础镜像相当（主要是代码层的覆盖）
+- **基础镜像**：`sqlbot-dev-20251130:latest`（x86）、`sqlbot-dev-20251130:arm64`（ARM64）
+- **快速构建产出**：`zf-sqlbot:latest`（x86）、`zf-sqlbot:arm64`（ARM64）
+- `Dockerfile`：本目录内用于说明/参考的 Dockerfile（若存在）
+- `Dockerfile.update`：仅复制 backend 的更新用 Dockerfile
+- `Dockerfile.update.x86` / `Dockerfile.update.arm64`：对应架构的更新用 Dockerfile
 
 ## 注意事项
 
-- 基础镜像构建需要较长的时间（30-60分钟）
-- 快速构建通常只需要1-2分钟
-- 如需更新uv依赖或前端，必须重新构建基础镜像
+- 基础镜像构建耗时较长（约 30–60 分钟），快速构建约 1–2 分钟。
+- 更新 Python 依赖或前端后，需重新执行 `build-base.sh`（或对应多平台脚本）。
+- 多平台脚本依赖 `docker buildx`，未安装时需先安装对应插件。
+
+更多安装与部署说明见项目根目录 [README.md](../README.md) 与 [docs/INSTALL.md](../docs/INSTALL.md)。

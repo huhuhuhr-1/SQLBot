@@ -62,6 +62,12 @@ docker run -d \
 - 用户名: admin
 - 密码: SQLBot@123456
 
+### 更多文档
+
+- [安装与部署](docs/INSTALL.md) — Docker、离线安装包、自建镜像
+- [构建与打包](build/README.md) — 本地构建脚本说明
+- [本地开发](docs/DEVELOPMENT.md) — 后端/前端开发与脚本说明
+
 ### 联系我们
 
 如你有更多问题，可以加入我们的技术交流群与我们交流。
