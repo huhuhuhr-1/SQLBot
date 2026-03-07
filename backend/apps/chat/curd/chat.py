@@ -1,5 +1,5 @@
 import datetime
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
 
 import orjson
 import sqlparse
@@ -9,13 +9,16 @@ from sqlalchemy.orm import aliased
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
     TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
+from apps.datasource.crud.datasource import get_ds
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
+from apps.db.db import exec_sql
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
-from common.utils.utils import extract_nested_json
+from common.utils.data_format import DataFormat
+from common.utils.utils import extract_nested_json, SQLBotLogUtil
 
 
 def get_chat_record_by_id(session: SessionDep, record_id: int):
@@ -234,6 +237,30 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
             pass
     return {}
 
+def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    stmt = select(ChatRecord.datasource,ChatRecord.sql).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+    row = session.execute(stmt).first()
+    return get_chart_data_ds(session,row.datasource, row.sql)
+
+def get_chart_data_ds(session: SessionDep,ds_id,sql):
+    json_result: Dict[str, Any] = {'status': 'success','data':[],'message':''}
+    try:
+        datasource = get_ds(session,ds_id)
+        if datasource is None:
+            json_result['status'] = 'failed'
+            json_result['message'] = 'Datasource not found'
+            return json_result
+        else:
+            result = exec_sql(ds=datasource,sql=sql, origin_column=False)
+            _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
+            json_result['data'] = _data
+            return json_result
+    except Exception as e:
+        SQLBotLogUtil.error(f"Function failed: {e}")
+        json_result['status'] = 'failed'
+        json_result['message'] = f"{e}"
+        pass
+    return json_result
 
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
     stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id))
@@ -307,7 +334,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     predict_alias_log = aliased(ChatLog)
 
     stmt = (select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
-                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,
+                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,ChatRecord.datasource,
                    ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                    ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                    ChatRecord.regenerate_record_id,
@@ -334,7 +361,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         ChatRecord.create_time))
     if with_data:
         stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
-                      ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,
+                      ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,ChatRecord.datasource,
                       ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                       ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                       ChatRecord.regenerate_record_id,
@@ -400,7 +427,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                  finish_time=row.finish_time,
                                  duration=duration,
                                  total_tokens=total_tokens,
-                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql, datasource=row.datasource,
                                  chart_answer=row.chart_answer, chart=row.chart,
                                  analysis=row.analysis, predict=row.predict,
                                  datasource_select_answer=row.datasource_select_answer,
@@ -419,7 +446,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                  finish_time=row.finish_time,
                                  duration=duration,
                                  total_tokens=total_tokens,
-                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql, datasource=row.datasource,
                                  chart_answer=row.chart_answer, chart=row.chart,
                                  analysis=row.analysis, predict=row.predict,
                                  datasource_select_answer=row.datasource_select_answer,
