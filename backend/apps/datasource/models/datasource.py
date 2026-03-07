@@ -35,6 +35,7 @@ class CoreTable(SQLModel, table=True):
     custom_comment: str = Field(sa_column=Column(Text))
     embedding: str = Field(sa_column=Column(Text, nullable=True))
 
+
 class DsRecommendedProblem(SQLModel, table=True):
     __tablename__ = "ds_recommended_problem"
     id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))
@@ -74,6 +75,18 @@ class CreateDatasource(BaseModel):
     tables: List[CoreTable] = []
     recommended_config: int = 1
 
+
+class RecommendedProblemResponse:
+    def __init__(self, datasource_id, recommended_config, questions):
+        self.datasource_id = datasource_id
+        self.recommended_config = recommended_config
+        self.questions = questions
+
+    datasource_id: int = None
+    recommended_config: int = None
+    questions: str = None
+
+
 class RecommendedProblemBase(BaseModel):
     datasource_id: int = None
     recommended_config: int = None
@@ -107,6 +120,7 @@ class DatasourceConf(BaseModel):
     sheets: List = ''
     mode: str = ''
     timeout: int = 30
+    lowVersion: bool = False
 
     def to_dict(self):
         return {
@@ -121,7 +135,8 @@ class DatasourceConf(BaseModel):
             "filename": self.filename,
             "sheets": self.sheets,
             "mode": self.mode,
-            "timeout": self.timeout
+            "timeout": self.timeout,
+            "lowVersion": self.lowVersion
         }
 
 
@@ -132,6 +147,11 @@ class TableSchema:
 
     tableName: str
     tableComment: str
+
+
+class TableSchemaResponse(BaseModel):
+    tableName: str = ''
+    tableComment: str | None = ''
 
 
 class ColumnSchema:
@@ -145,6 +165,12 @@ class ColumnSchema:
     fieldComment: str
 
 
+class ColumnSchemaResponse(BaseModel):
+    fieldName: str | None = ''
+    fieldType: str | None = ''
+    fieldComment: str | None = ''
+
+
 class TableAndFields:
     def __init__(self, schema, table, fields):
         self.schema = schema
@@ -154,3 +180,13 @@ class TableAndFields:
     schema: str
     table: CoreTable
     fields: List[CoreField]
+
+
+class FieldObj(BaseModel):
+    fieldName: str | None
+
+
+class PreviewResponse(BaseModel):
+    fields: List | None = []
+    data: List | None = []
+    sql: str | None = ''

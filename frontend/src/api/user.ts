@@ -1,7 +1,7 @@
 import { request } from '@/utils/request'
 
 export const userImportApi = {
-  downExcelTemplateApi: () => request.post('/user/excelTemplate', {}, { responseType: 'blob' }),
+  downExcelTemplateApi: () => request.get('/user/template', { responseType: 'blob' }),
   importUserApi: (data: any) =>
     request.post('/user/batchImport', data, {
       headers: {
@@ -21,6 +21,7 @@ export const userApi = {
   add: (data: any) => request.post('/user', data),
   edit: (data: any) => request.put('/user', data),
   clearErrorApi: (key: string) => request.get(`/user/clearErrorRecord/${key}`),
+  errorRecord: (key: string) => request.get(`/user/errorRecord/${key}`, { responseType: 'blob' }),
   delete: (key: string) => request.delete(`/user/${key}`),
   deleteBatch: (data: any) => request.delete(`/user`, { data }),
   get: (key: string) => request.get(`/user/${key}`),

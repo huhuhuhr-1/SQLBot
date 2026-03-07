@@ -48,6 +48,10 @@ const props = defineProps({
     type: String,
     default: 'canvas-main',
   },
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const { configItem } = toRefs(props)
@@ -118,7 +122,7 @@ const beforeHandleCommand = (item: any, param: any) => {
     param: param,
   }
 }
-const isEditMode = computed(() => props.showPosition === 'canvas')
+const isEditMode = computed(() => props.showPosition === 'canvas' && !props.disabled)
 const outResizeEnd = () => {
   state.tabShow = false
   nextTick(() => {

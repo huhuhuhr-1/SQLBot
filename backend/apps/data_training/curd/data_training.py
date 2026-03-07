@@ -162,10 +162,7 @@ def create_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans
 
     # 检查数据源和高级应用不能同时为空
     if info.datasource is None and info.advanced_application is None:
-        if oid == 1:
-            raise Exception(trans("i18n_data_training.datasource_assistant_cannot_be_none"))
-        else:
-            raise Exception(trans("i18n_data_training.datasource_cannot_be_none"))
+        raise Exception(trans("i18n_data_training.datasource_assistant_cannot_be_none"))
 
     # 检查重复记录
     stmt = select(DataTraining.id).where(
@@ -221,10 +218,7 @@ def update_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans
         raise Exception(trans("i18n_data_training.description_cannot_be_empty"))
 
     if info.datasource is None and info.advanced_application is None:
-        if oid == 1:
-            raise Exception(trans("i18n_data_training.datasource_assistant_cannot_be_none"))
-        else:
-            raise Exception(trans("i18n_data_training.datasource_cannot_be_none"))
+        raise Exception(trans("i18n_data_training.datasource_assistant_cannot_be_none"))
 
     count = session.query(DataTraining).filter(
         DataTraining.id == info.id
@@ -310,11 +304,11 @@ def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo]
         datasource_name_to_id[ds.name.strip()] = ds.id
 
     assistant_name_to_id = {}
-    if oid == 1:
-        assistant_stmt = select(AssistantModel.id, AssistantModel.name).where(AssistantModel.type == 1)
-        assistant_result = session.execute(assistant_stmt).all()
-        for assistant in assistant_result:
-            assistant_name_to_id[assistant.name.strip()] = assistant.id
+
+    assistant_stmt = select(AssistantModel.id, AssistantModel.name).where(and_(AssistantModel.type == 1, AssistantModel.oid == oid))
+    assistant_result = session.execute(assistant_stmt).all()
+    for assistant in assistant_result:
+        assistant_name_to_id[assistant.name.strip()] = assistant.id
 
     # 验证和转换数据
     valid_records = []
@@ -338,7 +332,7 @@ def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo]
 
         # 高级应用验证和转换
         advanced_application_id = None
-        if oid == 1 and info.advanced_application_name and info.advanced_application_name.strip():
+        if info.advanced_application_name and info.advanced_application_name.strip():
             if info.advanced_application_name.strip() in assistant_name_to_id:
                 advanced_application_id = assistant_name_to_id[info.advanced_application_name.strip()]
             else:
@@ -346,12 +340,8 @@ def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo]
                     trans("i18n_data_training.advanced_application_not_found").format(info.advanced_application_name))
 
         # 检查数据源和高级应用不能同时为空
-        if oid == 1:
-            if not datasource_id and not advanced_application_id:
-                error_messages.append(trans("i18n_data_training.datasource_assistant_cannot_be_none"))
-        else:
-            if not datasource_id:
-                error_messages.append(trans("i18n_data_training.datasource_cannot_be_none"))
+        if not datasource_id and not advanced_application_id:
+            error_messages.append(trans("i18n_data_training.datasource_assistant_cannot_be_none"))
 
         if error_messages:
             failed_records.append({
@@ -610,15 +600,15 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'sql-examples') -> str:
 
 
 def get_training_template(session: SessionDep, question: str, oid: Optional[int] = 1, datasource: Optional[int] = None,
-                          advanced_application_id: Optional[int] = None) -> str:
+                          advanced_application_id: Optional[int] = None) -> tuple[str, list[dict]]:
     if not oid:
         oid = 1
     if not datasource and not advanced_application_id:
-        return ''
+        return '', []
     _results = select_training_by_question(session, question, oid, datasource, advanced_application_id)
     if _results and len(_results) > 0:
         data_training = to_xml_string(_results)
         template = get_base_data_training_template().format(data_training=data_training)
-        return template
+        return template, _results
     else:
-        return ''
+        return '', []

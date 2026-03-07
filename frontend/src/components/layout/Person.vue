@@ -6,6 +6,7 @@ import icon_info_outlined_1 from '@/assets/svg/icon_info_outlined_1.svg'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import icon_maybe_outlined from '@/assets/svg/icon-maybe_outlined.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
+import icon_api_key from '@/assets/svg/icon-api_key.svg'
 import icon_translate_outlined from '@/assets/svg/icon_translate_outlined.svg'
 import icon_logout_outlined from '@/assets/svg/icon_logout_outlined.svg'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
@@ -13,10 +14,14 @@ import AboutDialog from '@/components/about/index.vue'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import PwdForm from './PwdForm.vue'
+import Apikey from './Apikey.vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { userApi } from '@/api/auth'
+import { toLoginPage } from '@/utils/utils'
+import { useCache } from '@/utils/useCache'
 
+const { wsCache } = useCache()
 const router = useRouter()
 const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
@@ -31,7 +36,18 @@ const name = computed(() => userStore.getName)
 const account = computed(() => userStore.getAccount)
 const currentLanguage = computed(() => userStore.getLanguage)
 const isAdmin = computed(() => userStore.isAdmin)
+const isLocalUser = computed(() => !userStore.getOrigin)
+
+const isClient = computed(() => {
+  return !!wsCache.get('sqlbot-platform-client')
+})
+
+const platFlag = computed(() => {
+  const platformInfo = userStore.getPlatformInfo
+  return platformInfo?.origin || 0
+})
 const dialogVisible = ref(false)
+const apikeyDialogVisible = ref(false)
 const aboutRef = ref()
 const languageList = computed(() => [
   {
@@ -75,7 +91,9 @@ const openPwd = () => {
 const closePwd = () => {
   dialogVisible.value = false
 }
-
+const openApikey = () => {
+  apikeyDialogVisible.value = true
+}
 const toAbout = () => {
   aboutRef.value?.open()
 }
@@ -83,8 +101,10 @@ const savePwdHandler = () => {
   pwdFormRef.value?.submit()
 }
 const logout = async () => {
-  await userStore.logout()
-  router.push('/login')
+  if (!(await userStore.logout())) {
+    router.push(toLoginPage(router?.currentRoute?.value?.fullPath || ''))
+    // router.push('/login')
+  }
 }
 </script>
 
@@ -118,11 +138,17 @@ const logout = async () => {
           </el-icon>
           <div class="datasource-name">{{ $t('common.system_manage') }}</div>
         </div>
-        <div class="popover-item" @click="openPwd">
+        <div v-if="isLocalUser && !platFlag" class="popover-item" @click="openPwd">
           <el-icon size="16">
             <icon_key_outlined></icon_key_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('user.change_password') }}</div>
+        </div>
+        <div class="popover-item" @click="openApikey">
+          <el-icon size="16">
+            <icon_api_key></icon_api_key>
+          </el-icon>
+          <div class="datasource-name">API Key</div>
         </div>
         <el-popover :teleported="false" popper-class="system-language" placement="right">
           <template #reference>
@@ -164,7 +190,7 @@ const logout = async () => {
           <div class="datasource-name">{{ $t('common.help') }}</div>
         </div>
         <div style="height: 4px; width: 100%"></div>
-        <div class="popover-item mr4" @click="logout">
+        <div v-if="!isClient" class="popover-item mr4" @click="logout">
           <el-icon size="16">
             <icon_logout_outlined></icon_logout_outlined>
           </el-icon>
@@ -182,6 +208,9 @@ const logout = async () => {
         <el-button type="primary" @click="savePwdHandler">{{ t('common.save') }}</el-button>
       </div>
     </template>
+  </el-dialog>
+  <el-dialog v-model="apikeyDialogVisible" title="API Key" width="840">
+    <apikey v-if="apikeyDialogVisible" ref="apikeyRef" />
   </el-dialog>
   <AboutDialog ref="aboutRef" />
 </template>

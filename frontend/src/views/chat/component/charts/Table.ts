@@ -1,14 +1,16 @@
 import { BaseChart, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
 import {
-  TableSheet,
-  S2Event,
   copyToClipboard,
-  type S2Options,
   type S2DataConfig,
+  S2Event,
   type S2MountContainer,
+  type S2Options,
+  type SortMethod,
+  TableSheet,
 } from '@antv/s2'
-import { debounce } from 'lodash-es'
+import { debounce, filter } from 'lodash-es'
 import { i18n } from '@/i18n'
+import '@antv/s2/dist/s2.min.css'
 
 const { t } = i18n.global
 
@@ -43,9 +45,18 @@ export class Table extends BaseChart {
   }
 
   init(axis: Array<ChartAxis>, data: Array<ChartData>) {
-    super.init(axis, data)
+    super.init(
+      filter(axis, (a) => !a.hidden), //隐藏多指标的other-info列
+      data
+    )
 
     const s2DataConfig: S2DataConfig = {
+      sortParams:
+        this.axis?.map((a) => {
+          return {
+            sortFieldId: a.value,
+          }
+        }) ?? [],
       fields: {
         columns: this.axis?.map((a) => a.value) ?? [],
       },
@@ -59,9 +70,87 @@ export class Table extends BaseChart {
       data: this.data,
     }
 
+    const sortState: Record<string, string> = {}
+
+    const handleSortClick = (params: any) => {
+      const { meta } = params
+      const s2 = meta.spreadsheet
+      if (s2 && meta.isLeaf) {
+        const fieldId = meta.field
+        const currentMethod = sortState[fieldId] || 'none'
+        const sortOrder = ['none', 'desc', 'asc']
+        const nextMethod = sortOrder[(sortOrder.indexOf(currentMethod) + 1) % sortOrder.length]
+        sortState[fieldId] = nextMethod
+        s2.groupSortByMethod(nextMethod === 'none' ? 'none' : (nextMethod as SortMethod), meta)
+        s2.render()
+      }
+    }
+
     const s2Options: S2Options = {
       width: 600,
       height: 360,
+      showDefaultHeaderActionIcon: false,
+      headerActionIcons: [
+        {
+          icons: ['GlobalDesc'],
+          belongsCell: 'colCell',
+          displayCondition: (node: any) => node.isLeaf && sortState[node.field] === 'desc',
+          onClick: handleSortClick,
+        },
+        {
+          icons: ['GlobalAsc'],
+          belongsCell: 'colCell',
+          displayCondition: (node: any) => node.isLeaf && sortState[node.field] === 'asc',
+          onClick: handleSortClick,
+        },
+        {
+          icons: ['SortDown'],
+          belongsCell: 'colCell',
+          displayCondition: (node: any) =>
+            node.isLeaf && (!sortState[node.field] || sortState[node.field] === 'none'),
+          onClick: handleSortClick,
+        },
+      ],
+      tooltip: {
+        operation: {
+          sort: true,
+        },
+        dataCell: {
+          enable: true,
+          content: (cell) => {
+            const meta = cell.getMeta()
+            const container = document.createElement('div')
+            container.style.padding = '8px 0'
+            container.style.minWidth = '100px'
+            container.style.maxWidth = '400px'
+            container.style.display = 'flex'
+            container.style.alignItems = 'center'
+            container.style.padding = '8px 16px'
+            container.style.cursor = 'pointer'
+            container.style.color = '#606266'
+            container.style.fontSize = '14px'
+            container.style.whiteSpace = 'pre-wrap'
+
+            const text = document.createTextNode(meta.fieldValue)
+            container.appendChild(text)
+
+            return container
+          },
+        },
+      },
+      // 如果有省略号, 复制到的是完整文本
+      interaction: {
+        copy: {
+          enable: true,
+          withFormat: true,
+          withHeader: true,
+        },
+        brushSelection: {
+          dataCell: true,
+          rowCell: true,
+          colCell: true,
+        },
+      },
       placeholder: {
         cell: '-',
         empty: {
@@ -82,6 +171,9 @@ export class Table extends BaseChart {
         event.preventDefault()
       })
       this.table.on(S2Event.GLOBAL_CONTEXT_MENU, (event) => copyData(event, this.table))
+      // this.table.on(S2Event.RANGE_SORT, (sortParams) => {
+      //   console.log('sortParams:', sortParams)
+      // })
     }
   }
 
@@ -108,7 +200,12 @@ function copyData(event: any, s2?: TableSheet) {
     const c = cells[0]
     const cellMeta = s2.facet.getCellMeta(c.rowIndex, c.colIndex)
     if (cellMeta) {
-      copyToClipboard(cellMeta.fieldValue as string).finally(() => {
+      let value = cellMeta.fieldValue
+      if (value === null || value === undefined) {
+        value = '-'
+      }
+      value = value + ''
+      copyToClipboard(value).finally(() => {
         ElMessage.success(t('qa.copied'))
         console.debug('copied:', cellMeta.fieldValue)
       })
@@ -132,7 +229,12 @@ function copyData(event: any, s2?: TableSheet) {
         currentRowData = []
         currentRowIndex = c.rowIndex
       }
-      currentRowData.push(cellMeta.fieldValue as string)
+      let value = cellMeta.fieldValue
+      if (value === null || value === undefined) {
+        value = '-'
+      }
+      value = value + ''
+      currentRowData.push(value)
     }
     rowData.push(currentRowData.join('\t'))
     const finalValue = rowData.join('\n')

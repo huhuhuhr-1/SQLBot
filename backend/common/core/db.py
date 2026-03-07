@@ -30,7 +30,14 @@ def get_session() -> Generator[Session, None, None]:
         Session: 数据库会话对象
     """
     with Session(engine) as session:
-        yield session
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
 
 def get_session_direct() -> Session:

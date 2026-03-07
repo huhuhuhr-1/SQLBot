@@ -1,4 +1,5 @@
 import json
+import re
 import urllib
 from typing import Optional
 
@@ -10,6 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 # from apps.datasource.embedding.table_embedding import get_table_embedding
 from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
+from apps.datasource.utils.utils import aes_encrypt
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import AssistantHeader, AssistantOutDsSchema, UserInfoDTO
@@ -17,7 +19,8 @@ from common.core.config import settings
 from common.core.db import engine
 from common.core.sqlbot_cache import cache
 from common.utils.aes_crypto import simple_aes_decrypt
-from common.utils.utils import equals_ignore_case, string_to_numeric_hash
+from common.utils.utils import SQLBotLogUtil, equals_ignore_case, get_domain_list, string_to_numeric_hash
+from common.core.deps import Trans
 
 
 @cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
@@ -78,7 +81,7 @@ def init_dynamic_cors(app: FastAPI):
             unique_domains = []
             for item in list_result:
                 if item.domain:
-                    for domain in item.domain.split(','):
+                    for domain in get_domain_list(item.domain):
                         domain = domain.strip()
                         if domain and domain not in seen:
                             seen.add(domain)
@@ -114,7 +117,8 @@ class AssistantOutDs:
         endpoint: str = config['endpoint']
         endpoint = self.get_complete_endpoint(endpoint=endpoint)
         if not endpoint:
-            raise Exception(f"Failed to get datasource list from {config['endpoint']}, error: [Assistant domain or endpoint miss]")
+            raise Exception(
+                f"Failed to get datasource list from {config['endpoint']}, error: [Assistant domain or endpoint miss]")
         certificateList: list[any] = json.loads(self.certificate)
         header = {}
         cookies = {}
@@ -126,7 +130,8 @@ class AssistantOutDs:
                 cookies[item['key']] = item['value']
             if item['target'] == 'param':
                 param[item['key']] = item['value']
-        res = requests.get(url=endpoint, params=param, headers=header, cookies=cookies, timeout=10)
+        timeout = int(config.get('timeout')) if config.get('timeout') else 10
+        res = requests.get(url=endpoint, params=param, headers=header, cookies=cookies, timeout=timeout)
         if res.status_code == 200:
             result_json: dict[any] = json.loads(res.text)
             if result_json.get('code') == 0 or result_json.get('code') == 200:
@@ -140,7 +145,13 @@ class AssistantOutDs:
             else:
                 raise Exception(f"Failed to get datasource list from {endpoint}, error: {result_json.get('message')}")
         else:
-            raise Exception(f"Failed to get datasource list from {endpoint}, status code: {res.status_code}")
+            SQLBotLogUtil.error(f"Failed to get datasource list from {endpoint}, response: {res}")
+            raise Exception(f"Failed to get datasource list from {endpoint}, response: {res}")
+
+    def get_first_element(self, text: str):
+        parts = re.split(r'[,;]', text.strip())
+        first_domain = parts[0].strip()
+        return first_domain
 
     def get_complete_endpoint(self, endpoint: str) -> str | None:
         if endpoint.startswith("http://") or endpoint.startswith("https://"):
@@ -148,18 +159,21 @@ class AssistantOutDs:
         domain_text = self.assistant.domain
         if not domain_text:
             return None
-        if ',' in domain_text:
-            return (self.request_origin.strip('/') if self.request_origin else domain_text.split(',')[0].strip('/')) + endpoint
+        if ',' in domain_text or ';' in domain_text:
+            return (
+                self.request_origin.strip('/') if self.request_origin else self.get_first_element(domain_text).strip(
+                    '/')) + endpoint
         else:
-            return f"{domain_text}{endpoint}"  
-    
+            return f"{domain_text}{endpoint}"
+
     def get_simple_ds_list(self):
         if self.ds_list:
             return [{'id': ds.id, 'name': ds.name, 'description': ds.comment} for ds in self.ds_list]
         else:
             raise Exception("Datasource list is not found.")
 
-    def get_db_schema(self, ds_id: int, question: str, embedding: bool = True) -> str:
+    def get_db_schema(self, ds_id: int, question: str = '', embedding: bool = True,
+                      table_list: list[str] = None) -> str:
         ds = self.get_ds(ds_id)
         schema_str = ""
         db_name = ds.db_schema if ds.db_schema is not None and ds.db_schema != "" else ds.dataBase
@@ -167,9 +181,13 @@ class AssistantOutDs:
         tables = []
         i = 0
         for table in ds.tables:
+            # 如果传入了 table_list，则只处理在列表中的表
+            if table_list is not None and table.name not in table_list:
+                continue
+
             i += 1
             schema_table = ''
-            schema_table += f"# Table: {db_name}.{table.name}" if ds.type != "mysql" else f"# Table: {table.name}"
+            schema_table += f"# Table: {db_name}.{table.name}" if ds.type != "mysql" and ds.type != "es" else f"# Table: {table.name}"
             table_comment = table.comment
             if table_comment == '':
                 schema_table += '\n[\n'
@@ -198,22 +216,23 @@ class AssistantOutDs:
 
         return schema_str
 
-    def get_ds(self, ds_id: int):
+    def get_ds(self, ds_id: int, trans: Trans = None):
         if self.ds_list:
             for ds in self.ds_list:
                 if ds.id == ds_id:
                     return ds
         else:
             raise Exception("Datasource list is not found.")
-        raise Exception(f"Datasource with id {ds_id} not found.")
+        raise Exception(f"Datasource id {ds_id} is not found." if trans is None else trans(
+            'i18n_data_training.datasource_id_not_found', key=ds_id))
 
     def convert2schema(self, ds_dict: dict, config: dict[any]) -> AssistantOutDsSchema:
         id_marker: str = ''
-        attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema']
+        attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema', 'mode']
         if config.get('encrypt', False):
             key = config.get('aes_key', None)
             iv = config.get('aes_iv', None)
-            aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema', 'schema']
+            aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema', 'schema', 'mode']
             for attr in aes_attrs:
                 if attr in ds_dict and ds_dict[attr]:
                     try:
@@ -221,10 +240,13 @@ class AssistantOutDs:
                     except Exception as e:
                         raise Exception(
                             f"Failed to encrypt {attr} for datasource {ds_dict.get('name')}, error: {str(e)}")
-        for attr in attr_list:
-            if attr in ds_dict:
-                id_marker += str(ds_dict.get(attr, '')) + '--sqlbot--'
-        id = string_to_numeric_hash(id_marker)
+        
+        id = ds_dict.get('id', None)
+        if not id:
+            for attr in attr_list:
+                if attr in ds_dict:
+                    id_marker += str(ds_dict.get(attr, '')) + '--sqlbot--'
+            id = string_to_numeric_hash(id_marker)
         db_schema = ds_dict.get('schema', ds_dict.get('db_schema', ''))
         ds_dict.pop("schema", None)
         return AssistantOutDsSchema(**{**ds_dict, "id": id, "db_schema": db_schema})
@@ -236,33 +258,18 @@ class AssistantOutDsFactory:
         return AssistantOutDs(assistant)
 
 
-def get_ds_engine(ds: AssistantOutDsSchema) -> Engine:
-    timeout: int = 30
-    connect_args = {"connect_timeout": timeout}
-    conf = DatasourceConf(
-        host=ds.host,
-        port=ds.port,
-        username=ds.user,
-        password=ds.password,
-        database=ds.dataBase,
-        driver='',
-        extraJdbc=ds.extraParams or '',
-        dbSchema=ds.db_schema or ''
-    )
-    conf.extraJdbc = ''
-    from apps.db.db import get_uri_from_config
-    uri = get_uri_from_config(ds.type, conf)
-
-    if equals_ignore_case(ds.type, "pg") and ds.db_schema:
-        engine = create_engine(uri,
-                               connect_args={"options": f"-c search_path={urllib.parse.quote(ds.db_schema)}",
-                                             "connect_timeout": timeout},
-                               pool_timeout=timeout)
-    elif equals_ignore_case(ds.type, 'sqlServer'):
-        engine = create_engine(uri, pool_timeout=timeout)
-    elif equals_ignore_case(ds.type, 'oracle'):
-        engine = create_engine(uri,
-                               pool_timeout=timeout)
-    else:
-        engine = create_engine(uri, connect_args={"connect_timeout": timeout}, pool_timeout=timeout)
-    return engine
+def get_out_ds_conf(ds: AssistantOutDsSchema, timeout: int = 30) -> str:
+    conf = {
+        "host": ds.host or '',
+        "port": ds.port or 0,
+        "username": ds.user or '',
+        "password": ds.password or '',
+        "database": ds.dataBase or '',
+        "driver": '',
+        "extraJdbc": ds.extraParams or '',
+        "dbSchema": ds.db_schema or '',
+        "timeout": timeout or 30,
+        "mode": ds.mode or ''
+    }
+    conf["extraJdbc"] = ''
+    return aes_encrypt(json.dumps(conf))

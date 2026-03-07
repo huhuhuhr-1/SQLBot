@@ -7,6 +7,71 @@
     "AI Model Configuration": "모델 구성",
     "Details": "세부"
   },
+  "sync": {
+    "integration": "플랫폼 통합을 활성화해야 합니다.",
+    "the_existing_user": "해당 사용자가 이미 존재하는 경우 기존 사용자를 덮어씁니다.",
+    "sync_users": "사용자 동기화",
+    "sync_wechat_users": "위챗 사용자 동기화",
+    "sync_dingtalk_users": "딩톡 사용자 동기화",
+    "sync_lark_users": "라크 사용자 동기화",
+    "sync_complete": "동기화 완료",
+    "synced_10_users": "{num}명 동기화 성공",
+    "failed_3_users": "{failed}명 동기화 성공, {success}명 동기화 실패",
+    "download_failure_list": "실패 목록 다운로드",
+    "sync_failed": "동기화 실패",
+    "failed_10_users": "{failed}명 동기화 실패",
+    "continue_syncing": "동기화 계속",
+    "return_to_view": "화면으로 돌아가기"
+  },
+  "variables": {
+    "built_in": "내장형",
+    "normal_value": "정상값",
+    "​​cannot_be_empty": "변수 값은 비어 있을 수 없습니다.",
+    "1_to_100": "{name}, 숫자 범위는 {min}부터 {max}까지입니다.",
+    "1_to_100_de": "{name}, 날짜 범위는 {min}부터 {max}까지입니다.",
+    "system_variables": "시스템 변수",
+    "variables": "변수",
+    "system": "체계",
+    "search_variables": "변수 검색",
+    "add_variable": "변수 추가",
+    "variable_name": "변수 이름",
+    "variable_type": "변수 유형",
+    "variable_value": "변수 값",
+    "edit_variable": "변수 편집",
+    "no_variables_yet": "아직 변수가 없습니다",
+    "please_enter_value": "값을 입력하세요",
+    "date": "날짜",
+    "start_date": "시작일",
+    "end_date": "종료일",
+    "enter_variable_name": "변수 이름을 입력하세요",
+    "enter_variable_value": "변수 값을 입력하세요"
+  },
+  "parameter": {
+    "execution_details": "실행 세부 정보",
+    "overview": "개요",
+    "tokens_required": "필요한 토큰 수",
+    "time_execution": "실행 시간",
+    "export_notes": "수출 참고사항",
+    "import_notes": "수입 참고사항",
+    "memo": "메모 업데이트 규칙: 테이블 이름과 필드 이름이 일치하는지 확인합니다. 일치하는 항목이 있으면 테이블 메모와 필드 메모를 업데이트하고, 그렇지 않으면 메모를 변경하지 않고 그대로 둡니다.",
+    "parameter_configuration": "매개변수 구성",
+    "question_count_settings": "질문 수 설정",
+    "context_record_count": "컨텍스트 기록 수",
+    "context_record_count_hint": "사용자 질문 라운드 수",
+    "model_thinking_process": "모델 사고 프로세스 확장",
+    "rows_of_data": "데이터 1,000행 제한",
+    "third_party_platform_settings": "타사 플랫폼 설정",
+    "by_third_party_platform": "타사 플랫폼에 의한 자동 사용자 생성",
+    "platform_user_organization": "제3자 플랫폼 작업 공간",
+    "platform_user_roles": "타사 플랫폼 사용자 역할",
+    "excessive_data_volume": "1,000행 데이터 제한을 비활성화하면 과도한 데이터 양으로 인해 시스템 지연이 발생할 수 있습니다.",
+    "prompt": "프롬프트",
+    "disabling_successfully": "비활성화 완료",
+    "closed_by_default": "질문 수 창에서 모델 사고 프로세스를 기본적으로 확장할지 또는 닫을지 여부를 제어합니다.",
+    "and_platform_integration": "인증 관련",
+    "login_settings": "로그인 설정",
+    "default_login": "기본 로그인 방식"
+  },
   "prompt": {
     "default_password:": "기본 비밀번호:{msg}",
     "no_sql_sample": "현재 사용 가능한 SQL 샘플 라이브러리가 없습니다",
@@ -26,7 +91,9 @@
     "edit_prompt_word": "프롬프트 편집",
     "all_236_terms": "모든 {msg}개의 {type} 프롬프트 기록을 내보내시겠습니까?",
     "export_hint": "모든 {type} 프롬프트를 내보내시겠습니까?",
-    "prompt_word_name_de": "프롬프트를 삭제하시겠습니까: {msg}?"
+    "prompt_word_name_de": "프롬프트를 삭제하시겠습니까: {msg}?",
+    "disable_field": "필드 비활성화",
+    "to_disable_it": "이 필드에는 테이블 관계가 설정되어 있습니다. 비활성화하면 관계가 유효하지 않게 됩니다. 비활성화하시겠습니까?"
   },
   "training": {
     "effective_data_sources": "유효한 데이터 소스",
@@ -73,6 +140,8 @@
     "the_term_gmv": "용어를 삭제하시겠습니까: {msg}?"
   },
   "common": {
+    "start_time": "시작 시간",
+    "end_time": "종료 시간",
     "require": "필수 입력 항목",
     "zoom_in": "확대",
     "zoom_out": "축소",
@@ -117,10 +186,18 @@
     "english": "English",
     "re_upload": "다시 업로드",
     "not_exceed_50mb": "XLS, XLSX, CSV 형식을 지원하며, 파일 크기는 50MB를 초과할 수 없습니다",
+    "excel_file_type_limit": "XLS 및 XLSX 형식만 지원됩니다",
+    "click_to_select_file": "파일 선택을 클릭하세요",
+    "upload_hint_first": "먼저 ",
+    "upload_hint_download_template": "템플릿을 다운로드",
+    "upload_hint_end": ", 한 후 요구사항에 따라 작성하여 업로드하세요",
+    "continue_to_upload": "계속 가져오기",
     "reset_password": "비밀번호 재설정",
     "password_reset_successful": "비밀번호 재설정 성공",
     "or": "또는",
-    "refresh": "새로고침"
+    "refresh": "새로고침",
+    "input_limit": "길이는 {0}자에서 {1}자 사이여야 합니다",
+    "file_size_limit_error": "파일 크기가 제한을 초과했습니다 (최대 {limit})"
   },
   "dashboard": {
     "open_dashboard": "대시보드 열기",
@@ -163,7 +240,7 @@
     "creator": "생성자",
     "dashboard_id": "대시보드 ID",
     "create_time": "생성 시간",
-    "updator": "업데이트자",
+    "updater": "업데이트자",
     "update_time": "업데이트 시간",
     "edit": "편집",
     "edit_title": "제목 편집",
@@ -184,6 +261,11 @@
     "chart_selected": "{0}개 선택됨"
   },
   "qa": {
+    "retrieve_error": "콘텐츠 없음",
+    "retrieve_again": "다시 가져오기",
+    "recently": "최근",
+    "recommend": "추천",
+    "quick_question": "빠른 질문",
     "new_chat": "새 대화 생성",
     "start_sqlbot": "데이터 조회 시작",
     "title": "스마트 데이터 조회",
@@ -204,6 +286,7 @@
     "continue_to_ask": "계속 질문하기:",
     "data_analysis": "데이터 분석",
     "data_predict": "데이터 예측",
+    "data_regenerated": "재생성",
     "chat_search": "검색",
     "thinking": "생각 중",
     "thinking_step": "사고 과정",
@@ -304,11 +387,14 @@
         "success": "연결 성공",
         "failed": "연결 실패"
       },
-      "timeout": "쿼리 시간 초과(초)",
-      "address": "주소"
-    }
+      "timeout": "연결 시간 초과(초)",
+      "address": "주소",
+      "low_version": "낮은 버전 호환"
+    },
+    "sync_fields": "동기화된 테이블 구조"
   },
   "datasource": {
+    "recommended_repetitive_tips": "중복된 문제가 존재합니다",
     "recommended_problem_tips": "사용자 정의 구성으로 최소 한 개의 문제를 생성하세요, 각 문제는 2~200자로 작성",
     "recommended_problem_configuration": "추천 문제 구성",
     "problem_generation_method": "문제 생성 방식",
@@ -408,15 +494,17 @@
     "enable": "활성화",
     "disable": "비활성화",
     "local_creation": "로컬 생성",
-    "feishu": "페이슈",
+    "lark": "페이슈",
+    "larksuite": "페이수 (Pei-su)",
     "dingtalk": "딩톡",
-    "wechat_for_business": "기업용 위챗",
+    "wecom": "기업용 위챗",
     "1240_results": "{msg}개 결과 ",
     "clear_conditions": "조건 지우기",
     "disabled": "비활성화됨",
     "enabled": "활성화됨",
     "edit_user": "사용자 편집",
     "del_user": "사용자를 삭제하시겠습니까: {msg}?",
+    "del_key": "키를 삭제하시겠습니까?: {msg}?",
     "please_first": "먼저",
     "download_the_template": "템플릿 다운로드",
     "required_and_upload": "하여 요구 사항에 따라 작성한 후 업로드하십시오",
@@ -426,6 +514,7 @@
     "import": "가져오기",
     "change_file": "파일 변경",
     "data_import_completed": "데이터 가져오기 완료",
+    "notes_import_completed": "메모 가져오기 완료",
     "imported_100_data": "데이터 {msg}개를 성공적으로 가져왔습니다",
     "return_to_view": "돌아가서 보기",
     "continue_importing": "계속 가져오기",
@@ -565,7 +654,7 @@
     "application_name": "애플리케이션 이름",
     "application_description": "애플리케이션 설명",
     "cross_domain_settings": "교차 도메인 설정",
-    "third_party_address": "임베디드할 제3자 주소를 입력하십시오",
+    "third_party_address": "임베디드할 제3자 주소를 입력하십시오, 여러 항목을 세미콜론으로 구분",
     "set_to_private": "비공개로 설정",
     "set_to_public": "공개로 설정",
     "public": "공개",
@@ -573,7 +662,7 @@
     "configure_interface": "인터페이스 설정",
     "interface_url": "인터페이스 URL",
     "format_is_incorrect": "형식이 올바르지 않습니다{msg}",
-    "domain_format_incorrect": ", http/https로 시작, 슬래시(/)로 끝나지 않음, 여러 도메인은 반각 쉼표(,)로 구분",
+    "domain_format_incorrect": ", http:// 또는 https://로 시작해야 하며, 슬래시(/)로 끝날 수 없습니다. 여러 도메인은 세미콜론으로 구분합니다",
     "interface_url_incorrect": ", 상대 경로를 입력해주세요. /로 시작합니다",
     "aes_enable": "AES 암호화 활성화",
     "aes_enable_tips": "암호화 필드 (host, user, password, dataBase, schema)는 모두 AES-CBC-PKCS5Padding 암호화 방식을 사용합니다",
@@ -625,7 +714,10 @@
     "right": "오른쪽",
     "welcome_description": "환영 메시지 설명",
     "data_analysis_now": "저는 데이터 조회, 차트 생성, 데이터 이상 감지, 데이터 예측 등을 할 수 있습니다. 빨리 스마트 데이터 조회를 시작하세요~",
-    "window_entrance_icon": "플로팅 윈도우 입구 아이콘"
+    "window_entrance_icon": "플로팅 윈도우 입구 아이콘",
+    "preview_error": "현재 페이지는 Iframe 임베딩을 허용하지 않습니다!",
+    "assistant_app": "어시스턴트 앱",
+    "auto_select_ds": "자동 데이터 소스 선택"
   },
   "chat": {
     "type": "차트 유형",
@@ -636,6 +728,11 @@
       "line": "선 차트",
       "pie": "원형 차트"
     },
+    "hide_label": "라벨 숨기기",
+    "show_label": "라벨 표시",
+    "sort_asc": "오름차순",
+    "sort_desc": "내림차순",
+    "sort_none": "정렬 안 함",
     "show_sql": "SQL 보기",
     "export_to": "다음으로 내보내기",
     "excel": "Excel",
@@ -655,7 +752,31 @@
     "exec-sql-err": "SQL 실행 실패",
     "no_data": "데이터가 없습니다",
     "loading_data": "로딩 중 ...",
-    "show_error_detail": "구체적인 정보 보기"
+    "show_error_detail": "구체적인 정보 보기",
+    "log": {
+      "GENERATE_SQL": "SQL 생성",
+      "GENERATE_CHART": "차트 구조 생성",
+      "ANALYSIS": "분석",
+      "PREDICT_DATA": "예측",
+      "GENERATE_SQL_WITH_PERMISSIONS": "SQL에 행 권한 적용",
+      "CHOOSE_DATASOURCE": "데이터 소스 매칭",
+      "GENERATE_DYNAMIC_SQL": "동적 SQL 생성",
+      "CHOOSE_TABLE": "데이터 테이블 매칭 (스키마)",
+      "FILTER_TERMS": "용어 매칭",
+      "FILTER_SQL_EXAMPLE": "SQL 예시 매칭",
+      "FILTER_CUSTOM_PROMPT": "사용자 정의 프롬프트 매칭",
+      "EXECUTE_SQL": "SQL 실행",
+      "GENERATE_PICTURE": "이미지 생성"
+    },
+    "log_system": "대화 템플릿",
+    "log_question": "현재 질문",
+    "log_answer": "AI 응답",
+    "log_history": "기록",
+    "find_term_title": "{0}개의 용어 매칭됨",
+    "find_sql_sample_title": "{0}개의 SQL 예시 매칭됨",
+    "find_custom_prompt_title": "{0}개의 사용자 정의 프롬프트 매칭됨",
+    "query_count_title": "{0}개의 데이터 항목 발견됨",
+    "generate_picture_success": "이미지가 생성되었습니다"
   },
   "about": {
     "title": "정보",
@@ -715,11 +836,19 @@
     "setting_successfully": "설정 성공",
     "customize_theme_color": "사용자 정의 테마 색상"
   },
+  "platform": {
+    "title": "플랫폼 연동",
+    "status_open": "활성화됨",
+    "status_close": "비활성화됨",
+    "access_in": "접속",
+    "can_enable_it": "연결 테스트 성공 후 활성화 가능"
+  },
   "authentication": {
     "invalid": "유효하지 않음",
     "valid": "유효함",
     "cas_settings": "CAS 설정",
     "callback_domain_name": "콜백 도메인",
+    "callback_domain_name_error": "콜백 URL은 현재 접속 도메인과 일치해야 합니다",
     "field_mapping": "사용자 속성 매핑",
     "field_mapping_placeholder": "예: {'{'}\"account\": \"saml2Account\", \"name\": \"saml2Name\", \"email\": \"email\"{'}'}",
     "incorrect_please_re_enter": "형식이 잘못되었습니다. 다시 입력해 주세요",
@@ -737,7 +866,23 @@
     "revoke_url": "취소 URL",
     "oauth2_field_mapping_placeholder": "예: {'{'}\"account\": \"OAuth2Account\", \"name\": \"OAuth2Name\", \"email\": \"email\"{'}'}",
     "token_auth_method": "토큰 인증 방식",
-    "userinfo_auth_method": "사용자 정보 인증 방식"
+    "userinfo_auth_method": "사용자 정보 인증 방식",
+    "oidc_settings": "OIDC 설정",
+    "metadata_url": "메타데이터 URL",
+    "realm": "영역",
+    "oidc_field_mapping_placeholder": "예: {\"account\": \"oidcAccount\", \"name\": \"oidcName\", \"email\": \"email\"}",
+    "ldap_settings": "LDAP 설정",
+    "server_address": "서버 주소",
+    "server_address_placeholder": "예: ldap://ldap.example.com:389",
+    "bind_dn": "바인드 DN",
+    "bind_dn_placeholder": "예: cn=admin,dc=example,dc=com",
+    "bind_pwd": "바인드 비밀번호",
+    "ou": "사용자 OU",
+    "ou_placeholder": "예: ou=users,dc=example,dc=com",
+    "user_filter": "사용자 필터",
+    "user_filter_placeholder": "예: uid 또는 uid {0} email. 여러 속성은 {1}로 구분합니다",
+    "ldap_field_mapping_placeholder": "예: {\"account\": \"ldapAccount\", \"name\": \"ldapName\", \"email\": \"mail\"}",
+    "be_turned_on": "테스트 연결이 유효한 것으로 확인되면 활성화할 수 있습니다"
   },
   "login": {
     "default_login": "기본값",
@@ -749,7 +894,11 @@
     "qr_code": "QR 코드",
     "platform_disable": "{0} 설정이 활성화되지 않았습니다!",
     "input_account": "계정을 입력해 주세요",
-    "redirect_2_auth": "{0} 인증으로 리디렉션 중입니다, {1}초..."
+    "redirect_2_auth": "{0} 인증으로 리디렉션 중입니다, {1}초...",
+    "redirect_immediately": "지금 이동",
+    "permission_invalid": "인증 무효 [현재 계정의 권한이 부족합니다]",
+    "scan_qr_login": " QR 코드 스캔",
+    "no_auth_error": "인증되지 않았습니다. {0}초 후 로그인 페이지로 이동합니다..."
   },
   "supplier": {
     "alibaba_cloud_bailian": "알리바바 클라우드 바이리엔",
@@ -766,5 +915,31 @@
   },
   "modelType": {
     "llm": "대형 언어 모델"
+  },
+  "audit": {
+    "system_log": "시스템 로그",
+    "search_log": "검색 로그",
+    "operation_type": "작업 유형",
+    "operation_details": "작업 상세",
+    "operation_user_name": "작업 사용자",
+    "operation_status": "작업 상태",
+    "user_name": "사용자 이름",
+    "oid_name": "작업 공간",
+    "ip_address": "IP 주소",
+    "create_time": "생성 시간",
+    "no_log": "로그 없음",
+    "all_236_terms": "전체 {msg}개의 로그를 내보내시겠습니까?",
+    "export_hint": "모든 로그를 내보내시겠습니까?",
+    "export": "내보내기",
+    "success": "성공",
+    "failed": "실패",
+    "failed_info": "작업 실패 상세",
+    "opt_time": "작업 시간"
+  },
+  "api_key": {
+    "info_tips": "API 키는 SQLBot API에 액세스하는 비밀키로 계정의 모든 권한을 갖고 있습니다. 꼭 안전하게 보관하세요! 외부 채널에 어떠한 방식으로도 API 키를 공개하지 마시고, 타인이 악용하여 보안 위협이 발생하는 것을 방지하세요.",
+    "create": "생성",
+    "to_doc": "API 보기",
+    "trigger_limit": "최대 {0}개의 API 키 생성 지원"
   }
 }

@@ -1284,6 +1284,7 @@ defineExpose({
           :view-info="canvasViewInfo[item.id]"
           :canvas-view-info="canvasViewInfo"
           :show-position="'canvas'"
+          :disabled="fullscreenFlag"
           @parent-add-item-box="(subItem: any) => addItemBox(subItem)"
         >
         </component>

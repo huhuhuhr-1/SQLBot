@@ -16,6 +16,7 @@ import { setSize } from '@/utils/utils'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_fileExcel_colorful from '@/assets/datasource/icon_excel.png'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
+import { useCache } from '@/utils/useCache'
 
 const props = withDefaults(
   defineProps<{
@@ -40,6 +41,7 @@ const checkList = ref<any>([])
 const tableList = ref<any>([])
 const excelUploadSuccess = ref(false)
 const tableListLoading = ref(false)
+const tableListLoadingV1 = ref(false)
 const checkLoading = ref(false)
 const dialogTitle = ref('')
 const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/datasource/uploadExcel'
@@ -114,6 +116,7 @@ const form = ref<any>({
   sheets: [],
   mode: 'service_name',
   timeout: 30,
+  lowVersion: false,
 })
 
 const close = () => {
@@ -127,6 +130,10 @@ const close = () => {
   excelUploadSuccess.value = false
   saveLoading.value = false
 }
+
+const { wsCache } = useCache()
+const token = wsCache.get('user.token')
+const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}` })
 
 const initForm = (item: any, editTable: boolean = false) => {
   isEditTable.value = false
@@ -153,6 +160,10 @@ const initForm = (item: any, editTable: boolean = false) => {
       form.value.sheets = configuration.sheets
       form.value.mode = configuration.mode
       form.value.timeout = configuration.timeout ? configuration.timeout : 30
+      form.value.lowVersion =
+        configuration.lowVersion !== null && configuration.lowVersion !== undefined
+          ? configuration.lowVersion
+          : true
     }
 
     if (editTable) {
@@ -162,38 +173,44 @@ const initForm = (item: any, editTable: boolean = false) => {
       isCreate.value = false
       // request tables and check tables
 
-      datasourceApi.tableList(item.id).then((res: any) => {
-        checkList.value = res.map((ele: any) => {
-          return ele.table_name
-        })
-        if (item.type === 'excel') {
-          tableList.value = form.value.sheets
-          nextTick(() => {
-            handleCheckedTablesChange([...checkList.value])
+      tableListLoadingV1.value = true
+      datasourceApi
+        .tableList(item.id)
+        .then((res: any) => {
+          checkList.value = res.map((ele: any) => {
+            return ele.table_name
           })
-        } else {
-          tableListLoading.value = true
-          const requestObj = buildConf()
-          datasourceApi
-            .getTablesByConf(requestObj)
-            .then((table) => {
-              tableList.value = table
-              checkList.value = checkList.value.filter((ele: string) => {
-                return table
-                  .map((ele: any) => {
-                    return ele.tableName
-                  })
-                  .includes(ele)
-              })
-              nextTick(() => {
-                handleCheckedTablesChange([...checkList.value])
-              })
+          if (item.type === 'excel') {
+            tableList.value = form.value.sheets
+            nextTick(() => {
+              handleCheckedTablesChange([...checkList.value])
             })
-            .finally(() => {
-              tableListLoading.value = false
-            })
-        }
-      })
+          } else {
+            tableListLoading.value = true
+            const requestObj = buildConf()
+            datasourceApi
+              .getTablesByConf(requestObj)
+              .then((table) => {
+                tableList.value = table
+                checkList.value = checkList.value.filter((ele: string) => {
+                  return table
+                    .map((ele: any) => {
+                      return ele.tableName
+                    })
+                    .includes(ele)
+                })
+                nextTick(() => {
+                  handleCheckedTablesChange([...checkList.value])
+                })
+              })
+              .finally(() => {
+                tableListLoading.value = false
+              })
+          }
+        })
+        .finally(() => {
+          tableListLoadingV1.value = false
+        })
     }
   } else {
     dialogTitle.value = t('ds.form.title.add')
@@ -218,6 +235,7 @@ const initForm = (item: any, editTable: boolean = false) => {
       sheets: [],
       mode: 'service_name',
       timeout: 30,
+      lowVersion: false,
     }
   }
   dialogVisible.value = true
@@ -305,6 +323,7 @@ const buildConf = () => {
       sheets: form.value.sheets,
       mode: form.value.mode,
       timeout: form.value.timeout,
+      lowVersion: form.value.lowVersion,
     })
   )
   const obj = JSON.parse(JSON.stringify(form.value))
@@ -320,6 +339,7 @@ const buildConf = () => {
   delete obj.sheets
   delete obj.mode
   delete obj.timeout
+  delete obj.lowVersion
   return obj
 }
 
@@ -412,7 +432,8 @@ const onSuccess = (response: any) => {
   uploadLoading.value = false
 }
 
-const onError = () => {
+const onError = (e: any) => {
+  ElMessage.error(e.toString())
   uploadLoading.value = false
 }
 
@@ -539,6 +560,7 @@ defineExpose({
               v-if="form.filename && !form.id"
               class="upload-user"
               accept=".xlsx,.xls,.csv"
+              :headers="headers"
               :action="getUploadURL"
               :before-upload="beforeUpload"
               :on-error="onError"
@@ -554,6 +576,7 @@ defineExpose({
               v-else-if="!form.id"
               class="upload-user"
               accept=".xlsx,.xls,.csv"
+              :headers="headers"
               :action="getUploadURL"
               :before-upload="beforeUpload"
               :on-success="onSuccess"
@@ -656,6 +679,13 @@ defineExpose({
               <el-radio value="sid">{{ t('ds.form.mode.sid') }}</el-radio>
             </el-radio-group>
           </el-form-item>
+          <el-form-item
+            v-if="form.type === 'sqlServer'"
+            :label="t('ds.form.low_version')"
+            prop="low_version"
+          >
+            <el-checkbox v-model="form.lowVersion" :label="t('ds.form.low_version')" />
+          </el-form-item>
           <el-form-item v-if="form.type !== 'es'" :label="t('ds.form.extra_jdbc')">
             <el-input
               v-model="form.extraJdbc"
@@ -701,7 +731,11 @@ defineExpose({
           </el-form-item>
         </div>
       </el-form>
-      <div v-show="activeStep === 2" v-loading="tableListLoading" class="select-data_table">
+      <div
+        v-show="activeStep === 2"
+        v-loading="tableListLoading || tableListLoadingV1"
+        class="select-data_table"
+      >
         <div class="title">
           {{ $t('ds.form.choose_tables') }} ({{ checkTableList.length }}/ {{ tableList.length }})
         </div>

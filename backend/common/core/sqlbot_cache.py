@@ -1,3 +1,4 @@
+import re
 from fastapi_cache import FastAPICache
 from functools import partial, wraps
 from typing import Optional, Any, Dict, Tuple
@@ -27,7 +28,6 @@ def custom_key_builder(
             
             # 支持args[0]格式
             if keyExpression.startswith("args["):
-                import re
                 if match := re.match(r"args\[(\d+)\]", keyExpression):
                     index = int(match.group(1))
                     value = bound_args.args[index]
@@ -37,6 +37,8 @@ def custom_key_builder(
             
             # 支持属性路径格式
             parts = keyExpression.split('.')
+            if not bound_args.arguments.get(parts[0]):
+                return f"{base_key}{parts[0]}"
             value = bound_args.arguments[parts[0]]
             for part in parts[1:]:
                 value = getattr(value, part)

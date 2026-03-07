@@ -41,12 +41,24 @@ class OperationEnum(Enum):
     GENERATE_SQL_WITH_PERMISSIONS = '5'
     CHOOSE_DATASOURCE = '6'
     GENERATE_DYNAMIC_SQL = '7'
+    CHOOSE_TABLE = '8'
+    FILTER_TERMS = '9'
+    FILTER_SQL_EXAMPLE = '10'
+    FILTER_CUSTOM_PROMPT = '11'
+    EXECUTE_SQL = '12'
+    GENERATE_PICTURE = '13'
 
 
 class ChatFinishStep(Enum):
     GENERATE_SQL = 1
     QUERY_DATA = 2
     GENERATE_CHART = 3
+
+
+class QuickCommand(Enum):
+    REGENERATE = '/regenerate'
+    ANALYSIS = '/analysis'
+    PREDICT_DATA = '/predict'
 
 
 #     TODO choose table / check connection / generate description
@@ -66,6 +78,8 @@ class ChatLog(SQLModel, table=True):
     start_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     finish_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     token_usage: Optional[dict | None | int] = Field(sa_column=Column(JSONB))
+    local_operation: bool = Field(default=False)
+    error: bool = Field(default=False)
 
 
 class Chat(SQLModel, table=True):
@@ -80,6 +94,10 @@ class Chat(SQLModel, table=True):
     engine_type: str = Field(max_length=64)
     origin: Optional[int] = Field(
         sa_column=Column(Integer, nullable=False, default=0))  # 0: default, 1: mcp, 2: assistant
+    brief_generate: bool = Field(default=False)
+    recommended_question_answer: str = Field(sa_column=Column(Text, nullable=True))
+    recommended_question: str = Field(sa_column=Column(Text, nullable=True))
+    recommended_generate: bool = Field(default=False)
 
 
 class ChatRecord(SQLModel, table=True):
@@ -110,6 +128,7 @@ class ChatRecord(SQLModel, table=True):
     error: str = Field(sa_column=Column(Text, nullable=True))
     analysis_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
     predict_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
+    regenerate_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
 
 
 class ChatRecordResult(BaseModel):
@@ -122,6 +141,7 @@ class ChatRecordResult(BaseModel):
     question: Optional[str] = None
     sql_answer: Optional[str] = None
     sql: Optional[str] = None
+    datasource: Optional[int] = None
     data: Optional[str] = None
     chart_answer: Optional[str] = None
     chart: Optional[str] = None
@@ -134,10 +154,13 @@ class ChatRecordResult(BaseModel):
     error: Optional[str] = None
     analysis_record_id: Optional[int] = None
     predict_record_id: Optional[int] = None
+    regenerate_record_id: Optional[int] = None
     sql_reasoning_content: Optional[str] = None
     chart_reasoning_content: Optional[str] = None
     analysis_reasoning_content: Optional[str] = None
     predict_reasoning_content: Optional[str] = None
+    duration: Optional[float] = None  # 耗时字段（单位：秒）
+    total_tokens: Optional[int] = None  # token总消耗
 
 
 class CreateChat(BaseModel):
@@ -150,6 +173,7 @@ class CreateChat(BaseModel):
 class RenameChat(BaseModel):
     id: int = None
     brief: str = ''
+    brief_generate: bool = True
 
 
 class ChatInfo(BaseModel):
@@ -163,7 +187,28 @@ class ChatInfo(BaseModel):
     ds_type: str = ''
     datasource_name: str = ''
     datasource_exists: bool = True
+    recommended_question: Optional[str] = None
+    recommended_generate: Optional[bool] = False
     records: List[ChatRecord | dict] = []
+
+
+class ChatLogHistoryItem(BaseModel):
+    start_time: Optional[datetime] = None
+    finish_time: Optional[datetime] = None
+    duration: Optional[float] = None  # 耗时字段（单位：秒）
+    total_tokens: Optional[int] = None  # token总消耗
+    operate: Optional[str] = None
+    local_operation: Optional[bool] = False
+    message: Optional[str | dict | list] = None
+    error: Optional[bool] = False
+
+
+class ChatLogHistory(BaseModel):
+    start_time: Optional[datetime] = None
+    finish_time: Optional[datetime] = None
+    duration: Optional[float] = None  # 耗时字段（单位：秒）
+    total_tokens: Optional[int] = None  # token总消耗
+    steps: List[ChatLogHistoryItem | dict] = []
 
 
 class AiModelQuestion(BaseModel):
@@ -183,6 +228,7 @@ class AiModelQuestion(BaseModel):
     data_training: str = ""
     custom_prompt: str = ""
     error_msg: str = ""
+    regenerate_record_id: Optional[int] = None
 
     # 新增字段用于增强思考
     is_enhanced_think: bool = True
@@ -238,8 +284,8 @@ class AiModelQuestion(BaseModel):
         _process_check = _sql_template.get('process_check') if _sql_template.get('process_check') else _base_template[
             'process_check']
         _query_limit = _base_template['query_limit'] if enable_query_limit else _base_template['no_query_limit']
-        _base_sql_rules = _sql_template['quot_rule'] + _query_limit + _sql_template['limit_rule'] + _sql_template[
-            'other_rule']
+        _other_rule = _sql_template['other_rule'].format(multi_table_condition=_base_template['multi_table_condition'])
+        _base_sql_rules = _sql_template['quot_rule'] + _query_limit + _sql_template['limit_rule'] + _other_rule
         _sql_examples = _sql_template['basic_example']
         _example_engine = _sql_template['example_engine']
         _example_answer_1 = _sql_template['example_answer_1_with_limit'] if enable_query_limit else _sql_template[
@@ -260,9 +306,12 @@ class AiModelQuestion(BaseModel):
                                                example_answer_3=_example_answer_3)
 
     def sql_user_question(self, current_time: str, change_title: bool):
-        return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=self.question,
-                                                 rule=self.rule, current_time=current_time, error_msg=self.error_msg,change_title = change_title,
-                                                 thinking_result=self.enhanced_think_result)
+        _question = self.question
+        if self.regenerate_record_id:
+            _question = get_sql_template()['regenerate_hint'] + self.question
+        return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=_question,
+                                                 rule=self.rule, current_time=current_time, error_msg=self.error_msg,
+                                                 change_title=change_title)
 
     def enhanced_think_question(self, current_time: str):
         return get_myself_template()['think_prompt'].format(user_info=self.user_name,
@@ -273,9 +322,9 @@ class AiModelQuestion(BaseModel):
     def chart_sys_question(self):
         return get_chart_template()['system'].format(sql=self.sql, question=self.question, lang=self.lang)
 
-    def chart_user_question(self, chart_type: Optional[str] = None):
+    def chart_user_question(self, chart_type: Optional[str] = '', schema: Optional[str] = ''):
         return get_chart_template()['user'].format(sql=self.sql, question=self.question, rule=self.rule,
-                                                   chart_type=chart_type)
+                                                   chart_type=chart_type, schema=schema)
 
     def analysis_sys_question(self):
         return get_analysis_template()['system'].format(lang=self.lang, terminologies=self.terminologies,
@@ -296,8 +345,8 @@ class AiModelQuestion(BaseModel):
     def datasource_user_question(self, datasource_list: str = "[]"):
         return get_datasource_template()['user'].format(question=self.question, data=datasource_list)
 
-    def guess_sys_question(self):
-        return get_guess_question_template()['system'].format(lang=self.lang)
+    def guess_sys_question(self, articles_number: int = 4):
+        return get_guess_question_template()['system'].format(lang=self.lang, articles_number=articles_number)
 
     def guess_user_question(self, old_questions: str = "[]"):
         return get_guess_question_template()['user'].format(question=self.question, schema=self.db_schema,
@@ -318,6 +367,7 @@ class AiModelQuestion(BaseModel):
 
 class ChatQuestion(AiModelQuestion):
     chat_id: int
+    datasource_id: Optional[int] = None
 
 
 class ChatMcp(ChatQuestion):
@@ -334,6 +384,8 @@ class McpQuestion(BaseModel):
     chat_id: int = Body(description='会话ID')
     token: str = Body(description='token')
     stream: Optional[bool] = Body(description='是否流式输出，默认为true开启, 关闭false则返回JSON对象', default=True)
+    lang: Optional[str] = Body(description='语言：zh-CN|en|ko-KR', default='zh-CN')
+    datasource_id: Optional[int | str] = Body(description='数据源ID，仅当当前对话没有确定数据源时有效', default=None)
 
 
 class AxisObj(BaseModel):

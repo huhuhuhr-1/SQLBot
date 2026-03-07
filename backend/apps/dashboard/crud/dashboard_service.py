@@ -1,4 +1,9 @@
+import base64
+
+from orjson import orjson
 from sqlalchemy import select, and_, text
+
+from apps.chat.curd.chat import get_chart_data_ds
 from apps.dashboard.models.dashboard_model import CoreDashboard, CreateDashboard, QueryDashboard, DashboardBaseResponse
 from common.core.deps import SessionDep, CurrentUser
 import uuid
@@ -33,15 +38,25 @@ def load_resource(session: SessionDep, dashboard: QueryDashboard):
     sql = text("""
                SELECT cd.*,
                       creator.name AS create_name,
-                      updator.name AS update_name
+                      updater.name AS update_name
                FROM core_dashboard cd
                         LEFT JOIN sys_user creator ON cd.create_by = creator.id::varchar
-        LEFT JOIN sys_user updator
-               ON cd.update_by = updator.id:: varchar
+        LEFT JOIN sys_user updater
+               ON cd.update_by = updater.id:: varchar
                WHERE cd.id = :dashboard_id
                """)
     result = session.execute(sql, {"dashboard_id": dashboard.id}).mappings().first()
-    return result
+
+    result_dict = dict(result)
+    canvas_view_obj = orjson.loads(result_dict['canvas_view_info'])
+    for item in canvas_view_obj.values():
+        if all(key in item for key in ['datasource', 'sql']) and item['datasource'] is not None:
+            data_result = get_chart_data_ds(session, item['datasource'], item['sql'])
+            item['data']['data'] = data_result['data']
+            item['status'] = data_result['status']
+            item['message'] = data_result['message']
+    result_dict['canvas_view_info'] = orjson.dumps(canvas_view_obj)
+    return result_dict
 
 
 def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
@@ -130,7 +145,12 @@ def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashbo
     return not session.query(query.exists()).scalar()
 
 
-def delete_resource(session: SessionDep, resource_id: str):
+def delete_resource(session: SessionDep, current_user: CurrentUser, resource_id: str):
+    coreDashboard = session.get(CoreDashboard, resource_id)
+    if not coreDashboard:
+        raise ValueError(f"Resource with id {resource_id} does not exist")
+    if coreDashboard.create_by != str(current_user.id):
+        raise ValueError(f"Resource with id {resource_id} not owned by the current user")
     sql = text("DELETE FROM core_dashboard WHERE id = :resource_id")
     result = session.execute(sql, {"resource_id": resource_id})
     session.commit()

@@ -5,25 +5,34 @@ import LayoutDsl from '@/components/layout/LayoutDsl.vue'
 import SinglePage from '@/components/layout/SinglePage.vue'
 import login from '@/views/login/index.vue'
 import chat from '@/views/chat/index.vue'
-import Datasource from '@/views/ds/Datasource.vue'
 import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Model from '@/views/system/model/Model.vue'
-import Embedded from '@/views/system/embedded/index.vue'
+// import Embedded from '@/views/system/embedded/index.vue'
+// import SetAssistant from '@/views/system/embedded/iframe.vue'
+import SystemEmbedded from '@/views/system/embedded/Page.vue'
+import Variables from '@/views/system/variables/index.vue'
+
 import assistantTest from '@/views/system/embedded/Test.vue'
 import assistant from '@/views/embedded/index.vue'
 import EmbeddedPage from '@/views/embedded/page.vue'
+import EmbeddedCommon from '@/views/embedded/common.vue'
 import Member from '@/views/system/member/index.vue'
 import Professional from '@/views/system/professional/index.vue'
 import Training from '@/views/system/training/index.vue'
 import Prompt from '@/views/system/prompt/index.vue'
+import Audit from '@/views/system/audit/index.vue'
 import Appearance from '@/views/system/appearance/index.vue'
+import Parameter from '@/views/system/parameter/index.vue'
 import Authentication from '@/views/system/authentication/index.vue'
+import Platform from '@/views/system/platform/index.vue'
 import Permission from '@/views/system/permission/index.vue'
 import User from '@/views/system/user/User.vue'
 import Workspace from '@/views/system/workspace/index.vue'
 import Page401 from '@/views/error/index.vue'
+import ChatPreview from '@/views/chat/preview.vue'
+
 import { i18n } from '@/i18n'
 import { watchRouter } from './watch'
 
@@ -62,9 +71,10 @@ export const routes = [
       },
     ],
   },
-  {
+  /* {
     path: '/ds',
     component: LayoutDsl,
+    name: 'ds-menu',
     redirect: '/ds/index',
     children: [
       {
@@ -74,7 +84,7 @@ export const routes = [
         meta: { title: t('menu.Data Connections'), iconActive: 'ds', iconDeActive: 'noDs' },
       },
     ],
-  },
+  }, */
   {
     path: '/dashboard',
     component: LayoutDsl,
@@ -94,6 +104,7 @@ export const routes = [
   },
   {
     path: '/set',
+    name: 'set',
     component: LayoutDsl,
     redirect: '/set/member',
     meta: { title: t('workspace.set'), iconActive: 'set', iconDeActive: 'noSet' },
@@ -110,6 +121,12 @@ export const routes = [
         component: Permission,
         meta: { title: t('workspace.permission_configuration') },
       },
+      /* {
+        path: '/set/assistant',
+        name: 'setAssistant',
+        component: SetAssistant,
+        meta: { title: t('embedded.assistant_app') },
+      }, */
       {
         path: '/set/professional',
         name: 'professional',
@@ -144,6 +161,7 @@ export const routes = [
   },
   {
     path: '/system',
+    name: 'system',
     component: LayoutDsl,
     redirect: '/system/user',
     meta: { hidden: true },
@@ -177,7 +195,7 @@ export const routes = [
       {
         path: 'embedded',
         name: 'embedded',
-        component: Embedded,
+        component: SystemEmbedded,
         meta: {
           title: t('embedded.embedded_management'),
           iconActive: 'embedded',
@@ -197,12 +215,36 @@ export const routes = [
             meta: { title: t('system.appearance_settings') },
           },
           {
+            path: 'parameter',
+            name: 'parameter',
+            component: Parameter,
+            meta: { title: t('parameter.parameter_configuration') },
+          },
+          {
+            path: 'variables',
+            name: 'variables',
+            component: Variables,
+            meta: { title: t('variables.system_variables') },
+          },
+          {
             path: 'authentication',
             name: 'authentication',
             component: Authentication,
             meta: { title: t('system.authentication_settings') },
           },
+          {
+            path: 'platform',
+            name: 'platform',
+            component: Platform,
+            meta: { title: t('platform.title') },
+          },
         ],
+      },
+      {
+        path: 'audit',
+        name: 'audit',
+        component: Audit,
+        meta: { title: t('audit.system_log'), iconActive: 'log', iconDeActive: 'noLog' },
       },
     ],
   },
@@ -218,9 +260,24 @@ export const routes = [
     component: EmbeddedPage,
   },
   {
+    path: '/embeddedCommon',
+    name: 'embeddedCommon',
+    component: EmbeddedCommon,
+  },
+  {
     path: '/assistantTest',
     name: 'assistantTest',
     component: assistantTest,
+  },
+  {
+    path: '/chatPreview',
+    name: 'chatPreview',
+    component: ChatPreview,
+  },
+  {
+    path: '/admin-login',
+    name: 'admin-login',
+    component: login,
   },
   {
     path: '/401',

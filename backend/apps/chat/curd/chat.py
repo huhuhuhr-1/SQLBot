@@ -1,18 +1,24 @@
 import datetime
-from typing import List
+from typing import List, Optional, Union, Dict, Any
 
 import orjson
 import sqlparse
 from sqlalchemy import and_, select, update
+from sqlalchemy import desc, func
 from sqlalchemy.orm import aliased
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
-    TypeEnum, OperationEnum, ChatRecordResult
-from apps.datasource.crud.recommended_problem import get_datasource_recommended, get_datasource_recommended_chart
-from apps.datasource.models.datasource import CoreDatasource, DsRecommendedProblem
-from apps.system.crud.assistant import AssistantOutDsFactory
-from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
-from common.utils.utils import extract_nested_json
+    TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
+from apps.datasource.crud.datasource import get_ds
+from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
+from apps.datasource.models.datasource import CoreDatasource
+from apps.db.constant import DB
+from apps.db.db import exec_sql
+from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
+from apps.system.schemas.system_schema import AssistantOutDsSchema
+from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
+from common.utils.data_format import DataFormat
+from common.utils.utils import extract_nested_json, SQLBotLogUtil
 
 
 def get_chat_record_by_id(session: SessionDep, record_id: int):
@@ -28,11 +34,53 @@ def get_chat_record_by_id(session: SessionDep, record_id: int):
     return record
 
 
+def get_chat(session: SessionDep, chat_id: int) -> Chat:
+    statement = select(Chat).where(Chat.id == chat_id)
+    chat = session.exec(statement).scalars().first()
+    return chat
+
+
 def list_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
     oid = current_user.oid if current_user.oid is not None else 1
     chart_list = session.query(Chat).filter(and_(Chat.create_by == current_user.id, Chat.oid == oid)).order_by(
         Chat.create_time.desc()).all()
     return chart_list
+
+
+def list_recent_questions(session: SessionDep, current_user: CurrentUser, datasource_id: int) -> List[str]:
+    chat_records = (
+        session.query(
+            ChatRecord.question
+        )
+        .join(Chat, ChatRecord.chat_id == Chat.id)  # 关联Chat表
+        .filter(
+            Chat.datasource == datasource_id,  # 使用Chat表的datasource字段
+            ChatRecord.question.isnot(None),
+            ChatRecord.create_by == current_user.id
+        )
+        .group_by(ChatRecord.question)
+        .order_by(desc(func.max(ChatRecord.create_time)))
+        .limit(10)
+        .all()
+    )
+    return [record[0] for record in chat_records] if chat_records else []
+
+
+def rename_chat_with_user(session: SessionDep, current_user: CurrentUser, rename_object: RenameChat) -> str:
+    chat = session.get(Chat, rename_object.id)
+    if not chat:
+        raise Exception(f"Chat with id {rename_object.id} not found")
+    if chat.create_by != current_user.id:
+        raise Exception(f"Chat with id {rename_object.id} not Owned by the current user")
+    chat.brief = rename_object.brief.strip()[:20]
+    chat.brief_generate = rename_object.brief_generate
+    session.add(chat)
+    session.flush()
+    session.refresh(chat)
+
+    brief = chat.brief
+    session.commit()
+    return brief
 
 
 def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
@@ -41,6 +89,7 @@ def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
         raise Exception(f"Chat with id {rename_object.id} not found")
 
     chat.brief = rename_object.brief.strip()[:20]
+    chat.brief_generate = rename_object.brief_generate
     session.add(chat)
     session.flush()
     session.refresh(chat)
@@ -61,6 +110,18 @@ def delete_chat(session, chart_id) -> str:
     return f'Chat with id {chart_id} has been deleted'
 
 
+def delete_chat_with_user(session, current_user: CurrentUser, chart_id) -> str:
+    chat = session.query(Chat).filter(Chat.id == chart_id).first()
+    if not chat:
+        return f'Chat with id {chart_id} has been deleted'
+    if chat.create_by != current_user.id:
+        raise Exception(f"Chat with id {chart_id} not Owned by the current user")
+    session.delete(chat)
+    session.commit()
+
+    return f'Chat with id {chart_id} has been deleted'
+
+
 def get_chart_config(session: SessionDep, chart_record_id: int):
     stmt = select(ChatRecord.chart).where(and_(ChatRecord.id == chart_record_id))
     res = session.execute(stmt)
@@ -72,23 +133,41 @@ def get_chart_config(session: SessionDep, chart_record_id: int):
     return {}
 
 
-def format_chart_fields(chart_info: dict):
+def _format_column(column: dict) -> str:
+    """格式化单个column字段"""
+    value = column.get('value', '')
+    name = column.get('name', '')
+    if value != name and name:
+        return f"{value}({name})"
+    return value
+
+
+def format_chart_fields(chart_info: dict) -> list:
     fields = []
-    if chart_info.get('columns') and len(chart_info.get('columns')) > 0:
-        for column in chart_info.get('columns'):
-            column_str = column.get('value')
-            if column.get('value') != column.get('name'):
-                column_str = column_str + '(' + column.get('name') + ')'
-            fields.append(column_str)
-    if chart_info.get('axis'):
-        for _type in ['x', 'y', 'series']:
-            if chart_info.get('axis').get(_type):
-                column = chart_info.get('axis').get(_type)
-                column_str = column.get('value')
-                if column.get('value') != column.get('name'):
-                    column_str = column_str + '(' + column.get('name') + ')'
-                fields.append(column_str)
-    return fields
+
+    # 处理 columns
+    for column in chart_info.get('columns') or []:
+        fields.append(_format_column(column))
+
+    # 处理 axis
+    if axis := chart_info.get('axis'):
+        # 处理 x 轴
+        if x_axis := axis.get('x'):
+            fields.append(_format_column(x_axis))
+
+        # 处理 y 轴
+        if y_axis := axis.get('y'):
+            if isinstance(y_axis, list):
+                for column in y_axis:
+                    fields.append(_format_column(column))
+            else:
+                fields.append(_format_column(y_axis))
+
+        # 处理 series
+        if series := axis.get('series'):
+            fields.append(_format_column(series))
+
+    return [field for field in fields if field]  # 过滤空字符串
 
 
 def get_last_execute_sql_error(session: SessionDep, chart_id: int):
@@ -137,12 +216,70 @@ def format_json_list_data(origin_data: list[dict]):
     return data
 
 
+def get_chat_chart_config(session: SessionDep, chat_record_id: int):
+    stmt = select(ChatRecord.chart).where(and_(ChatRecord.id == chat_record_id))
+    res = session.execute(stmt)
+    for row in res:
+        try:
+            return orjson.loads(row.chart)
+        except Exception:
+            pass
+    return {}
+
+
+def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+    res = session.execute(stmt)
+    for row in res:
+        try:
+            return orjson.loads(row.data)
+        except Exception:
+            pass
+    return {}
+
+def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    stmt = select(ChatRecord.datasource,ChatRecord.sql).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+    row = session.execute(stmt).first()
+    return get_chart_data_ds(session,row.datasource, row.sql)
+
+def get_chart_data_ds(session: SessionDep,ds_id,sql):
+    json_result: Dict[str, Any] = {'status': 'success','data':[],'message':''}
+    try:
+        datasource = get_ds(session,ds_id)
+        if datasource is None:
+            json_result['status'] = 'failed'
+            json_result['message'] = 'Datasource not found'
+            return json_result
+        else:
+            result = exec_sql(ds=datasource,sql=sql, origin_column=False)
+            _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
+            json_result['data'] = _data
+            return json_result
+    except Exception as e:
+        SQLBotLogUtil.error(f"Function failed: {e}")
+        json_result['status'] = 'failed'
+        json_result['message'] = f"{e}"
+        pass
+    return json_result
+
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
     stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id))
     res = session.execute(stmt)
     for row in res:
         try:
             return orjson.loads(row.data)
+        except Exception:
+            pass
+    return {}
+
+
+def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    stmt = select(ChatRecord.predict_data).where(
+        and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+    res = session.execute(stmt)
+    for row in res:
+        try:
+            return orjson.loads(row.predict_data)
         except Exception:
             pass
     return {}
@@ -168,16 +305,18 @@ dynamic_ds_types = [1, 3]
 
 
 def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser,
-                          current_assistant: CurrentAssistant, with_data: bool = False) -> ChatInfo:
+                          current_assistant: CurrentAssistant, with_data: bool = False,
+                          trans: Trans = None) -> ChatInfo:
     chat = session.get(Chat, chart_id)
     if not chat:
         raise Exception(f"Chat with id {chart_id} not found")
-
+    if chat.create_by != current_user.id:
+        raise Exception(f"Chat with id {chart_id} not Owned by the current user")
     chat_info = ChatInfo(**chat.model_dump())
 
     if current_assistant and current_assistant.type in dynamic_ds_types:
         out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
-        ds = out_ds_instance.get_ds(chat.datasource)
+        ds = out_ds_instance.get_ds(chat.datasource, trans)
     else:
         ds = session.get(CoreDatasource, chat.datasource) if chat.datasource else None
 
@@ -195,9 +334,10 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     predict_alias_log = aliased(ChatLog)
 
     stmt = (select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
-                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,
+                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,ChatRecord.datasource,
                    ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                    ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
+                   ChatRecord.regenerate_record_id,
                    ChatRecord.recommended_question, ChatRecord.first_chat,
                    ChatRecord.finish, ChatRecord.error,
                    sql_alias_log.reasoning_content.label('sql_reasoning_content'),
@@ -221,9 +361,10 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         ChatRecord.create_time))
     if with_data:
         stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
-                      ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,
+                      ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,ChatRecord.datasource,
                       ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                       ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
+                      ChatRecord.regenerate_record_id,
                       ChatRecord.recommended_question, ChatRecord.first_chat,
                       ChatRecord.finish, ChatRecord.error, ChatRecord.data, ChatRecord.predict_data).where(
             and_(ChatRecord.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(
@@ -231,16 +372,67 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
     result = session.execute(stmt).all()
     record_list: list[ChatRecordResult] = []
+
+    # 批量获取所有ChatRecord的token消耗
+    record_ids = [row.id for row in result]
+    token_usage_map = {}
+
+    if record_ids:
+        # 查询所有相关ChatLog的token_usage
+        log_stmt = select(ChatLog.pid, ChatLog.token_usage).where(
+            and_(
+                ChatLog.pid.in_(record_ids),
+                ChatLog.local_operation == False,
+                ChatLog.operate != OperationEnum.GENERATE_RECOMMENDED_QUESTIONS,
+                ChatLog.token_usage.is_not(None)  # 排除token_usage为空的记录
+            )
+        )
+        log_results = session.execute(log_stmt).all()
+
+        # 按pid分组计算total_tokens总和
+        for pid, token_usage in log_results:
+            if pid and token_usage is not None:
+                tokens_to_add = 0
+
+                if isinstance(token_usage, dict):
+                    # 处理字典类型: {"input_tokens": 961, "total_tokens": 1006, "output_tokens": 45}
+                    if token_usage:  # 非空字典
+                        if "total_tokens" in token_usage:
+                            token_value = token_usage["total_tokens"]
+                            if isinstance(token_value, (int, float)):
+                                tokens_to_add = int(token_value)
+                elif isinstance(token_usage, (int, float)):
+                    tokens_to_add = int(token_usage)
+                if tokens_to_add > 0:
+                    if pid not in token_usage_map:
+                        token_usage_map[pid] = 0
+                    token_usage_map[pid] += tokens_to_add
+
     for row in result:
+        # 计算耗时
+        duration = None
+        if row.create_time and row.finish_time:
+            try:
+                time_diff = row.finish_time - row.create_time
+                duration = time_diff.total_seconds()  # 转换为秒
+            except Exception:
+                duration = None
+
+        # 获取token总消耗
+        total_tokens = token_usage_map.get(row.id, 0)
+
         if not with_data:
             record_list.append(
                 ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
                                  finish_time=row.finish_time,
-                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                                 duration=duration,
+                                 total_tokens=total_tokens,
+                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql, datasource=row.datasource,
                                  chart_answer=row.chart_answer, chart=row.chart,
                                  analysis=row.analysis, predict=row.predict,
                                  datasource_select_answer=row.datasource_select_answer,
                                  analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
+                                 regenerate_record_id=row.regenerate_record_id,
                                  recommended_question=row.recommended_question, first_chat=row.first_chat,
                                  finish=row.finish, error=row.error,
                                  sql_reasoning_content=row.sql_reasoning_content,
@@ -252,11 +444,14 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
             record_list.append(
                 ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
                                  finish_time=row.finish_time,
-                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                                 duration=duration,
+                                 total_tokens=total_tokens,
+                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql, datasource=row.datasource,
                                  chart_answer=row.chart_answer, chart=row.chart,
                                  analysis=row.analysis, predict=row.predict,
                                  datasource_select_answer=row.datasource_select_answer,
                                  analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
+                                 regenerate_record_id=row.regenerate_record_id,
                                  recommended_question=row.recommended_question, first_chat=row.first_chat,
                                  finish=row.finish, error=row.error, data=row.data, predict_data=row.predict_data))
 
@@ -322,7 +517,157 @@ def format_record(record: ChatRecordResult):
         except Exception:
             pass
 
+    # 格式化duration字段，保留2位小数
+    if 'duration' in _dict and _dict['duration'] is not None:
+        try:
+            # 可以格式化为更易读的形式
+            _dict['duration'] = round(_dict['duration'], 2)  # 保留2位小数
+        except Exception:
+            pass
+
+    # 格式化total_tokens字段
+    if 'total_tokens' in _dict and _dict['total_tokens'] is not None:
+        try:
+            # 确保是整数类型
+            _dict['total_tokens'] = int(_dict['total_tokens']) if _dict['total_tokens'] else 0
+        except Exception:
+            _dict['total_tokens'] = 0
+
+    # 去除返回前端多余的字段
+    _dict.pop('sql_reasoning_content', None)
+    _dict.pop('chart_reasoning_content', None)
+    _dict.pop('analysis_reasoning_content', None)
+    _dict.pop('predict_reasoning_content', None)
+
     return _dict
+
+
+def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user: CurrentUser,
+                         without_steps: bool = False) -> ChatLogHistory:
+    """
+    获取ChatRecord的详细历史记录
+
+    Args:
+        session: 数据库会话
+        chat_record_id: ChatRecord的ID
+        current_user: 当前用户
+        without_steps
+
+    Returns:
+        ChatLogHistory: 包含历史步骤和时间信息的对象
+    """
+    # 1. 首先验证ChatRecord存在且属于当前用户
+    chat_record = session.get(ChatRecord, chat_record_id)
+    if not chat_record:
+        raise Exception(f"ChatRecord with id {chat_record_id} not found")
+
+    if chat_record.create_by != current_user.id:
+        raise Exception(f"ChatRecord with id {chat_record_id} not owned by the current user")
+
+    # 2. 查询与该ChatRecord相关的所有ChatLog记录
+    chat_logs = session.query(ChatLog).filter(
+        ChatLog.pid == chat_record_id,
+        ChatLog.operate != OperationEnum.GENERATE_RECOMMENDED_QUESTIONS
+    ).order_by(ChatLog.start_time).all()
+
+    # 3. 计算总的时间和token信息
+    total_tokens = 0
+    steps = []
+
+    for log in chat_logs:
+        # 计算单条记录的token消耗
+        log_tokens = 0
+        if log.token_usage is not None:
+            if isinstance(log.token_usage, dict):
+                if log.token_usage and "total_tokens" in log.token_usage:
+                    token_value = log.token_usage["total_tokens"]
+                    if isinstance(token_value, (int, float)):
+                        log_tokens = int(token_value)
+            elif isinstance(log.token_usage, (int, float)):
+                log_tokens = log.token_usage
+
+        # 累加到总token消耗
+        total_tokens += log_tokens
+
+        if not without_steps:
+            # 计算单条记录的耗时
+            duration = None
+            if log.start_time and log.finish_time:
+                try:
+                    time_diff = log.finish_time - log.start_time
+                    duration = round(time_diff.total_seconds(), 2)
+                except Exception:
+                    duration = None
+
+            # 获取操作类型的枚举名称
+            operate_name = None
+            message = None
+            if log.operate:
+                # 如果是OperationEnum枚举实例
+                if isinstance(log.operate, OperationEnum):
+                    operate_name = log.operate.name
+                # 如果是字符串，尝试从枚举值获取名称
+                elif isinstance(log.operate, str):
+                    try:
+                        # 通过枚举值找到对应的枚举实例
+                        for enum_item in OperationEnum:
+                            if enum_item.value == log.operate:
+                                operate_name = enum_item.name
+                                break
+                    except Exception:
+                        operate_name = log.operate
+                else:
+                    operate_name = str(log.operate)
+
+                if log.messages is not None:
+                    message = log.messages
+                    if not log.operate == OperationEnum.CHOOSE_TABLE:
+                        try:
+                            message = orjson.loads(log.messages)
+                        except Exception:
+                            pass
+
+            # 创建ChatLogHistoryItem
+            history_item = ChatLogHistoryItem(
+                start_time=log.start_time,
+                finish_time=log.finish_time,
+                duration=duration,
+                total_tokens=log_tokens,
+                operate=operate_name,
+                local_operation=log.local_operation,
+                error=log.error,
+                message=message,
+            )
+
+            steps.append(history_item)
+
+    # 4. 计算总耗时（使用ChatRecord的时间）
+    total_duration = None
+    if chat_record.create_time and chat_record.finish_time:
+        try:
+            time_diff = chat_record.finish_time - chat_record.create_time
+            total_duration = round(time_diff.total_seconds(), 2)
+        except Exception:
+            total_duration = None
+
+    # 5. 创建并返回ChatLogHistory对象
+    chat_log_history = ChatLogHistory(
+        start_time=chat_record.create_time,  # 使用ChatRecord的create_time
+        finish_time=chat_record.finish_time,  # 使用ChatRecord的finish_time
+        duration=total_duration,
+        total_tokens=total_tokens,
+        steps=steps
+    )
+
+    return chat_log_history
+
+
+def get_chat_brief_generate(session: SessionDep, chat_id: int):
+    chat = get_chat(session=session, chat_id=chat_id)
+    if chat is not None and chat.brief_generate is not None:
+        return chat.brief_generate
+    else:
+        return False
 
 
 def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
@@ -352,7 +697,7 @@ def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog
 
 
 def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat,
-                require_datasource: bool = True) -> ChatInfo:
+                require_datasource: bool = True, current_assistant: CurrentAssistant = None) -> ChatInfo:
     if not create_chat_obj.datasource and require_datasource:
         raise Exception("Datasource cannot be None")
 
@@ -364,10 +709,17 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
                 oid=current_user.oid if current_user.oid is not None else 1,
                 brief=create_chat_obj.question.strip()[:20],
                 origin=create_chat_obj.origin if create_chat_obj.origin is not None else 0)
-    ds: CoreDatasource | None = None
+    ds: CoreDatasource | AssistantOutDsSchema | None = None
     if create_chat_obj.datasource:
         chat.datasource = create_chat_obj.datasource
-        ds = session.get(CoreDatasource, create_chat_obj.datasource)
+        if current_assistant and current_assistant.type == 1:
+            out_ds_instance: AssistantOutDs = AssistantOutDsFactory.get_instance(current_assistant)
+            ds = out_ds_instance.get_ds(chat.datasource)
+            ds.type_name = DB.get_db(ds.type)
+        else:
+            ds = session.get(CoreDatasource, create_chat_obj.datasource)
+            if ds.oid != current_user.oid:
+                raise Exception(f"Datasource with id {create_chat_obj.datasource} does not belong to current workspace")
 
         if not ds:
             raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
@@ -399,7 +751,7 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
         record.finish = True
         record.create_time = datetime.datetime.now()
         record.create_by = current_user.id
-        if ds.recommended_config == 2:
+        if isinstance(ds, CoreDatasource) and ds.recommended_config == 2:
             questions = get_datasource_recommended_chart(session, ds.id)
             record.recommended_question = orjson.dumps(questions).decode()
             record.recommended_question_answer = orjson.dumps({
@@ -438,6 +790,7 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
     record.datasource = chat.datasource
     record.engine_type = chat.engine_type
     record.ai_modal_id = question.ai_modal_id
+    record.regenerate_record_id = question.regenerate_record_id
 
     result = ChatRecord(**record.model_dump())
 
@@ -478,10 +831,11 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
     return result
 
 
-def start_log(session: SessionDep, ai_modal_id: int, ai_modal_name: str, operate: OperationEnum, record_id: int,
-              full_message: list[dict]) -> ChatLog:
+def start_log(session: SessionDep, ai_modal_id: int = None, ai_modal_name: str = None, operate: OperationEnum = None,
+              record_id: int = None, full_message: Union[list[dict], dict] = None,
+              local_operation: bool = False) -> ChatLog:
     log = ChatLog(type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
-                  messages=full_message, start_time=datetime.datetime.now())
+                  messages=full_message, start_time=datetime.datetime.now(), local_operation=local_operation)
 
     result = ChatLog(**log.model_dump())
 
@@ -494,7 +848,8 @@ def start_log(session: SessionDep, ai_modal_id: int, ai_modal_name: str, operate
     return result
 
 
-def end_log(session: SessionDep, log: ChatLog, full_message: list[dict], reasoning_content: str = None,
+def end_log(session: SessionDep, log: ChatLog, full_message: Union[list[dict], dict, str],
+            reasoning_content: str = None,
             token_usage=None) -> ChatLog:
     if token_usage is None:
         token_usage = {}
@@ -508,6 +863,17 @@ def end_log(session: SessionDep, log: ChatLog, full_message: list[dict], reasoni
         token_usage=log.token_usage,
         finish_time=log.finish_time,
         reasoning_content=log.reasoning_content
+    )
+    session.execute(stmt)
+    session.commit()
+
+    return log
+
+
+def trigger_log_error(session: SessionDep, log: ChatLog) -> ChatLog:
+    log.error = True
+    stmt = update(ChatLog).where(and_(ChatLog.id == log.id)).values(
+        error=True
     )
     session.execute(stmt)
     session.commit()
@@ -599,7 +965,7 @@ def save_select_datasource_answer(session: SessionDep, record_id: int, answer: s
 
 
 def save_recommend_question_answer(session: SessionDep, record_id: int,
-                                   answer: dict = None) -> ChatRecord:
+                                   answer: dict = None, articles_number: Optional[int] = 4) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -622,12 +988,19 @@ def save_recommend_question_answer(session: SessionDep, record_id: int,
     )
 
     session.execute(stmt)
-
     session.commit()
 
     record = get_chat_record_by_id(session, record_id)
     record.recommended_question_answer = recommended_question_answer
     record.recommended_question = recommended_question
+    if articles_number > 4:
+        stmt_chat = update(Chat).where(and_(Chat.id == record.chat_id)).values(
+            recommended_question_answer=recommended_question_answer,
+            recommended_question=recommended_question,
+            recommended_generate=True
+        )
+        session.execute(stmt_chat)
+        session.commit()
 
     return record
 
@@ -729,6 +1102,14 @@ def save_error_message(session: SessionDep, record_id: int, message: str) -> Cha
 
     session.execute(stmt)
 
+    session.commit()
+
+    # log error finish
+    stmt = update(ChatLog).where(and_(ChatLog.pid == record.id, ChatLog.finish_time.is_(None))).values(
+        finish_time=record.finish_time,
+        error=True
+    )
+    session.execute(stmt)
     session.commit()
 
     return result

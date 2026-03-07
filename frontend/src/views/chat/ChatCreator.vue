@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, ref, computed, shallowRef } from 'vue'
+import { onMounted, ref, computed, shallowRef, onBeforeUnmount, onBeforeMount } from 'vue'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
@@ -8,7 +8,16 @@ import { chatApi, ChatInfo } from '@/api/chat.ts'
 import { datasourceApi } from '@/api/datasource.ts'
 import Card from '@/views/ds/ChatCard.vue'
 import AddDrawer from '@/views/ds/AddDrawer.vue'
+import { useUserStore } from '@/stores/user'
+import { useAssistantStore } from '@/stores/assistant'
+import { request } from '@/utils/request'
+const assistantStore = useAssistantStore()
+const userStore = useUserStore()
 
+const isWsAdmin = computed(() => userStore.isAdmin || userStore.isSpaceAdmin)
+const selectAssistantDs = computed(
+  () => assistantStore.getAssistant && !assistantStore.getEmbedded && !assistantStore.getAutoDs
+)
 const props = withDefaults(
   defineProps<{
     hidden?: boolean
@@ -38,8 +47,7 @@ const emits = defineEmits(['onChatCreated'])
 
 function listDs() {
   searchLoading.value = true
-  datasourceApi
-    .list()
+  ;(selectAssistantDs.value ? request.get('/system/assistant/ds') : datasourceApi.list())
     .then((res) => {
       datasourceList.value = res
     })
@@ -69,6 +77,10 @@ function selectDsInDialog(ds: any) {
 
 function confirmSelectDs() {
   if (innerDs.value) {
+    if (assistantStore.getType == 1) {
+      createChat(innerDs.value)
+      return
+    }
     statusLoading.value = true
     //check first
     datasourceApi
@@ -86,10 +98,15 @@ function confirmSelectDs() {
 
 function createChat(datasource: number) {
   loading.value = true
-  chatApi
-    .startChat({
-      datasource: datasource,
-    })
+  const param = {
+    datasource: datasource,
+  } as any
+  let method = chatApi.startChat
+  if (assistantStore.getAssistant) {
+    param['origin'] = 2
+    method = chatApi.startAssistantChat
+  }
+  method(param)
     .then((res) => {
       const chat: ChatInfo | undefined = chatApi.toChatInfo(res)
       if (chat == undefined) {
@@ -106,10 +123,24 @@ function createChat(datasource: number) {
     })
 }
 
+const drawerHeight = ref(0)
+const setHeight = () => {
+  drawerHeight.value = document.body.clientHeight - 100
+  console.log(drawerHeight.value)
+}
+
 onMounted(() => {
   if (props.hidden) {
     return
   }
+})
+
+onBeforeMount(() => {
+  setHeight()
+  window.addEventListener('resize', setHeight)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', setHeight)
 })
 
 const handleAddDatasource = () => {
@@ -128,7 +159,7 @@ defineExpose({
     <el-drawer
       v-model="datasourceConfigVisible"
       :close-on-click-modal="false"
-      size="calc(100% - 100px)"
+      :size="drawerHeight"
       modal-class="datasource-drawer-chat"
       direction="btt"
       :before-close="beforeClose"
@@ -136,11 +167,11 @@ defineExpose({
     >
       <template #header="{ close }">
         <span style="white-space: nowrap">{{ $t('qa.select_datasource') }}</span>
-        <div class="flex-center" style="width: 100%">
+        <div class="flex-center" style="width: 100%; margin-right: 32px">
           <el-input
             v-model="keywords"
             clearable
-            style="width: 320px"
+            style="width: 320px; max-width: calc(100% - 32px)"
             :placeholder="$t('datasource.search')"
           >
             <template #prefix>
@@ -187,7 +218,7 @@ defineExpose({
           img-type="noneWhite"
         />
 
-        <div style="text-align: center; margin-top: -10px">
+        <div v-if="isWsAdmin" style="text-align: center; margin-top: -10px">
           <el-button type="primary" @click="handleAddDatasource">
             <template #icon>
               <icon_add_outlined></icon_add_outlined>

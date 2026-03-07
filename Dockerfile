@@ -65,7 +65,7 @@ COPY g2-ssr/charts/* /app/charts/
 RUN npm install
 
 # Runtime stage
-FROM --platform=${BUILDPLATFORM} registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone
@@ -79,9 +79,6 @@ ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
 ENV POSTGRES_DB=sqlbot
 ENV POSTGRES_USER=root
 ENV POSTGRES_PASSWORD=Password123@pg
-
-# Add Oracle instant client path to ENV
-ENV LD_LIBRARY_PATH="/opt/sqlbot/db_client/oracle_instant_client:${LD_LIBRARY_PATH}"
 
 # Copy necessary files from builder
 COPY start.sh /opt/sqlbot/app/start.sh

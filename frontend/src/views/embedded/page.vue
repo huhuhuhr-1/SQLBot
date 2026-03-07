@@ -1,5 +1,8 @@
 <template>
-  <div :class="dynamicType === 4 ? 'sqlbot--embedded-page' : 'sqlbot-embedded-assistant-page'">
+  <div
+    v-loading="divLoading"
+    :class="dynamicType === 4 ? 'sqlbot--embedded-page' : 'sqlbot-embedded-assistant-page'"
+  >
     <chat-component
       v-if="!loading"
       ref="chatRef"
@@ -13,7 +16,7 @@
 </template>
 <script setup lang="ts">
 import ChatComponent from '@/views/chat/index.vue'
-import { nextTick, onBeforeMount, onBeforeUnmount, reactive, ref } from 'vue'
+import { nextTick, onBeforeMount, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { assistantApi } from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistant'
@@ -21,7 +24,8 @@ import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
 import { setCurrentColor } from '@/utils/utils'
-
+import { useUserStore } from '@/stores/user'
+const userStore = useUserStore()
 const { t } = useI18n()
 const chatRef = ref()
 const appearanceStore = useAppearanceStoreWithOut()
@@ -47,6 +51,7 @@ const validator = ref({
   token: '',
 })
 const loading = ref(true)
+const divLoading = ref(true)
 const eventName = 'sqlbot_embedded_event'
 const communicationCb = async (event: any) => {
   if (event.data?.eventName === eventName) {
@@ -60,6 +65,7 @@ const communicationCb = async (event: any) => {
       if (type === 4) {
         assistantStore.setToken(certificate)
         assistantStore.setAssistant(true)
+        await userStore.info()
         loading.value = false
         return
       }
@@ -80,6 +86,17 @@ const communicationCb = async (event: any) => {
     }
   }
 }
+
+watch(
+  () => loading.value,
+  (val) => {
+    nextTick(() => {
+      setTimeout(() => {
+        divLoading.value = val
+      }, 1000)
+    })
+  }
+)
 const createChat = () => {
   chatRef.value?.createNewChat()
 }
@@ -165,6 +182,7 @@ onBeforeMount(async () => {
   request.get(`/system/assistant/${assistantId}`).then((res) => {
     if (res?.configuration) {
       const rawData = JSON.parse(res?.configuration)
+      assistantStore.setAutoDs(rawData?.auto_ds)
       if (rawData.logo) {
         logo.value = baseUrl + rawData.logo
       }
@@ -217,6 +235,6 @@ onBeforeUnmount(() => {
   background: #f7f8fa;
   box-sizing: border-box;
   overflow: auto;
-  padding-bottom: 48px;
+  //padding-bottom: 48px;
 }
 </style>

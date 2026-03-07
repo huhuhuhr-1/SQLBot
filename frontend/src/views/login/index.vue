@@ -24,46 +24,48 @@
           }}</span>
         </div>
         <div v-if="appearanceStore.getShowSlogan" class="welcome">
-          {{ appearanceStore.slogan || $t('common.intelligent_questioning_platform') }}
+          {{ appearanceStore.slogan ?? $t('common.intelligent_questioning_platform') }}
         </div>
         <div v-else class="welcome" style="height: 0"></div>
         <div class="login-form">
-          <h2 class="title">{{ $t('common.login') }}</h2>
-          <el-form
-            ref="loginFormRef"
-            class="form-content_error"
-            :model="loginForm"
-            :rules="rules"
-            @keyup.enter="submitForm"
-          >
-            <el-form-item prop="username">
-              <el-input
-                v-model="loginForm.username"
-                clearable
-                :placeholder="$t('common.your_account_email_address')"
-                size="large"
-              ></el-input>
-            </el-form-item>
-            <el-form-item prop="password">
-              <el-input
-                v-model="loginForm.password"
-                :placeholder="$t('common.enter_your_password')"
-                type="password"
-                show-password
-                clearable
-                size="large"
-              ></el-input>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" class="login-btn" @click="submitForm">{{
-                $t('common.login_')
-              }}</el-button>
-            </el-form-item>
-          </el-form>
+          <div class="default-login-tabs">
+            <h2 class="title">{{ $t('common.login') }}</h2>
+            <el-form
+              ref="loginFormRef"
+              class="form-content_error"
+              :model="loginForm"
+              :rules="rules"
+              @keyup.enter="submitForm"
+            >
+              <el-form-item prop="username">
+                <el-input
+                  v-model="loginForm.username"
+                  clearable
+                  :placeholder="$t('common.your_account_email_address')"
+                  size="large"
+                ></el-input>
+              </el-form-item>
+              <el-form-item prop="password">
+                <el-input
+                  v-model="loginForm.password"
+                  :placeholder="$t('common.enter_your_password')"
+                  type="password"
+                  show-password
+                  clearable
+                  size="large"
+                ></el-input>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" class="login-btn" @click="submitForm">{{
+                  $t('common.login_')
+                }}</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
           <Handler
-            ref="xpackLoginHandler"
             v-model:loading="showLoading"
             jsname="L2NvbXBvbmVudC9sb2dpbi9IYW5kbGVy"
+            @switch-tab="switchTab"
           />
         </div>
       </div>
@@ -82,18 +84,20 @@ import login_image from '@/assets/embedded/login_image.png'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import loginImage from '@/assets/blue/login-image_blue.png'
 import Handler from './xpack/Handler.vue'
+import { toLoginSuccess } from '@/utils/utils'
 
 const showLoading = ref(true)
 const router = useRouter()
 const userStore = useUserStore()
 const appearanceStore = useAppearanceStoreWithOut()
 const { t } = useI18n()
-const xpackLoginHandler = ref<any>(null)
 const loginForm = ref({
   username: '',
   password: '',
 })
+const activeName = ref('simple')
 
+// const isLdap = computed(() => activeName.value == 'ldap')
 const bg = computed(() => {
   return appearanceStore.getBg || (appearanceStore.isBlue ? loginImage : login_image)
 })
@@ -113,10 +117,13 @@ const submitForm = () => {
   loginFormRef.value.validate((valid: boolean) => {
     if (valid) {
       userStore.login(loginForm.value).then(() => {
-        router.push('/chat')
+        toLoginSuccess(router)
       })
     }
   })
+}
+const switchTab = (name: string) => {
+  activeName.value = name || 'simple'
 }
 </script>
 
@@ -193,7 +200,7 @@ const submitForm = () => {
 
         .login-btn {
           width: 100%;
-          height: 45px;
+          height: 40px;
           font-size: 16px;
           border-radius: 4px;
         }

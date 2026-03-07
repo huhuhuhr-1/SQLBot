@@ -4,7 +4,6 @@ import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import { professionalApi } from '@/api/professional'
 import { formatTimestamp } from '@/utils/date'
 import { datasourceApi } from '@/api/datasource'
-import ccmUpload from '@/assets/svg/icon_ccm-upload_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
@@ -12,9 +11,10 @@ import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlin
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
-import { genFileId, type UploadInstance, type UploadProps, type UploadRawFile } from 'element-plus'
-import { useCache } from '@/utils/useCache.ts'
-import { settingsApi } from '@/api/setting.ts'
+import { convertFilterText, FilterText } from '@/components/filter-text'
+import { DrawerMain } from '@/components/drawer-main'
+import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
+import Uploader from '@/views/system/excel-upload/Uploader.vue'
 
 interface Form {
   id?: string | null
@@ -27,17 +27,20 @@ interface Form {
 }
 
 const { t } = useI18n()
-const { wsCache } = useCache()
 const multipleSelectionAll = ref<any[]>([])
 const allDsList = ref<any[]>([])
 const keywords = ref('')
 const oldKeywords = ref('')
 const searchLoading = ref(false)
+const drawerMainRef = ref()
 
 const selectable = () => {
   return true
 }
 onMounted(() => {
+  datasourceApi.list().then((res) => {
+    filterOption.value[0].option = [...res]
+  })
   search()
 })
 const dialogFormVisible = ref<boolean>(false)
@@ -49,6 +52,11 @@ const pageInfo = reactive({
   currentPage: 1,
   pageSize: 10,
   total: 0,
+})
+
+const state = reactive<any>({
+  conditions: [],
+  filterTexts: [],
 })
 
 const dialogTitle = ref('')
@@ -69,92 +77,6 @@ const cancelDelete = () => {
   multipleSelectionAll.value = []
   checkAll.value = false
   isIndeterminate.value = false
-}
-
-const uploadRef = ref<UploadInstance>()
-const uploadLoading = ref(false)
-
-const token = wsCache.get('user.token')
-const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}` })
-const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/system/terminology/uploadExcel'
-
-const handleExceed: UploadProps['onExceed'] = (files) => {
-  uploadRef.value!.clearFiles()
-  const file = files[0] as UploadRawFile
-  file.uid = genFileId()
-  uploadRef.value!.handleStart(file)
-}
-
-const beforeUpload = (rawFile: any) => {
-  if (rawFile.size / 1024 / 1024 > 50) {
-    ElMessage.error(t('common.not_exceed_50mb'))
-    return false
-  }
-  uploadLoading.value = true
-  return true
-}
-const onSuccess = (response: any) => {
-  uploadRef.value!.clearFiles()
-  search()
-
-  if (response?.data?.failed_count > 0 && response?.data?.error_excel_filename) {
-    ElMessage.error(
-      t('training.upload_failed', {
-        success: response.data.success_count,
-        fail: response.data.failed_count,
-        fail_info: response.data.error_excel_filename,
-      })
-    )
-    settingsApi
-      .downloadError(response.data.error_excel_filename)
-      .then((res) => {
-        const blob = new Blob([res], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        })
-        const link = document.createElement('a')
-        link.href = URL.createObjectURL(blob)
-        link.download = response.data.error_excel_filename
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-      })
-      .catch(async (error) => {
-        if (error.response) {
-          try {
-            let text = await error.response.data.text()
-            try {
-              text = JSON.parse(text)
-            } finally {
-              ElMessage({
-                message: text,
-                type: 'error',
-                showClose: true,
-              })
-            }
-          } catch (e) {
-            console.error('Error processing error response:', e)
-          }
-        } else {
-          console.error('Other error:', error)
-          ElMessage({
-            message: error,
-            type: 'error',
-            showClose: true,
-          })
-        }
-      })
-      .finally(() => {
-        uploadLoading.value = false
-      })
-  } else {
-    ElMessage.success(t('training.upload_success'))
-    uploadLoading.value = false
-  }
-}
-
-const onError = () => {
-  uploadLoading.value = false
-  uploadRef.value!.clearFiles()
 }
 
 const exportExcel = () => {
@@ -288,15 +210,32 @@ const handleToggleRowSelection = (check: boolean = true) => {
   isIndeterminate.value = !(i === 0 || i === arr.length)
 }
 
-const search = () => {
+const configParams = () => {
+  let str = ''
+  if (keywords.value) {
+    str += `word=${keywords.value}`
+  }
+
+  state.conditions.forEach((ele: any) => {
+    ele.value.forEach((itx: any) => {
+      str += str ? `&${ele.field}=${itx}` : `${ele.field}=${itx}`
+    })
+  })
+
+  if (str.length) {
+    str = `?${str}`
+  }
+  return str
+}
+
+const search = ($event: any = {}) => {
+  if ($event?.isComposing) {
+    return
+  }
   searchLoading.value = true
   oldKeywords.value = keywords.value
   professionalApi
-    .getList(
-      pageInfo.currentPage,
-      pageInfo.pageSize,
-      keywords.value ? { word: keywords.value } : {}
-    )
+    .getList(pageInfo.currentPage, pageInfo.pageSize, configParams())
     .then((res) => {
       toggleRowLoading.value = true
       fieldList.value = res.data
@@ -426,6 +365,49 @@ const deleteHandlerItem = (idx: number) => {
   pageForm.value.other_words = pageForm.value.other_words!.filter((_, index) => index !== idx)
 }
 
+const filterOption = ref<any[]>([
+  {
+    type: 'select',
+    option: [],
+    field: 'dslist',
+    title: t('ds.title'),
+    operate: 'in',
+    property: { placeholder: t('common.empty') + t('ds.title') },
+  },
+])
+
+const fillFilterText = () => {
+  const textArray = state.conditions?.length
+    ? convertFilterText(state.conditions, filterOption.value)
+    : []
+  state.filterTexts = [...textArray]
+  Object.assign(state.filterTexts, textArray)
+}
+const searchCondition = (conditions: any) => {
+  state.conditions = conditions
+  fillFilterText()
+  search()
+  drawerMainClose()
+}
+
+const clearFilter = (params?: number) => {
+  let index = params ? params : 0
+  if (isNaN(index)) {
+    state.filterTexts = []
+  } else {
+    state.filterTexts.splice(index, 1)
+  }
+  drawerMainRef.value.clearFilter(index)
+}
+
+const drawerMainOpen = async () => {
+  drawerMainRef.value.init()
+}
+
+const drawerMainClose = () => {
+  drawerMainRef.value.close()
+}
+
 const changeStatus = (id: any, val: any) => {
   professionalApi
     .enable(id, val + '')
@@ -451,7 +433,7 @@ const changeStatus = (id: any, val: any) => {
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('professional.search_term')"
           clearable
-          @blur="search"
+          @keydown.enter.exact.prevent="search"
         >
           <template #prefix>
             <el-icon>
@@ -465,27 +447,19 @@ const changeStatus = (id: any, val: any) => {
           </template>
           {{ $t('professional.export_all') }}
         </el-button>
-        <el-upload
-          ref="uploadRef"
-          :multiple="false"
-          accept=".xlsx,.xls"
-          :action="getUploadURL"
-          :before-upload="beforeUpload"
-          :headers="headers"
-          :on-success="onSuccess"
-          :on-error="onError"
-          :show-file-list="false"
-          :limit="1"
-          :on-exceed="handleExceed"
-        >
-          <el-button secondary>
-            <template #icon>
-              <ccmUpload></ccmUpload>
-            </template>
-            {{ $t('user.batch_import') }}
-          </el-button>
-        </el-upload>
-        <el-button type="primary" @click="editHandler(null)">
+        <Uploader
+          upload-path="/system/terminology/uploadExcel"
+          template-path="/system/terminology/template"
+          :template-name="`${t('professional.professional_terminology')}.xlsx`"
+          @upload-finished="search"
+        />
+        <el-button class="no-margin" secondary @click="drawerMainOpen">
+          <template #icon>
+            <iconFilter></iconFilter>
+          </template>
+          {{ $t('user.filter') }}
+        </el-button>
+        <el-button class="no-margin" type="primary" @click="editHandler(null)">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -498,6 +472,11 @@ const changeStatus = (id: any, val: any) => {
       class="table-content"
       :class="multipleSelectionAll?.length && 'show-pagination_height'"
     >
+      <filter-text
+        :total="pageInfo.total"
+        :filter-texts="state.filterTexts"
+        @clear-filter="clearFilter"
+      />
       <div class="preview-or-schema">
         <el-table
           ref="multipleTableRef"
@@ -781,9 +760,17 @@ const changeStatus = (id: any, val: any) => {
       </el-form-item>
     </el-form>
   </el-drawer>
+  <drawer-main
+    ref="drawerMainRef"
+    :filter-options="filterOption"
+    @trigger-filter="searchCondition"
+  />
 </template>
 
 <style lang="less" scoped>
+.no-margin {
+  margin: 0;
+}
 .professional {
   height: 100%;
   position: relative;

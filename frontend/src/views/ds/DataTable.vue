@@ -3,13 +3,18 @@ import { ref, computed, onMounted, reactive } from 'vue'
 import { datasourceApi } from '@/api/datasource'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
+import icon_import_outlined from '@/assets/svg/icon_import_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import ParamsForm from './ParamsForm.vue'
+import UploaderRemark from '@/views/system/excel-upload/UploaderRemark.vue'
 import TableRelationship from '@/views/ds/TableRelationship.vue'
 import icon_mindnote_outlined from '@/assets/svg/icon_mindnote_outlined.svg'
+import { Refresh } from '@element-plus/icons-vue'
+import { debounce } from 'lodash-es'
+
 interface Table {
   name: string
   host: string
@@ -77,6 +82,7 @@ const pageInfo = reactive({
 })
 const handleRelationship = () => {
   activeRelationship.value = !activeRelationship.value
+  tableName.value = []
   currentTable.value = {}
 }
 const singleDragStartD = (e: DragEvent, ele: any) => {
@@ -101,20 +107,38 @@ const handleCurrentChange = (val: number) => {
 
 const fieldListComputed = computed(() => {
   const { currentPage, pageSize } = pageInfo
-  return fieldList.value.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  return fieldListTotalComputed.value.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 })
 
-const init = () => {
+const fieldListTotalComputed = computed(() => {
+  return fieldList.value.filter((ele: any) =>
+    ele.field_name.toLowerCase().includes(fieldName.value.toLowerCase())
+  )
+})
+
+const init = (reset = false) => {
   initLoading.value = true
   datasourceApi.getDs(props.info.id).then((res) => {
     ds.value = res
     fieldList.value = []
     pageInfo.total = 0
     pageInfo.currentPage = 1
-    datasourceApi.tableList(props.info.id).then((res) => {
-      tableList.value = res
-      initLoading.value = false
-    })
+    datasourceApi
+      .tableList(props.info.id)
+      .then((res) => {
+        tableList.value = res
+
+        if (currentTable.value?.id && reset) {
+          tableList.value.forEach((ele) => {
+            if (ele.id === currentTable.value?.id) {
+              clickTable(ele)
+            }
+          })
+        }
+      })
+      .finally(() => {
+        initLoading.value = false
+      })
   })
 }
 onMounted(() => {
@@ -149,6 +173,7 @@ const clickTable = (table: any) => {
       fieldList.value = res
       pageInfo.total = res.length
       pageInfo.currentPage = 1
+      fieldName.value = ''
       datasourceApi.previewData(props.info.id, buildData()).then((res) => {
         previewData.value = res
       })
@@ -222,6 +247,60 @@ const changeStatus = (row: any) => {
   })
 }
 
+const syncFields = () => {
+  loading.value = true
+  datasourceApi
+    .syncFields(currentTable.value.id)
+    .then(() => {
+      btnSelectClick('d')
+      loading.value = false
+    })
+    .catch(() => {
+      loading.value = false
+    })
+}
+
+function downloadTemplate() {
+  datasourceApi
+    .exportDsSchema(props.info.id)
+    .then((res) => {
+      const blob = new Blob([res], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = props.info.name + '.xlsx'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    })
+    .catch(async (error) => {
+      if (error.response) {
+        try {
+          let text = await error.response.data.text()
+          try {
+            text = JSON.parse(text)
+          } finally {
+            ElMessage({
+              message: text,
+              type: 'error',
+              showClose: true,
+            })
+          }
+        } catch (e) {
+          console.error('Error processing error response:', e)
+        }
+      } else {
+        console.error('Other error:', error)
+        ElMessage({
+          message: error,
+          type: 'error',
+          showClose: true,
+        })
+      }
+    })
+}
+
 const emits = defineEmits(['back', 'refresh'])
 const back = () => {
   emits('back')
@@ -242,18 +321,23 @@ const renderHeader = ({ column }: any) => {
   document.body.removeChild(span)
   return column.label
 }
-
+const fieldNameSearch = debounce(() => {
+  pageInfo.currentPage = 1
+  pageInfo.total = fieldListTotalComputed.value.length
+}, 100)
+const fieldName = ref('')
 const btnSelectClick = (val: any) => {
   btnSelect.value = val
   loading.value = true
 
   if (val === 'd') {
     datasourceApi
-      .fieldList(currentTable.value.id)
+      .fieldList(currentTable.value.id, { fieldName: '' })
       .then((res) => {
         fieldList.value = res
         pageInfo.total = res.length
         pageInfo.currentPage = 1
+        fieldName.value = ''
       })
       .finally(() => {
         loading.value = false
@@ -279,16 +363,35 @@ const btnSelectClick = (val: any) => {
         <icon_right_outlined></icon_right_outlined>
       </el-icon>
       <div class="name">{{ info.name }}</div>
+      <div class="export-remark">
+        <el-button style="margin-right: 12px" secondary @click="downloadTemplate">
+          <template #icon>
+            <icon_import_outlined></icon_import_outlined>
+          </template>
+          {{ $t('parameter.export_notes') }}
+        </el-button>
+        <UploaderRemark
+          :upload-path="`/datasource/uploadDsSchema/${info.id}`"
+          @upload-finished="init"
+        ></UploaderRemark>
+      </div>
     </div>
     <div class="content">
       <div class="side-list">
         <div class="select-table_top">
           {{ $t('ds.tables') }}
 
-          <el-tooltip effect="dark" :content="$t('ds.form.choose_tables')" placement="top">
-            <el-icon size="18" @click="handleSelectTableList">
-              <icon_form_outlined></icon_form_outlined>
-            </el-icon>
+          <el-tooltip
+            effect="dark"
+            offset="10"
+            :content="$t('ds.form.choose_tables')"
+            placement="top"
+          >
+            <el-button style="margin-right: -4px" text @click="handleSelectTableList">
+              <el-icon size="18">
+                <icon_form_outlined></icon_form_outlined>
+              </el-icon>
+            </el-button>
           </el-tooltip>
         </div>
         <el-input
@@ -311,13 +414,13 @@ const btnSelectClick = (val: any) => {
               :key="ele.table_name"
               :draggable="activeRelationship && !tableName.includes(ele.id)"
               class="model"
-              @dragstart="($event: any) => singleDragStartD($event, ele)"
-              @dragend="singleDragEnd"
               :class="[
                 currentTable.table_name === ele.table_name && 'isActive',
                 tableName.includes(ele.id) && activeRelationship && 'disabled-table',
               ]"
               :title="ele.table_name"
+              @dragstart="($event: any) => singleDragStartD($event, ele)"
+              @dragend="singleDragEnd"
               @click="clickTable(ele)"
             >
               <el-icon size="16">
@@ -344,7 +447,7 @@ const btnSelectClick = (val: any) => {
           </div>
         </div>
         <div class="table-relationship">
-          <div @click="handleRelationship" :class="activeRelationship && 'active'" class="btn">
+          <div :class="activeRelationship && 'active'" class="btn" @click="handleRelationship">
             <el-icon size="16">
               <icon_mindnote_outlined></icon_mindnote_outlined>
             </el-icon>
@@ -357,9 +460,9 @@ const btnSelectClick = (val: any) => {
         <div class="title">{{ t('training.table_relationship_management') }}</div>
         <div class="content">
           <TableRelationship
-            @getTableName="getTableName"
-            :dragging="isDrag"
             :id="info.id"
+            :dragging="isDrag"
+            @get-table-name="getTableName"
           ></TableRelationship>
         </div>
       </div>
@@ -400,6 +503,24 @@ const btnSelectClick = (val: any) => {
               @click="btnSelectClick('q')"
             >
               {{ t('ds.preview') }}
+            </el-button>
+          </div>
+          <div v-if="btnSelect === 'd'" class="field-name">
+            <el-input
+              v-model="fieldName"
+              style="width: 240px"
+              :placeholder="t('dashboard.search')"
+              autocomplete="off"
+              clearable
+              @input="fieldNameSearch"
+            />
+            <el-button
+              v-if="ds.type !== 'excel'"
+              :icon="Refresh"
+              style="margin-left: 12px"
+              @click="syncFields()"
+            >
+              {{ t('ds.sync_fields') }}
             </el-button>
           </div>
 
@@ -460,7 +581,7 @@ const btnSelectClick = (val: any) => {
                 </el-table-column>
               </el-table>
             </div>
-            <div v-if="fieldList.length && btnSelect === 'd'" class="pagination-container">
+            <div v-if="pageInfo.total && btnSelect === 'd'" class="pagination-container">
               <el-pagination
                 v-model:current-page="pageInfo.currentPage"
                 v-model:page-size="pageInfo.pageSize"
@@ -476,15 +597,18 @@ const btnSelectClick = (val: any) => {
               <div class="preview-num">
                 {{ t('ds.pieces_in_total', { msg: total, ms: showNum }) }}
               </div>
-              <el-table :data="previewData.data" style="width: 100%">
-                <el-table-column
-                  v-for="(c, index) in previewData.fields"
-                  :key="index"
-                  :prop="c"
-                  :label="c"
-                  :render-header="renderHeader"
-                />
-              </el-table>
+              <div class="table-container">
+                <el-table :data="previewData.data" style="width: 100%; height: 100%">
+                  <el-table-column
+                    v-for="(c, index) in previewData.fields"
+                    :key="index"
+                    :prop="c"
+                    :label="c"
+                    min-width="150"
+                    :render-header="renderHeader"
+                  />
+                </el-table>
+              </div>
             </template>
           </div>
         </div>
@@ -552,8 +676,9 @@ const btnSelectClick = (val: any) => {
     line-height: 22px;
     color: #646a73;
     border-bottom: 1px solid #1f232926;
+    position: relative;
 
-    .ed-button {
+    .ed-button.is-text {
       height: 22px;
       line-height: 22px;
       color: #646a73;
@@ -566,6 +691,12 @@ const btnSelectClick = (val: any) => {
         color: var(--ed-color-primary-dark-2);
         background: var(--ed-color-primary-33, #1cba9033);
       }
+    }
+
+    .export-remark {
+      position: absolute;
+      right: 24px;
+      top: 12px;
     }
 
     .name {
@@ -657,6 +788,10 @@ const btnSelectClick = (val: any) => {
           padding-left: 8px;
           border-radius: 4px;
           cursor: pointer;
+
+          &:not(:last-child) {
+            margin-bottom: 2px;
+          }
 
           &.disabled-table {
             background: #dee0e3 !important;
@@ -784,6 +919,14 @@ const btnSelectClick = (val: any) => {
       .table-content {
         padding: 16px 24px;
         height: calc(100% - 80px);
+        position: relative;
+
+        .field-name {
+          position: absolute;
+          right: 24px;
+          top: 16px;
+          display: flex;
+        }
 
         .btn-select {
           height: 32px;
@@ -816,10 +959,6 @@ const btnSelectClick = (val: any) => {
         .preview-or-schema {
           margin-top: 16px;
           height: calc(100% - 50px);
-
-          &.overflow-preview {
-            overflow-y: auto;
-          }
 
           .table-content_preview {
             max-height: calc(100% - 50px);
@@ -886,6 +1025,11 @@ const btnSelectClick = (val: any) => {
             font-size: 14px;
             line-height: 22px;
             color: #646a73;
+          }
+
+          .table-container {
+            width: 100%;
+            height: calc(100% - 46px);
           }
         }
       }

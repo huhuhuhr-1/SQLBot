@@ -2,10 +2,8 @@
 import { computed, nextTick, onMounted, reactive, ref, unref } from 'vue'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import { trainingApi } from '@/api/training'
-import { settingsApi } from '@/api/setting.ts'
 import { formatTimestamp } from '@/utils/date'
 import { datasourceApi } from '@/api/datasource'
-import ccmUpload from '@/assets/svg/icon_ccm-upload_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
@@ -13,14 +11,10 @@ import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { useClipboard } from '@vueuse/core'
-import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { getAdvancedApplicationList } from '@/api/embedded.ts'
-import { genFileId } from 'element-plus'
-
-import type { UploadInstance, UploadProps, UploadRawFile } from 'element-plus'
-import { useCache } from '@/utils/useCache.ts'
+import Uploader from '@/views/system/excel-upload/Uploader.vue'
 
 interface Form {
   id?: string | null
@@ -31,14 +25,12 @@ interface Form {
   advanced_application_name: string | null
   description: string | null
 }
-const userStore = useUserStore()
 const { t } = useI18n()
 const multipleSelectionAll = ref<any[]>([])
 const keywords = ref('')
 const oldKeywords = ref('')
 const searchLoading = ref(false)
 const { copy } = useClipboard({ legacy: true })
-const { wsCache } = useCache()
 const options = ref<any[]>([])
 const adv_options = ref<any[]>([])
 const selectable = () => {
@@ -46,10 +38,6 @@ const selectable = () => {
 }
 onMounted(() => {
   search()
-})
-
-const isDefaultOrg = computed(() => {
-  return userStore.oid === '1'
 })
 
 const dialogFormVisible = ref<boolean>(false)
@@ -89,92 +77,6 @@ const cancelDelete = () => {
   multipleSelectionAll.value = []
   checkAll.value = false
   isIndeterminate.value = false
-}
-
-const uploadRef = ref<UploadInstance>()
-const uploadLoading = ref(false)
-
-const token = wsCache.get('user.token')
-const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}` })
-const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/system/data-training/uploadExcel'
-
-const handleExceed: UploadProps['onExceed'] = (files) => {
-  uploadRef.value!.clearFiles()
-  const file = files[0] as UploadRawFile
-  file.uid = genFileId()
-  uploadRef.value!.handleStart(file)
-}
-
-const beforeUpload = (rawFile: any) => {
-  if (rawFile.size / 1024 / 1024 > 50) {
-    ElMessage.error(t('common.not_exceed_50mb'))
-    return false
-  }
-  uploadLoading.value = true
-  return true
-}
-const onSuccess = (response: any) => {
-  uploadRef.value!.clearFiles()
-  search()
-
-  if (response?.data?.failed_count > 0 && response?.data?.error_excel_filename) {
-    ElMessage.error(
-      t('training.upload_failed', {
-        success: response.data.success_count,
-        fail: response.data.failed_count,
-        fail_info: response.data.error_excel_filename,
-      })
-    )
-    settingsApi
-      .downloadError(response.data.error_excel_filename)
-      .then((res) => {
-        const blob = new Blob([res], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        })
-        const link = document.createElement('a')
-        link.href = URL.createObjectURL(blob)
-        link.download = response.data.error_excel_filename
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-      })
-      .catch(async (error) => {
-        if (error.response) {
-          try {
-            let text = await error.response.data.text()
-            try {
-              text = JSON.parse(text)
-            } finally {
-              ElMessage({
-                message: text,
-                type: 'error',
-                showClose: true,
-              })
-            }
-          } catch (e) {
-            console.error('Error processing error response:', e)
-          }
-        } else {
-          console.error('Other error:', error)
-          ElMessage({
-            message: error,
-            type: 'error',
-            showClose: true,
-          })
-        }
-      })
-      .finally(() => {
-        uploadLoading.value = false
-      })
-  } else {
-    ElMessage.success(t('training.upload_success'))
-    uploadLoading.value = false
-  }
-}
-
-const onError = () => {
-  uploadLoading.value = false
-  uploadRef.value!.clearFiles()
 }
 
 const exportExcel = () => {
@@ -308,7 +210,10 @@ const handleToggleRowSelection = (check: boolean = true) => {
   isIndeterminate.value = !(i === 0 || i === arr.length)
 }
 
-const search = () => {
+const search = ($event: any = {}) => {
+  if ($event?.isComposing) {
+    return
+  }
   searchLoading.value = true
   oldKeywords.value = keywords.value
   trainingApi
@@ -350,14 +255,13 @@ const rules = computed(() => {
       },
     ],
   }
-  if (!isDefaultOrg.value) {
-    _list.datasource = [
-      {
-        required: true,
-        message: t('datasource.Please_select') + t('common.empty') + t('ds.title'),
-      },
-    ]
-  }
+  // _list.datasource = [
+  //   {
+  //     required: true,
+  //     message: t('datasource.Please_select') + t('common.empty') + t('ds.title'),
+  //   },
+  // ]
+
   return _list
 })
 
@@ -365,11 +269,9 @@ const list = () => {
   datasourceApi.list().then((res: any) => {
     options.value = res || []
   })
-  if (isDefaultOrg.value) {
-    getAdvancedApplicationList().then((res: any) => {
-      adv_options.value = res || []
-    })
-  }
+  getAdvancedApplicationList().then((res: any) => {
+    adv_options.value = res || []
+  })
 }
 
 const saveHandler = () => {
@@ -451,7 +353,7 @@ const onRowFormClose = () => {
 </script>
 
 <template>
-  <div v-loading="searchLoading || uploadLoading" class="training">
+  <div v-loading="searchLoading" class="training">
     <div class="tool-left">
       <span class="page-title">{{ $t('training.data_training') }}</span>
       <div class="tool-row">
@@ -460,7 +362,7 @@ const onRowFormClose = () => {
           style="width: 240px"
           :placeholder="$t('training.search_problem')"
           clearable
-          @blur="search"
+          @keydown.enter.exact.prevent="search"
         >
           <template #prefix>
             <el-icon>
@@ -474,27 +376,13 @@ const onRowFormClose = () => {
           </template>
           {{ $t('professional.export_all') }}
         </el-button>
-        <el-upload
-          ref="uploadRef"
-          :multiple="false"
-          accept=".xlsx,.xls"
-          :action="getUploadURL"
-          :before-upload="beforeUpload"
-          :headers="headers"
-          :on-success="onSuccess"
-          :on-error="onError"
-          :show-file-list="false"
-          :limit="1"
-          :on-exceed="handleExceed"
-        >
-          <el-button secondary>
-            <template #icon>
-              <ccmUpload></ccmUpload>
-            </template>
-            {{ $t('user.batch_import') }}
-          </el-button>
-        </el-upload>
-        <el-button type="primary" @click="editHandler(null)">
+        <Uploader
+          upload-path="/system/data-training/uploadExcel"
+          template-path="/system/data-training/template"
+          :template-name="`${t('training.data_training')}.xlsx`"
+          @upload-finished="search"
+        />
+        <el-button class="no-margin" type="primary" @click="editHandler(null)">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -529,7 +417,6 @@ const onRowFormClose = () => {
           </el-table-column>
           <el-table-column prop="datasource_name" :label="$t('ds.title')" min-width="180" />
           <el-table-column
-            v-if="isDefaultOrg"
             prop="advanced_application_name"
             :label="$t('embedded.advanced_application')"
             min-width="180"
@@ -691,11 +578,7 @@ const onRowFormClose = () => {
         </el-select>
       </el-form-item>
 
-      <el-form-item
-        v-if="isDefaultOrg"
-        prop="advanced_application"
-        :label="t('embedded.advanced_application')"
-      >
+      <el-form-item prop="advanced_application" :label="t('embedded.advanced_application')">
         <el-select
           v-model="pageForm.advanced_application"
           filterable
@@ -756,7 +639,7 @@ const onRowFormClose = () => {
           {{ pageForm.datasource_name }}
         </div>
       </el-form-item>
-      <el-form-item v-if="isDefaultOrg" :label="t('embedded.advanced_application')">
+      <el-form-item :label="t('embedded.advanced_application')">
         <div class="content">
           {{ pageForm.advanced_application_name }}
         </div>
@@ -766,6 +649,9 @@ const onRowFormClose = () => {
 </template>
 
 <style lang="less" scoped>
+.no-margin {
+  margin: 0;
+}
 .training {
   height: 100%;
   position: relative;

@@ -103,6 +103,29 @@ export const isBtnShow = (val: string) => {
   }
 }
 
+export const toLoginPage = (fullPath: string) => {
+  if (!fullPath || fullPath === '/') {
+    return {
+      path: '/login',
+    }
+  }
+  return {
+    path: '/login',
+    query: { redirect: fullPath },
+  }
+}
+
+export const toLoginSuccess = (router: any) => {
+  const redirect = router?.currentRoute?.value?.query?.redirect
+  const redirectPath = Array.isArray(redirect) ? redirect[0] : redirect || '/chat'
+  router.push(redirectPath as string)
+}
+export const getCurrentRouter = () => {
+  const hash = location.hash
+  if (!hash) return null
+  return hash.replace('#/login?redirect=', '')
+}
+
 export const setTitle = (title?: string) => {
   document.title = title || 'SQLBot'
 }
@@ -222,11 +245,21 @@ export const isLarkPlatform = () => {
   return !!getQueryString('state') && !!getQueryString('code')
 }
 
+export const isPlatform = () => {
+  const state = getQueryString('state')
+  const platformArray = ['wecom', 'dingtalk', 'lark']
+  return (
+    !!state &&
+    !!getQueryString('code') &&
+    platformArray.some((item: string) => state.includes(item))
+  )
+}
+
 export const isPlatformClient = () => {
   return !!getQueryString('client') || getQueryString('state')?.includes('client')
 }
 
-export const checkPlatform = () => {
+/* export const checkPlatform = () => {
   const flagArray = ['/casbi', 'oidcbi']
   const pathname = window.location.pathname
   if (
@@ -242,7 +275,7 @@ export const cleanPlatformFlag = () => {
   const platformKey = 'out_auth_platform'
   wsCache.delete(platformKey)
   return false
-}
+} */
 export function isTablet() {
   const userAgent = navigator.userAgent
   const tabletRegex = /iPad|Silk|Galaxy Tab|PlayBook|BlackBerry|(tablet|ipad|playbook)/i
@@ -254,4 +287,31 @@ export function isMobile() {
       /(phone|pad|pod|iPhone|iPod|ios|iPad|Android|Mobile|BlackBerry|IEMobile|MQQBrowser|JUC|Fennec|wOSBrowser|BrowserNG|WebOS|Symbian|Windows Phone)/i
     ) && !isTablet()
   )
+}
+
+export const getSQLBotAddr = (portEnd?: boolean) => {
+  const addr = location.origin + location.pathname
+  if (!portEnd || !addr.endsWith('/')) {
+    return addr
+  }
+  return addr.substring(0, addr.length - 1)
+}
+
+export const formatArg = (text: string) => {
+  if (!text) {
+    return false
+  }
+  const mappingArray = ['true', 'false', '1', '0']
+  const match = mappingArray.some((item: string) => {
+    return item === text.toLocaleLowerCase()
+  })
+  if (!match) {
+    return text
+  }
+  try {
+    return JSON.parse(text)
+  } catch (e: any) {
+    console.warn(e)
+    return text
+  }
 }

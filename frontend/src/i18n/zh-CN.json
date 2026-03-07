@@ -7,6 +7,71 @@
     "AI Model Configuration": "模型配置",
     "Details": "详情"
   },
+  "sync": {
+    "integration": "需开启平台对接",
+    "the_existing_user": "若用户已存在，覆盖旧用户",
+    "sync_users": "同步用户",
+    "sync_wechat_users": "同步企业微信用户",
+    "sync_dingtalk_users": "同步钉钉用户",
+    "sync_lark_users": "同步飞书用户",
+    "sync_complete": "同步完成",
+    "synced_10_users": "成功同步 {num} 个用户",
+    "failed_3_users": "成功同步 {success} 个用户，同步失败 {failed} 个用户，",
+    "download_failure_list": "下载失败列表",
+    "sync_failed": "同步失败",
+    "failed_10_users": "同步失败 {num} 个用户，",
+    "continue_syncing": "继续同步",
+    "return_to_view": "返回查看"
+  },
+  "variables": {
+    "built_in": "已内置",
+    "normal_value": "常规值",
+    "​​cannot_be_empty": "变量值不能为空",
+    "1_to_100": "{name}数值范围 {min}～{max}",
+    "1_to_100_de": "{name}日期范围 {min}～{max}",
+    "system_variables": "系统变量",
+    "variables": "变量",
+    "system": "系统",
+    "search_variables": "搜索变量",
+    "add_variable": "添加变量",
+    "variable_name": "变量名称",
+    "variable_type": "变量类型",
+    "variable_value": "变量值",
+    "edit_variable": "编辑变量",
+    "no_variables_yet": "暂无变量",
+    "please_enter_value": "请输入数值",
+    "date": "日期",
+    "start_date": "开始日期",
+    "end_date": "结束日期",
+    "enter_variable_name": "请输入变量名称",
+    "enter_variable_value": "请输入变量值"
+  },
+  "parameter": {
+    "execution_details": "执行详情",
+    "overview": "概览",
+    "tokens_required": "消耗 Tokens",
+    "time_execution": "耗时",
+    "export_notes": "导出备注",
+    "import_notes": "导入备注",
+    "memo": "备注更新规则：根据表名和字段名匹配，如果匹配则更新表备注和字段备注；如果匹配不上，备注保持不变。",
+    "parameter_configuration": "参数配置",
+    "question_count_settings": "问数设置",
+    "context_record_count": "上下文记录数",
+    "context_record_count_hint": "用户提问轮数",
+    "model_thinking_process": "展开模型思考过程",
+    "rows_of_data": "限制 1000 行数据",
+    "third_party_platform_settings": "第三方平台设置",
+    "by_third_party_platform": "第三方自动创建用户",
+    "platform_user_organization": "第三方平台工作空间",
+    "platform_user_roles": "第三方平台用户角色",
+    "excessive_data_volume": "关闭1000行的数据限制后，数据量过大，可能会造成系统卡顿",
+    "prompt": "提示",
+    "disabling_successfully": "关闭成功",
+    "closed_by_default": "在问数窗口中，控制模型思考过程默认展开或者关闭",
+    "and_platform_integration": "登录认证相关",
+    "login_settings": "登录设置",
+    "default_login": "默认登录方式"
+  },
   "prompt": {
     "default_password": "默认密码：{msg}",
     "no_sql_sample": "暂无 SQL 示例",
@@ -26,7 +91,9 @@
     "edit_prompt_word": "编辑提示词",
     "all_236_terms": "是否导出全部 {msg} 条{type}提示词？",
     "export_hint": "是否导出全部{type}提示词？",
-    "prompt_word_name_de": "是否删除提示词：{msg}？"
+    "prompt_word_name_de": "是否删除提示词：{msg}？",
+    "disable_field": "禁用字段",
+    "to_disable_it": "该字段已配置表关联关系，若禁用后，关联关系将失效，确定禁用?"
   },
   "training": {
     "effective_data_sources": "生效数据源",
@@ -73,6 +140,8 @@
     "the_term_gmv": "是否删除术语：{msg}？"
   },
   "common": {
+    "start_time": "开始时间",
+    "end_time": "结束时间",
     "require": "必填",
     "zoom_in": "放大",
     "zoom_out": "缩小",
@@ -117,10 +186,18 @@
     "english": "English",
     "re_upload": "重新上传",
     "not_exceed_50mb": "支持 XLS、XLSX、CSV 格式，文件大小不超过 50MB",
+    "excel_file_type_limit": "仅支持 XLS、XLSX 格式",
+    "click_to_select_file": "点击选择文件",
+    "upload_hint_first": "先",
+    "upload_hint_download_template": "下载模板",
+    "upload_hint_end": "，按要求填写后上传。",
+    "continue_to_upload": "继续导入",
     "reset_password": "重置密码",
     "password_reset_successful": "重置密码成功",
     "or": "或者",
-    "refresh": "刷新"
+    "refresh": "刷新",
+    "input_limit": "长度在 {0} 到 {1} 个字符",
+    "file_size_limit_error": "文件大小超出限制（最大{limit}）"
   },
   "dashboard": {
     "open_dashboard": "打开仪表板",
@@ -163,7 +240,7 @@
     "creator": "创建人",
     "dashboard_id": "仪表板ID",
     "create_time": "创建时间",
-    "updator": "更新人",
+    "updater": "更新人",
     "update_time": "更新时间",
     "edit": "编辑",
     "edit_title": "编辑标题",
@@ -184,6 +261,11 @@
     "chart_selected": "已选{0}"
   },
   "qa": {
+    "retrieve_error": "暂无内容",
+    "retrieve_again": "重新获取",
+    "recently": "最近",
+    "recommend": "推荐",
+    "quick_question": "快捷提问",
     "new_chat": "新建对话",
     "start_sqlbot": "开启问数",
     "title": "智能问数",
@@ -204,6 +286,7 @@
     "continue_to_ask": "继续提问:",
     "data_analysis": "数据分析",
     "data_predict": "数据预测",
+    "data_regenerated": "重新生成",
     "chat_search": "搜索",
     "thinking": "思考中",
     "thinking_step": "思考过程",
@@ -304,11 +387,14 @@
         "success": "连接成功",
         "failed": "连接失败"
       },
-      "timeout": "查询超时(秒)",
-      "address": "地址"
-    }
+      "timeout": "连接超时(秒)",
+      "address": "地址",
+      "low_version": "兼容低版本"
+    },
+    "sync_fields": "同步表结构"
   },
   "datasource": {
+    "recommended_repetitive_tips": "存在重复问题",
     "recommended_problem_tips": "自定义配置至少一个问题，每个问题2-200个字符",
     "recommended_problem_configuration": "推荐问题配置",
     "problem_generation_method": "问题生成方式",
@@ -408,15 +494,17 @@
     "enable": "启用",
     "disable": "禁用",
     "local_creation": "本地创建",
-    "feishu": "飞书",
+    "lark": "飞书",
+    "larksuite": "国际飞书",
     "dingtalk": "钉钉",
-    "wechat_for_business": "企业微信",
+    "wecom": "企业微信",
     "1240_results": "{msg} 个结果 ",
     "clear_conditions": "清空条件",
     "disabled": "已禁用",
     "enabled": "已启用",
     "edit_user": "编辑用户",
     "del_user": "是否删除用户: {msg}?",
+    "del_key": "是否删除key: {msg}?",
     "please_first": "请先",
     "download_the_template": "下载模板",
     "required_and_upload": "，按要求填写后上传",
@@ -426,6 +514,7 @@
     "import": "导入",
     "change_file": "更换文件",
     "data_import_completed": "数据导入完成",
+    "notes_import_completed": "备注导入完成",
     "imported_100_data": "成功导入数据 {msg} 条",
     "return_to_view": "返回查看",
     "continue_importing": "继续导入",
@@ -565,7 +654,7 @@
     "application_name": "应用名称",
     "application_description": "应用描述",
     "cross_domain_settings": "跨域设置",
-    "third_party_address": "请输入嵌入的第三方地址",
+    "third_party_address": "请输入嵌入的第三方地址，多个以分号分割",
     "set_to_private": "设为私有",
     "set_to_public": "设为公共",
     "public": "公共",
@@ -573,7 +662,7 @@
     "configure_interface": "配置接口",
     "interface_url": "接口 URL",
     "format_is_incorrect": "格式不对{msg}",
-    "domain_format_incorrect": "，http或https开头，不能以 / 结尾，多个域名以逗号(半角)分隔",
+    "domain_format_incorrect": "，http或https开头，不能以 / 结尾，多个域名以分号(半角)分隔",
     "interface_url_incorrect": "，请填写相对路径，以/开头",
     "aes_enable": "开启 AES 加密",
     "aes_enable_tips": "加密字段 (host, user, password, dataBase, schema) 均采用 AES-CBC-PKCS5Padding 加密方式",
@@ -625,7 +714,10 @@
     "right": "右",
     "welcome_description": "欢迎语描述",
     "data_analysis_now": "我可以查询数据、生成图表、检测数据异常、预测数据等赶快开启智能问数吧～",
-    "window_entrance_icon": "浮窗入口图标"
+    "window_entrance_icon": "浮窗入口图标",
+    "preview_error": "当前页面禁止使用 Iframe 嵌入！",
+    "assistant_app": "小助手应用",
+    "auto_select_ds": "自动选择数据源"
   },
   "chat": {
     "type": "图表类型",
@@ -636,6 +728,11 @@
       "line": "折线图",
       "pie": "饼图"
     },
+    "hide_label": "隐藏标签",
+    "show_label": "显示标签",
+    "sort_asc": "升序",
+    "sort_desc": "降序",
+    "sort_none": "不排序",
     "show_sql": "查看SQL",
     "export_to": "导出为",
     "excel": "Excel",
@@ -655,7 +752,31 @@
     "exec-sql-err": "执行SQL失败",
     "no_data": "暂无数据",
     "loading_data": "加载中...",
-    "show_error_detail": "查看具体信息"
+    "show_error_detail": "查看具体信息",
+    "log": {
+      "GENERATE_SQL": "生成 SQL",
+      "GENERATE_CHART": "生成图表结构",
+      "ANALYSIS": "分析",
+      "PREDICT_DATA": "预测",
+      "GENERATE_SQL_WITH_PERMISSIONS": "拼接 SQL 行权限",
+      "CHOOSE_DATASOURCE": "匹配数据源",
+      "GENERATE_DYNAMIC_SQL": "生成动态 SQL",
+      "CHOOSE_TABLE": "匹配数据表 (Schema)",
+      "FILTER_TERMS": "匹配术语",
+      "FILTER_SQL_EXAMPLE": "匹配 SQL 示例",
+      "FILTER_CUSTOM_PROMPT": "匹配自定义提示词",
+      "EXECUTE_SQL": "执行 SQL",
+      "GENERATE_PICTURE": "生成图片"
+    },
+    "log_system": "对话模板",
+    "log_question": "本次提问",
+    "log_answer": "AI 回答",
+    "log_history": "历史记录",
+    "find_term_title":"匹配到 {0} 个术语",
+    "find_sql_sample_title":"匹配到 {0} 个SQL示例",
+    "find_custom_prompt_title":"匹配到 {0} 个自定义提示词",
+    "query_count_title":"查询到 {0} 条数据",
+    "generate_picture_success":"已生成图片"
   },
   "about": {
     "title": "关于",
@@ -715,11 +836,19 @@
     "setting_successfully": "设置成功",
     "customize_theme_color": "自定义主题色"
   },
+  "platform": {
+    "title": "平台对接",
+    "status_open": "已开启",
+    "status_close": "已关闭",
+    "access_in": "接入",
+    "can_enable_it": "测试连接有效后，可开启"
+  },
   "authentication": {
     "invalid": "无效",
     "valid": "有效",
     "cas_settings": "CAS 设置",
     "callback_domain_name": "回调地址",
+    "callback_domain_name_error": "回调地址必须是当前访问域名",
     "field_mapping": "用户属性映射",
     "field_mapping_placeholder": "例如：{'{'}\"account\": \"saml2Account\", \"name\": \"saml2Name\", \"email\": \"email\"{'}'}",
     "incorrect_please_re_enter": "格式错误，请重新填写",
@@ -737,7 +866,23 @@
     "revoke_url": "撤销地址",
     "oauth2_field_mapping_placeholder": "例如：{'{'}\"account\": \"oauth2Account\", \"name\": \"oauth2Name\", \"email\": \"email\"{'}'}",
     "token_auth_method": "Token 认证方式",
-    "userinfo_auth_method": "用户信息认证方式"
+    "userinfo_auth_method": "用户信息认证方式",
+    "oidc_settings": "OIDC 设置",
+    "metadata_url": "元数据地址",
+    "realm": "领域",
+    "oidc_field_mapping_placeholder": "例如：{'{'}\"account\": \"oidcAccount\", \"name\": \"oidcName\", \"email\": \"email\"{'}'}",
+    "ldap_settings": "LDAP 设置",
+    "server_address": "服务器地址",
+    "server_address_placeholder": "例如：ldap://ldap.example.com:389",
+    "bind_dn": "绑定 DN",
+    "bind_dn_placeholder": "例如：cn=admin,dc=example,dc=com",
+    "bind_pwd": "绑定密码",
+    "ou": "用户 OU",
+    "ou_placeholder": "例如：ou=users,dc=example,dc=com",
+    "user_filter": "用户过滤器",
+    "user_filter_placeholder": "例如：uid 或 uid {0} email, 多属性以 {1} 分割",
+    "ldap_field_mapping_placeholder": "例如：{'{'}\"account\": \"ldapAccount\", \"name\": \"ldapName\", \"email\": \"mail\"{'}'}",
+    "be_turned_on": "测试连接有效后，可开启"
   },
   "login": {
     "default_login": "默认",
@@ -749,7 +894,11 @@
     "qr_code": "二维码",
     "platform_disable": "{0}设置未开启！",
     "input_account": "请输入账号",
-    "redirect_2_auth": "正在跳转至 {0} 认证，{1} 秒..."
+    "redirect_2_auth": "正在跳转至 {0} 认证，{1} 秒...",
+    "redirect_immediately": "立即跳转",
+    "permission_invalid": "认证无效【当前账号权限不够】",
+    "scan_qr_login": "扫码登录",
+    "no_auth_error": "未认证，即将跳转登录页面，{0} 秒..."
   },
   "supplier": {
     "alibaba_cloud_bailian": "阿里云百炼",
@@ -766,5 +915,31 @@
   },
   "modelType": {
     "llm": "大语言模型"
+  },
+  "audit": {
+    "system_log": "操作日志",
+    "search_log": "搜索日志",
+    "operation_type": "操作类型",
+    "operation_details": "操作详情",
+    "operation_user_name": "操作用户",
+    "operation_status": "操作状态",
+    "user_name": "操作日志",
+    "oid_name": "工作空间",
+    "ip_address": "IP 地址",
+    "create_time": "创建时间",
+    "no_log": "暂无日志",
+    "all_236_terms": "是否导出全部 {msg} 条日志？",
+    "export_hint": "是否导出全部日志？",
+    "export": "导出",
+    "success": "成功",
+    "failed": "失败",
+    "failed_info": "操作失败详情",
+    "opt_time": "操作时间"
+  },
+  "api_key": {
+    "info_tips": "API Key 是您访问 SQLBot API 的密钥，具有账户的完全权限，请您务必妥善保管！不要以任何方式公开 API Key 到外部渠道，避免被他人利用造成安全威胁。",
+    "create": "创建",
+    "to_doc": "查看 API",
+    "trigger_limit": "最多支持创建 {0} 个 API Key"
   }
 }

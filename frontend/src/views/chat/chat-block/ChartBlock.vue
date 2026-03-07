@@ -19,6 +19,7 @@ import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
 import icon_window_max_outlined from '@/assets/svg/icon_window-max_outlined.svg'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import icon_copy_outlined from '@/assets/svg/icon_copy_outlined.svg'
+import ICON_STYLE from '@/assets/svg/icon_style-set_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import SQLComponent from '@/views/chat/component/SQLComponent.vue'
 import { useAssistantStore } from '@/stores/assistant'
@@ -54,6 +55,8 @@ const dataObject = computed<{
   fields: Array<string>
   data: Array<{ [key: string]: any }>
   limit: number | undefined
+  datasource: number | undefined
+  sql: string | undefined
 }>(() => {
   if (props.message?.record?.data) {
     if (typeof props.message?.record?.data === 'string') {
@@ -211,24 +214,50 @@ function showSql() {
   sqlShow.value = true
 }
 
+const showLabel = ref(false)
+
 function addToDashboard() {
   const recordeInfo = {
     id: '1-1',
     data: {
       data: data.value,
     },
+    sql: props.message?.record?.sql,
+    datasource: props.message?.record?.datasource,
     chart: {},
   }
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   const chartBaseInfo = JSON.parse(props.message?.record?.chart)
-  recordeInfo['chart'] = {
-    type: currentChartType.value,
-    title: chartBaseInfo.title,
-    columns: chartBaseInfo.columns,
-    xAxis: chartBaseInfo.axis?.x ? [chartBaseInfo.axis.x] : [],
-    yAxis: chartBaseInfo.axis?.y ? [chartBaseInfo.axis.y] : [],
-    series: chartBaseInfo.axis?.series ? [chartBaseInfo.axis.series] : [],
+  if (chartBaseInfo) {
+    let yAxis = []
+    const axis = chartBaseInfo?.axis
+    if (!axis?.y) {
+      yAxis = []
+    } else {
+      const y = axis.y
+      const multiQuotaValues = axis['multi-quota']?.value || []
+
+      // 统一处理为数组
+      const yArray = Array.isArray(y) ? [...y] : [{ ...y }]
+
+      // 标记 multi-quota
+      yAxis = yArray.map((item) => ({
+        ...item,
+        'multi-quota': multiQuotaValues.includes(item.value),
+      }))
+    }
+
+    recordeInfo['chart'] = {
+      type: chartBaseInfo?.type,
+      title: chartBaseInfo?.title,
+      columns: chartBaseInfo?.columns,
+      xAxis: axis?.x ? [axis?.x] : [],
+      yAxis: yAxis,
+      series: axis?.series ? [axis?.series] : [],
+      multiQuotaName: axis?.['multi-quota']?.name,
+    }
   }
+
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   addViewRef.value?.optInit(recordeInfo)
 }
@@ -247,7 +276,7 @@ function exportToExcel() {
   if (chartRef.value && props.recordId) {
     loading.value = true
     chatApi
-      .export2Excel(props.recordId)
+      .export2Excel(props.recordId, props.message?.record?.chat_id || 0)
       .then((res) => {
         const blob = new Blob([res], {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -371,6 +400,26 @@ watch(
           </el-tooltip>
         </div>
 
+        <div v-if="currentChartType !== 'table'" class="chart-select-container">
+          <el-tooltip
+            effect="dark"
+            :offset="8"
+            :content="showLabel ? t('chat.hide_label') : t('chat.show_label')"
+            placement="top"
+          >
+            <el-button
+              class="tool-btn"
+              :class="{ 'chart-active': showLabel }"
+              text
+              @click="showLabel = !showLabel"
+            >
+              <el-icon size="16">
+                <ICON_STYLE />
+              </el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+
         <div v-if="message?.record?.sql">
           <el-tooltip effect="dark" :offset="8" :content="t('chat.show_sql')" placement="top">
             <el-button class="tool-btn" text @click="showSql">
@@ -476,6 +525,7 @@ watch(
           :message="message"
           :data="data"
           :loading-data="loadingData"
+          :show-label="showLabel"
         />
       </div>
       <div v-if="dataObject.limit" class="over-limit-hint">
@@ -539,6 +589,7 @@ watch(
 
 .chart-fullscreen-dialog-body {
   padding: 0;
+  height: 100%;
 }
 
 .chart-sql-drawer-body {
@@ -618,7 +669,6 @@ watch(
   padding: 16px;
   display: flex;
   flex-direction: column;
-
   border: 1px solid rgba(222, 224, 227, 1);
   border-radius: 12px;
 
@@ -626,6 +676,7 @@ watch(
     border: unset;
     border-radius: unset;
     padding: 0;
+    height: 100%;
 
     .header-bar {
       border-bottom: 1px solid rgba(31, 35, 41, 0.15);
@@ -636,8 +687,7 @@ watch(
     .chart-block {
       margin: unset;
       padding: 16px;
-
-      height: calc(100vh - 56px);
+      height: calc(100% - 56px);
     }
   }
 

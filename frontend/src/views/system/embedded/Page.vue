@@ -31,7 +31,7 @@ interface Form {
   description?: string | null
 }
 
-const emits = defineEmits(['btnSelectChange'])
+// const emits = defineEmits(['btnSelectChange'])
 const { t } = useI18n()
 const multipleSelectionAll = ref<any[]>([])
 const keywords = ref('')
@@ -180,7 +180,10 @@ const refresh = (row: any) => {
     })
 }
 
-const search = () => {
+const search = ($event: any = {}) => {
+  if ($event?.isComposing) {
+    return
+  }
   searchLoading.value = true
   embeddedApi
     .getList(pageInfo.currentPage, pageInfo.pageSize, { keyword: keywords.value })
@@ -198,7 +201,15 @@ const search = () => {
       searchLoading.value = false
     })
 }
-
+const splitString = (str: string) => {
+  if (typeof str !== 'string') {
+    return []
+  }
+  return str
+    .split(/[,;]/)
+    .map((item) => item.trim())
+    .filter((item) => item !== '')
+}
 const termFormRef = ref()
 const validateUrl = (_: any, value: any, callback: any) => {
   if (value === '') {
@@ -209,20 +220,15 @@ const validateUrl = (_: any, value: any, callback: any) => {
     )
   } else {
     // var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
-    value
-      .trim()
-      .split(',')
-      .forEach((tempVal: string) => {
-        var Expression = /^https?:\/\/[^\s/?#]+(:\d+)?/i
-        var objExp = new RegExp(Expression)
-        if (objExp.test(tempVal) && !tempVal.endsWith('/')) {
-          callback()
-        } else {
-          callback(
-            t('embedded.format_is_incorrect', { msg: t('embedded.domain_format_incorrect') })
-          )
-        }
-      })
+    splitString(value).forEach((tempVal: string) => {
+      var Expression = /^https?:\/\/[^\s/?#]+(:\d+)?/i
+      var objExp = new RegExp(Expression)
+      if (objExp.test(tempVal) && !tempVal.endsWith('/')) {
+        callback()
+      } else {
+        callback(t('embedded.format_is_incorrect', { msg: t('embedded.domain_format_incorrect') }))
+      }
+    })
   }
 }
 const rules = {
@@ -307,7 +313,8 @@ const copyCode = (row: any, key: any = 'app_secret') => {
 <template>
   <div v-loading="searchLoading" class="embedded-page">
     <div class="tool-left">
-      <div class="btn-select">
+      <span class="page-title">{{ t('embedded.embedded_management') }}</span>
+      <!-- <div class="btn-select">
         <el-button
           :class="[btnSelect === 'd' && 'is-active']"
           text
@@ -322,14 +329,14 @@ const copyCode = (row: any, key: any = 'app_secret') => {
         >
           {{ t('embedded.embedded_page') }}
         </el-button>
-      </div>
+      </div> -->
       <div>
         <el-input
           v-model="keywords"
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('dashboard.search')"
           clearable
-          @blur="search"
+          @keydown.enter.exact.prevent="search"
         >
           <template #prefix>
             <el-icon>
@@ -602,13 +609,10 @@ const copyCode = (row: any, key: any = 'app_secret') => {
       <el-form-item prop="domain" :label="t('embedded.cross_domain_settings')">
         <el-input
           v-model="pageForm.domain"
-          :placeholder="
-            $t('datasource.please_enter') +
-            $t('common.empty') +
-            $t('embedded.cross_domain_settings')
-          "
+          type="textarea"
+          :autosize="{ minRows: 2 }"
+          :placeholder="$t('embedded.third_party_address')"
           autocomplete="off"
-          maxlength="50"
           clearable
         />
       </el-form-item>
@@ -639,7 +643,11 @@ const copyCode = (row: any, key: any = 'app_secret') => {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
-
+    .page-title {
+      font-weight: 500;
+      font-size: 20px;
+      line-height: 28px;
+    }
     .btn-select {
       height: 32px;
       padding-left: 4px;
