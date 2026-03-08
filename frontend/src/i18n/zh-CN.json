@@ -435,7 +435,10 @@
     "field_notes_1": "字段备注",
     "no_table": "暂无数据表",
     "go_add": "去添加",
-    "get_schema": "获取Schema"
+    "get_schema": "获取Schema",
+    "copy_data_source": "复制数据源",
+    "copy_data_source_name_hint": "输入新数据源名称，留空则使用「原名_copy」",
+    "copy_data_source_success": "复制成功，可在下方维护选表"
   },
   "model": {
     "default_model": "默认模型",

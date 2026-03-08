@@ -5,12 +5,13 @@ import os
 import traceback
 import uuid
 from io import StringIO
-from typing import List
+from typing import List, Optional
 from urllib.parse import quote
 
 import orjson
 import pandas as pd
-from fastapi import APIRouter, File, UploadFile, HTTPException, Path
+from fastapi import APIRouter, File, UploadFile, HTTPException, Path, Body
+from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_
 
@@ -23,7 +24,7 @@ from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.utils import SQLBotLogUtil
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum, \
-    check_status_by_id, sync_single_fields
+    check_status_by_id, sync_single_fields, copy_ds
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
 from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField, FieldObj, \
@@ -121,6 +122,23 @@ async def delete(session: SessionDep, id: int = Path(..., description=f"{PLACEHO
     return await delete_ds(session, id)
 
 
+class CopyDatasourceRequest(BaseModel):
+    name: Optional[str] = None
+
+
+@router.post("/copy/{id}", response_model=CoreDatasource, summary=f"{PLACEHOLDER_PREFIX}ds_copy")
+@require_permissions(permission=SqlbotPermission(role=['ws_admin'], keyExpression="id", type='ds'))
+@system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.DATASOURCE, result_id_expr="id"))
+async def copy_datasource(
+    session: SessionDep, trans: Trans, user: CurrentUser,
+    id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
+    body: Optional[CopyDatasourceRequest] = Body(default=None),
+):
+    def inner():
+        return copy_ds(session, trans, user, id, body.name if body and body.name else None)
+    return await asyncio.to_thread(inner)
+
+
 @router.post("/getTables/{id}", response_model=List[TableSchemaResponse], summary=f"{PLACEHOLDER_PREFIX}ds_get_tables")
 @require_permissions(permission=SqlbotPermission(type='ds', keyExpression="id"))
 async def get_tables(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
@@ -178,9 +196,6 @@ async def get_fields(session: SessionDep,
 async def sync_fields(session: SessionDep, trans: Trans,
                       id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
     return sync_single_fields(session, trans, id)
-
-
-from pydantic import BaseModel
 
 
 class TestObj(BaseModel):

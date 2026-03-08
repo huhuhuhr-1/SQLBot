@@ -79,6 +79,23 @@ const handleEditDatasource = (res: any) => {
   addDrawerRef.value.handleEditDatasource(res)
 }
 
+const handleCopyDatasource = (item: Datasource) => {
+  const defaultName = `${item.name}_copy`
+  ElMessageBox.prompt(t('datasource.copy_data_source_name_hint'), t('datasource.copy_data_source'), {
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel'),
+    inputValue: defaultName,
+    inputPlaceholder: defaultName,
+  }).then(({ value }) => {
+    const name = (value || defaultName).trim()
+    return datasourceApi.copy(Number(item.id), name ? { name } : undefined)
+  }).then((res: any) => {
+    ElMessage.success(t('datasource.copy_data_source_success'))
+    search()
+    addDrawerRef.value.handleEditDatasource(res)
+  }).catch(() => {})
+}
+
 const handleRecommendation = (res: Datasource) => {
   recommendedProblemConfigRef.value?.init(res)
 }
@@ -301,6 +318,7 @@ useEmitt({
             :description="ele.description"
             @question="handleQuestion"
             @edit="handleEditDatasource(ele)"
+            @copy="handleCopyDatasource(ele)"
             @recommendation="handleRecommendation(ele)"
             @del="deleteHandler(ele)"
             @data-table-detail="dataTableDetail(ele)"

@@ -435,7 +435,10 @@
     "field_notes_1": "필드 메모",
     "no_table": "데이터 테이블이 없습니다",
     "go_add": "추가하러 가기",
-    "get_schema": "스키마 가져오기"
+    "get_schema": "스키마 가져오기",
+    "copy_data_source": "데이터 소스 복제",
+    "copy_data_source_name_hint": "새 데이터 소스 이름을 입력하거나 비워두면 \"원본명_copy\"를 사용합니다",
+    "copy_data_source_success": "복제되었습니다. 아래에서 선택 테이블을 조정할 수 있습니다"
   },
   "model": {
     "default_model": "기본 모델",
