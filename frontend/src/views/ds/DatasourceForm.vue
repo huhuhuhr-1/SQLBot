@@ -135,6 +135,40 @@ const { wsCache } = useCache()
 const token = wsCache.get('user.token')
 const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}` })
 
+const initFormForCopy = (item: any) => {
+  isEditTable.value = false
+  keywords.value = ''
+  checkList.value = []
+  tableList.value = []
+  dsFormRef.value?.clearValidate()
+  dialogTitle.value = t('ds.form.title.add')
+  isCreate.value = true
+  delete form.value.id
+  form.value.name = (item.name || '') + '_copy'
+  form.value.description = item.description || ''
+  form.value.type = item.type
+  form.value.configuration = item.configuration || ''
+  if (item.configuration) {
+    const configuration = JSON.parse(decrypted(item.configuration))
+    form.value.host = configuration.host
+    form.value.port = configuration.port
+    form.value.username = configuration.username
+    form.value.password = configuration.password
+    form.value.database = configuration.database
+    form.value.extraJdbc = configuration.extraJdbc
+    form.value.dbSchema = configuration.dbSchema
+    form.value.filename = configuration.filename
+    form.value.sheets = configuration.sheets || []
+    form.value.mode = configuration.mode
+    form.value.timeout = configuration.timeout ?? 30
+    form.value.lowVersion =
+      configuration.lowVersion !== null && configuration.lowVersion !== undefined
+        ? configuration.lowVersion
+        : true
+  }
+  dialogVisible.value = true
+}
+
 const initForm = (item: any, editTable: boolean = false) => {
   isEditTable.value = false
   keywords.value = ''
@@ -513,6 +547,7 @@ const tableListSave = () => {
 
 defineExpose({
   initForm,
+  initFormForCopy,
   tableListSave,
 })
 </script>

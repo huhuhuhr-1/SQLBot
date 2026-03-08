@@ -134,6 +134,7 @@
   "tr_api": "Table Relation",
   "tr_save": "Save Table Relation",
   "tr_get": "Get Table Relation",
+  "tr_infer": "Infer Table Relations",
 
   "data_qa": "Data Q&A",
   "get_chat_list": "Get Chat List",

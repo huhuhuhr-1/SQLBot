@@ -5,14 +5,19 @@ import os
 import traceback
 import uuid
 from io import StringIO
-from typing import List
+from typing import List, Optional
 from urllib.parse import quote
 
 import orjson
 import pandas as pd
-from fastapi import APIRouter, File, UploadFile, HTTPException, Path
+import json
+import re
+from fastapi import APIRouter, File, UploadFile, HTTPException, Path, Body
+from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
+from langchain_core.messages import SystemMessage, HumanMessage
 from sqlalchemy import and_
+from sqlmodel import select
 
 from apps.db.db import get_schema
 from apps.db.engine import get_engine_conn
@@ -21,9 +26,10 @@ from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.utils import SQLBotLogUtil
+from apps.ai_model.model_factory import create_llm
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum, \
-    check_status_by_id, sync_single_fields
+    check_status_by_id, sync_single_fields, copy_ds
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
 from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField, FieldObj, \
@@ -121,6 +127,23 @@ async def delete(session: SessionDep, id: int = Path(..., description=f"{PLACEHO
     return await delete_ds(session, id)
 
 
+class CopyDatasourceRequest(BaseModel):
+    name: Optional[str] = None
+
+
+@router.post("/copy/{id}", response_model=CoreDatasource, summary=f"{PLACEHOLDER_PREFIX}ds_copy")
+@require_permissions(permission=SqlbotPermission(role=['ws_admin'], keyExpression="id", type='ds'))
+@system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.DATASOURCE, result_id_expr="id"))
+async def copy_datasource(
+    session: SessionDep, trans: Trans, user: CurrentUser,
+    id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
+    body: Optional[CopyDatasourceRequest] = Body(default=None),
+):
+    def inner():
+        return copy_ds(session, trans, user, id, body.name if body and body.name else None)
+    return await asyncio.to_thread(inner)
+
+
 @router.post("/getTables/{id}", response_model=List[TableSchemaResponse], summary=f"{PLACEHOLDER_PREFIX}ds_get_tables")
 @require_permissions(permission=SqlbotPermission(type='ds', keyExpression="id"))
 async def get_tables(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
@@ -180,9 +203,6 @@ async def sync_fields(session: SessionDep, trans: Trans,
     return sync_single_fields(session, trans, id)
 
 
-from pydantic import BaseModel
-
-
 class TestObj(BaseModel):
     sql: str = None
 
@@ -233,6 +253,94 @@ async def edit_table(session: SessionDep, table: CoreTable):
 @require_permissions(permission=SqlbotPermission(role=['ws_admin']))
 async def edit_field(session: SessionDep, field: CoreField):
     updateField(session, field)
+
+
+class InferFieldItem(BaseModel):
+    id: int
+    field_name: str
+    field_comment: Optional[str] = None
+
+
+class InferFieldCommentRequest(BaseModel):
+    table_id: int
+    fields: List[InferFieldItem]
+
+
+class InferFieldSuggestion(BaseModel):
+    field_id: int
+    suggested_comment: str
+
+
+class InferFieldCommentResponse(BaseModel):
+    suggestions: List[InferFieldSuggestion]
+
+
+async def _infer_field_comments(table_name: str, fields: List[InferFieldItem]) -> List[InferFieldSuggestion]:
+    """Call LLM to generate suggested custom_comment for each field."""
+    if not fields:
+        return []
+    lines = []
+    for f in fields:
+        orig = (f.field_comment or "").strip()
+        lines.append(f"- 字段名: {f.field_name}, 原始备注: {orig or '(无)'}")
+    field_block = "\n".join(lines)
+    system_prompt = """你是一个数据库文档助手。根据表名和字段名、字段原始备注，为每个字段生成简短的中文业务备注（1句话，用于说明该字段的业务含义）。
+只输出一个JSON数组，不要其他解释。每项格式: {"field_name": "字段名", "comment": "生成的中文备注"}
+字段名必须与输入完全一致，以便程序匹配。"""
+    human_prompt = f"""表名: {table_name}
+
+字段列表:
+{field_block}
+
+请为上述每个字段生成简短中文业务备注，严格按JSON数组输出，每项包含 field_name 和 comment。"""
+    messages = [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+    llm = await create_llm(use_tool=False)
+    response = await llm.ainvoke(messages)
+    text = (response.content or "").strip()
+    # 尝试提取 JSON（可能被包在 markdown 代码块中）
+    json_match = re.search(r"\[[\s\S]*\]", text)
+    if not json_match:
+        SQLBotLogUtil.warning(f"infer_field_comments: no JSON array in response: {text[:200]}")
+        return [InferFieldSuggestion(field_id=f.id, suggested_comment="") for f in fields]
+    try:
+        arr = json.loads(json_match.group())
+    except json.JSONDecodeError:
+        SQLBotLogUtil.warning(f"infer_field_comments: JSON decode error: {text[:200]}")
+        return [InferFieldSuggestion(field_id=f.id, suggested_comment="") for f in fields]
+    name_to_id = {f.field_name: f.id for f in fields}
+    suggestions = []
+    for item in arr:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("field_name")
+        comment = (item.get("comment") or "").strip()
+        if name in name_to_id:
+            suggestions.append(InferFieldSuggestion(field_id=name_to_id[name], suggested_comment=comment))
+    # 保持与请求顺序一致，缺失的补空
+    id_to_suggestion = {s.field_id: s.suggested_comment for s in suggestions}
+    return [
+        InferFieldSuggestion(field_id=f.id, suggested_comment=id_to_suggestion.get(f.id, ""))
+        for f in fields
+    ]
+
+
+@router.post("/inferFieldComments", response_model=InferFieldCommentResponse, summary=f"{PLACEHOLDER_PREFIX}ds_infer_field_comments")
+@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+async def infer_field_comments(session: SessionDep, user: CurrentUser, body: InferFieldCommentRequest):
+    """Infer suggested custom_comment for given fields using LLM. Does not persist to DB."""
+    table = session.exec(select(CoreTable).where(CoreTable.id == body.table_id)).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == table.ds_id)).first()
+    if not ds:
+        raise HTTPException(status_code=404, detail="Datasource not found")
+    current_oid = user.oid if user.oid is not None else 1
+    if ds.oid != current_oid and not user.isAdmin:
+        raise HTTPException(status_code=403, detail="No permission for this table")
+    if not body.fields:
+        return InferFieldCommentResponse(suggestions=[])
+    suggestions = await _infer_field_comments(table.table_name, body.fields)
+    return InferFieldCommentResponse(suggestions=suggestions)
 
 
 @router.post("/previewData/{id}", response_model=PreviewResponse, summary=f"{PLACEHOLDER_PREFIX}ds_preview_data")

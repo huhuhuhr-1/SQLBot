@@ -1,3 +1,4 @@
+import copy
 import datetime
 import json
 from typing import List, Optional
@@ -11,7 +12,7 @@ from apps.datasource.crud.permission import get_column_permission_fields, get_ro
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
-from apps.db.db import get_tables, get_fields, exec_sql, check_connection
+from apps.db.db import get_tables, get_fields, exec_sql, check_connection, clear_ds_engine_cache
 from apps.db.engine import get_engine_config, get_engine_conn
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from common.core.config import settings
@@ -167,6 +168,7 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
         setattr(record, field, value)
     session.add(record)
     session.commit()
+    clear_ds_engine_cache(ds.id)
 
     run_save_ds_embeddings([ds.id])
     return ds
@@ -177,6 +179,102 @@ def update_ds_recommended_config(session: SessionDep, datasource_id: int, recomm
     record.recommended_config = recommended_config
     session.add(record)
     session.commit()
+
+
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="user.oid")
+def copy_ds(session: SessionDep, trans: Trans, user: CurrentUser, source_id: int, new_name: Optional[str] = None) -> CoreDatasource:
+    """Clone a datasource: same configuration and selected tables/fields/table_relation, new name."""
+    source = session.exec(select(CoreDatasource).where(CoreDatasource.id == source_id)).first()
+    if not source:
+        raise HTTPException(status_code=404, detail=trans('i18n_ds_invalid'))
+    name = (new_name or source.name + "_copy").strip()
+    if not name:
+        name = source.name + "_copy"
+    # ensure unique name
+    ds_for_check = CoreDatasource(id=None, name=name, oid=user.oid if user.oid is not None else 1)
+    check_name(session, trans, user, ds_for_check)
+
+    new_ds = CoreDatasource(
+        name=name,
+        description=source.description or "",
+        type=source.type,
+        type_name=source.type_name,
+        configuration=source.configuration,
+        create_time=datetime.datetime.now(),
+        create_by=user.id,
+        status=source.status or "Success",
+        num=source.num or "0/0",
+        oid=user.oid if user.oid is not None else 1,
+        table_relation=None,
+        embedding=None,
+        recommended_config=source.recommended_config or 1,
+    )
+    session.add(new_ds)
+    session.flush()
+    session.refresh(new_ds)
+
+    old_to_new_table_id = {}
+    source_tables = session.query(CoreTable).filter(CoreTable.ds_id == source_id).order_by(CoreTable.id).all()
+    for t in source_tables:
+        new_table = CoreTable(
+            ds_id=new_ds.id,
+            checked=t.checked,
+            table_name=t.table_name,
+            table_comment=t.table_comment or "",
+            custom_comment=t.custom_comment or "",
+            embedding=None,
+        )
+        session.add(new_table)
+        session.flush()
+        session.refresh(new_table)
+        old_to_new_table_id[t.id] = new_table.id
+
+    old_to_new_field_id = {}
+    source_fields = session.query(CoreField).filter(CoreField.ds_id == source_id).order_by(CoreField.table_id, CoreField.field_index).all()
+    for f in source_fields:
+        new_table_id = old_to_new_table_id.get(f.table_id)
+        if new_table_id is None:
+            continue
+        new_field = CoreField(
+            ds_id=new_ds.id,
+            table_id=new_table_id,
+            checked=f.checked,
+            field_name=f.field_name,
+            field_type=f.field_type or "",
+            field_comment=f.field_comment or "",
+            custom_comment=f.custom_comment or "",
+            field_index=f.field_index,
+        )
+        session.add(new_field)
+        session.flush()
+        session.refresh(new_field)
+        old_to_new_field_id[f.id] = new_field.id
+
+    if source.table_relation and len(source.table_relation) > 0:
+        new_relation = copy.deepcopy(source.table_relation)
+        for item in new_relation:
+            if item.get('shape') != 'edge':
+                continue
+            src = item.get('source') or {}
+            tgt = item.get('target') or {}
+            old_cell_s, old_cell_t = src.get('cell'), tgt.get('cell')
+            old_port_s, old_port_t = src.get('port'), tgt.get('port')
+            if old_cell_s is not None and old_cell_s in old_to_new_table_id:
+                item.setdefault('source', {})['cell'] = old_to_new_table_id[old_cell_s]
+            if old_cell_t is not None and old_cell_t in old_to_new_table_id:
+                item.setdefault('target', {})['cell'] = old_to_new_table_id[old_cell_t]
+            if old_port_s is not None and old_port_s in old_to_new_field_id:
+                item.setdefault('source', {})['port'] = old_to_new_field_id[old_port_s]
+            if old_port_t is not None and old_port_t in old_to_new_field_id:
+                item.setdefault('target', {})['port'] = old_to_new_field_id[old_port_t]
+        new_ds.table_relation = new_relation
+        session.add(new_ds)
+
+    session.commit()
+    updateNum(session, new_ds)
+    run_save_ds_embeddings([new_ds.id])
+    session.refresh(new_ds)
+    return new_ds
 
 
 async def delete_ds(session: SessionDep, id: int):
@@ -192,6 +290,7 @@ async def delete_ds(session: SessionDep, id: int):
 
     session.delete(term)
     session.commit()
+    clear_ds_engine_cache(id)
     delete_table_by_ds_id(session, id)
     delete_field_by_ds_id(session, id)
     if term:

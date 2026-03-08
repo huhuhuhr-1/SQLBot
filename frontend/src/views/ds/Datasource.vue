@@ -79,6 +79,10 @@ const handleEditDatasource = (res: any) => {
   addDrawerRef.value.handleEditDatasource(res)
 }
 
+const handleCopyDatasource = (item: Datasource) => {
+  addDrawerRef.value.handleCopyDatasource(item)
+}
+
 const handleRecommendation = (res: Datasource) => {
   recommendedProblemConfigRef.value?.init(res)
 }
@@ -301,6 +305,7 @@ useEmitt({
             :description="ele.description"
             @question="handleQuestion"
             @edit="handleEditDatasource(ele)"
+            @copy="handleCopyDatasource(ele)"
             @recommendation="handleRecommendation(ele)"
             @del="deleteHandler(ele)"
             @data-table-detail="dataTableDetail(ele)"

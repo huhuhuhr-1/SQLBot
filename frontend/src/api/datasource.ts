@@ -5,6 +5,8 @@ export const datasourceApi = {
   check_by_id: (id: any) => request.get(`/datasource/check/${id}`),
   relationGet: (id: any) => request.post(`/table_relation/get/${id}`),
   relationSave: (dsId: any, data: any) => request.post(`/table_relation/save/${dsId}`, data),
+  relationInfer: (dsId: number, tableIds?: number[]) =>
+    request.post<unknown[]>(`/table_relation/infer/${dsId}`, { table_ids: tableIds ?? null }),
   add: (data: any) => request.post('/datasource/add', data),
   list: () => request.get('/datasource/list'),
   update: (data: any) => request.post('/datasource/update', data),
@@ -24,9 +26,16 @@ export const datasourceApi = {
   saveTable: (data: any) => request.post('/datasource/editTable', data),
   saveField: (data: any) => request.post('/datasource/editField', data),
   getDs: (id: number) => request.post(`/datasource/get/${id}`),
+  copy: (id: number, data?: { name?: string }) =>
+    request.post(`/datasource/copy/${id}`, data ?? {}),
   cancelRequests: () => request.cancelRequests(),
   getSchema: (data: any) => request.post('/datasource/getSchemaByConf', data),
   syncFields: (id: number) => request.post(`/datasource/syncFields/${id}`),
+  inferFieldComments: (tableId: number, fields: { id: number; field_name: string; field_comment?: string }[]) =>
+    request.post<{ suggestions: { field_id: number; suggested_comment: string }[] }>(
+      '/datasource/inferFieldComments',
+      { table_id: tableId, fields }
+    ),
   exportDsSchema: (id: any) =>
     request.get(`/datasource/exportDsSchema/${id}`, {
       responseType: 'blob',

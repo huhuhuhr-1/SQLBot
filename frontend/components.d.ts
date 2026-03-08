@@ -19,6 +19,7 @@ declare module '@vue/runtime-core' {
     ElAside: typeof import('element-plus-secondary/es')['ElAside']
     ElAvatar: typeof import('element-plus-secondary/es')['ElAvatar']
     ElButton: typeof import('element-plus-secondary/es')['ElButton']
+    ElButtonGroup: typeof import('element-plus-secondary/es')['ElButtonGroup']
     ElCheckbox: typeof import('element-plus-secondary/es')['ElCheckbox']
     ElCheckboxGroup: typeof import('element-plus-secondary/es')['ElCheckboxGroup']
     ElCol: typeof import('element-plus-secondary/es')['ElCol']

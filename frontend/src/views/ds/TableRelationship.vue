@@ -5,9 +5,15 @@ import { useI18n } from 'vue-i18n'
 import { Graph, Cell, Shape } from '@antv/x6'
 import type { AnyColumn } from 'element-plus-secondary/es/components/table-v2/src/common.mjs'
 import { debounce } from 'lodash-es'
+import { Plus, Minus } from '@element-plus/icons-vue'
 
 const LINE_HEIGHT = 36
 const NODE_WIDTH = 180
+const NODE_HEADER_HEIGHT = 15 + LINE_HEIGHT
+const GRID_COLS = 4
+const GRID_STEP_X = 220
+const GRID_STEP_Y = 280
+const LAYOUT_GAP_Y = 24
 
 const props = withDefaults(
   defineProps<{
@@ -163,8 +169,11 @@ const initGraph = () => {
   graph = new Graph({
     mousewheel: {
       enabled: true,
-      modifiers: ['ctrl', 'meta'],
-      factor: 1.05,
+      factor: 1.1,
+    },
+    scaling: {
+      min: 0.2,
+      max: 2,
     },
     container: document.getElementById('container')!,
     autoResize: true,
@@ -333,13 +342,17 @@ const addNode = (node: any, tableX: any, tableY: any) => {
     initGraph()
   }
   const { x, y } = graph.pageToLocal(tableX, tableY)
+  addNodeAt(node, x, y)
+}
+
+const addNodeAt = (node: any, x: number, y: number) => {
+  if (!graph) {
+    initGraph()
+  }
   graph.addNode(
     graph.createNode({
       ...node,
-      position: {
-        x,
-        y,
-      },
+      position: { x, y },
       attrs: {
         label: {
           text: node.label,
@@ -413,6 +426,160 @@ const save = () => {
     })
   })
 }
+
+const inferring = ref(false)
+const addingAll = ref(false)
+
+const buildNodeFromTable = (table: any, fields: any[]) => ({
+  id: table.id,
+  shape: 'er-rect',
+  label: table.table_name,
+  width: 150,
+  height: 24,
+  ports: (fields || []).map((ele: any) => ({
+    id: ele.id,
+    group: 'list',
+    attrs: {
+      portNameLabel: { text: ele.field_name },
+      portTypeLabel: { text: ele.field_type },
+    },
+  })),
+})
+
+const addAllTables = async (tables: any[]) => {
+  if (!tables?.length) return
+  const idSet = new Set(nodeIds.value.map(String))
+  const toAdd = tables.filter((t) => !idSet.has(String(t.id)))
+  if (!toAdd.length) return
+  addingAll.value = true
+  try {
+    await nextTick()
+    if (!graph) {
+      initGraph()
+    }
+    const results = await Promise.all(
+      toAdd.map((t) => datasourceApi.fieldList(t.id).then((res) => ({ table: t, fields: res })))
+    )
+    const failed: string[] = []
+    const nodes: { node: any; x: number; y: number }[] = []
+    results.forEach((r) => {
+      if (!r || !Array.isArray(r.fields)) {
+        failed.push(r?.table?.table_name || '?')
+        return
+      }
+      const node = buildNodeFromTable(r.table, r.fields)
+      const i = nodeIds.value.length + nodes.length
+      const x = (i % GRID_COLS) * GRID_STEP_X
+      const y = Math.floor(i / GRID_COLS) * GRID_STEP_Y
+      nodes.push({ node, x, y })
+    })
+    await nextTick()
+    nodes.forEach(({ node, x, y }) => {
+      addNodeAt(node, x, y)
+      nodeIds.value = [...nodeIds.value, node.id]
+    })
+    emits('getTableName', [...nodeIds.value])
+    await nextTick()
+    autoLayout()
+    if (failed.length) {
+      ElMessage.warning(t('training.add_all_partial_failed', { count: failed.length }))
+    } else {
+      ElMessage.success(t('training.add_all_success', { count: nodes.length }))
+    }
+  } catch (e) {
+    ElMessage.error(t('training.add_all_failed'))
+  } finally {
+    addingAll.value = false
+  }
+}
+
+const zoomIn = () => {
+  if (graph) graph.zoom(0.1)
+}
+const zoomOut = () => {
+  if (graph) graph.zoom(-0.1)
+}
+const zoomToFit = () => {
+  if (graph) graph.zoomToFit({ padding: 80 })
+}
+const zoomReset = () => {
+  if (graph) graph.zoomTo(1)
+}
+const getNodeHeight = (node: any) => {
+  const ports = node.getPorts?.() ?? []
+  const portCount = Array.isArray(ports) ? ports.length : 0
+  return NODE_HEADER_HEIGHT + portCount * LINE_HEIGHT
+}
+
+const autoLayout = () => {
+  if (!graph) return
+  const nodes = graph.getNodes()
+  if (!nodes.length) return
+  const sorted = [...nodes].sort((a, b) => {
+    const idA = a.id as number
+    const idB = b.id as number
+    return (idA - idB) || 0
+  })
+  let currentY = 0
+  for (let rowStart = 0; rowStart < sorted.length; rowStart += GRID_COLS) {
+    const rowNodes = sorted.slice(rowStart, rowStart + GRID_COLS)
+    const rowHeight =
+      Math.max(...rowNodes.map((n) => getNodeHeight(n)), NODE_HEADER_HEIGHT) + LAYOUT_GAP_Y
+    rowNodes.forEach((node, col) => {
+      node.setPosition({ x: col * GRID_STEP_X, y: currentY })
+    })
+    currentY += rowHeight
+  }
+  nextTick(() => graph.zoomToFit({ padding: 80 }))
+}
+
+const inferRelations = () => {
+  if (!graph || !nodeIds.value.length) {
+    ElMessage.warning(t('training.infer_relations_no_tables'))
+    return
+  }
+  inferring.value = true
+  datasourceApi
+    .relationInfer(props.id, nodeIds.value)
+    .then((edges: any) => {
+      if (!Array.isArray(edges) || !edges.length) {
+        ElMessage.info(t('training.infer_relations_none'))
+        return
+      }
+      const idSet = new Set(nodeIds.value.map(String))
+      const existing = new Set(
+        graph.getEdges().map((e: any) => {
+          const s = e.getSource()
+          const t = e.getTarget()
+          return `${s?.cell}-${s?.port}-${t?.cell}-${t?.port}`
+        })
+      )
+      let added = 0
+      edges.forEach((item: any) => {
+        const src = item.source?.cell != null ? String(item.source.cell) : null
+        const tgt = item.target?.cell != null ? String(item.target.cell) : null
+        if (!src || !tgt || !idSet.has(src) || !idSet.has(tgt)) return
+        const key = `${src}-${item.source?.port}-${tgt}-${item.target?.port}`
+        if (existing.has(key)) return
+        existing.add(key)
+        graph.addEdge(graph.createEdge({ ...item, ...edgeOPtion }))
+        added++
+      })
+      if (added > 0) {
+        ElMessage.success(t('training.infer_relations_success', { count: added }))
+      } else {
+        ElMessage.info(t('training.infer_relations_none'))
+      }
+    })
+    .catch(() => {
+      ElMessage.error(t('training.infer_relations_failed'))
+    })
+    .finally(() => {
+      inferring.value = false
+    })
+}
+
+defineExpose({ inferRelations, addAllTables })
 </script>
 
 <template>
@@ -436,10 +603,47 @@ const save = () => {
       </filter>
     </defs>
   </svg>
-  <div v-if="!nodeIds.length" v-loading="loading" class="relationship-empty">
+  <div
+    v-if="!nodeIds.length && !addingAll"
+    v-loading="loading"
+    class="relationship-empty"
+  >
     {{ t('training.add_it_here') }}
   </div>
-  <div v-else id="container" v-loading="loading"></div>
+  <div v-else class="relationship-canvas-wrap">
+    <div class="canvas-toolbar">
+      <el-button-group>
+        <el-tooltip :content="t('training.canvas_zoom_in')" placement="bottom">
+          <el-button size="small" secondary @click="zoomIn">
+            <el-icon><Plus /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :content="t('training.canvas_zoom_out')" placement="bottom">
+          <el-button size="small" secondary @click="zoomOut">
+            <el-icon><Minus /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :content="t('training.canvas_zoom_fit')" placement="bottom">
+          <el-button size="small" secondary @click="zoomToFit">
+            {{ t('training.canvas_zoom_fit') }}
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :content="t('training.canvas_zoom_reset')" placement="bottom">
+          <el-button size="small" secondary @click="zoomReset">100%</el-button>
+        </el-tooltip>
+      </el-button-group>
+      <el-tooltip :content="t('training.canvas_auto_layout')" placement="bottom">
+        <el-button size="small" secondary @click="autoLayout">
+          {{ t('training.canvas_auto_layout') }}
+        </el-button>
+      </el-tooltip>
+    </div>
+    <div
+      id="container"
+      v-loading="loading || addingAll"
+      :element-loading-text="addingAll ? t('training.adding_tables') : undefined"
+    ></div>
+  </div>
   <div
     v-show="dragging"
     class="drag-mask"
@@ -447,6 +651,15 @@ const save = () => {
     @drop.prevent.stop="drop"
   ></div>
   <div class="save-btn">
+    <el-button
+      v-if="nodeIds.length"
+      :loading="inferring"
+      secondary
+      style="margin-right: 8px"
+      @click="inferRelations"
+    >
+      {{ t('training.infer_relations_short') }}
+    </el-button>
     <el-button v-if="nodeIds.length" type="primary" @click="save">
       {{ t('common.save') }}
     </el-button>
@@ -476,6 +689,52 @@ const save = () => {
   border: 1px solid #303133;
   transform: translate(20px, -15px);
 }
+.relationship-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+}
+.canvas-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.relationship-canvas-wrap #container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  font-size: 14px;
+  user-select: text;
+  overflow: hidden;
+  outline: none;
+  touch-action: none;
+  box-sizing: border-box;
+  min-width: 400px;
+  min-height: 400px;
+  background-color: #f5f6f7;
+  :deep(.x6-edge-tool) {
+    display: none;
+    circle {
+      fill: var(--ed-color-primary) !important;
+    }
+  }
+  :deep(.x6-node-tool) {
+    circle {
+      fill: var(--ed-color-primary) !important;
+    }
+  }
+  :deep(.x6-node) {
+    filter: url(#filter-dropShadow-v0-3329848037);
+  }
+}
 .save-btn {
   position: absolute;
   right: 16px;
@@ -496,36 +755,5 @@ const save = () => {
   width: 100%;
   height: 100%;
   font-size: 16px;
-}
-#container {
-  font-size: 14px;
-  user-select: text;
-  overflow: hidden;
-  outline: none;
-  touch-action: none;
-  box-sizing: border-box;
-  position: relative;
-  min-width: 400px;
-  min-height: 600px;
-  width: 100%;
-  height: 100%;
-  background-color: #f5f6f7;
-  :deep(.x6-edge-tool) {
-    display: none;
-
-    circle {
-      fill: var(--ed-color-primary) !important;
-    }
-  }
-
-  :deep(.x6-node-tool) {
-    circle {
-      fill: var(--ed-color-primary) !important;
-    }
-  }
-
-  :deep(.x6-node) {
-    filter: url(#filter-dropShadow-v0-3329848037);
-  }
 }
 </style>
