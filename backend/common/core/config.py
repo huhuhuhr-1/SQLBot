@@ -122,6 +122,8 @@ class Settings(BaseSettings):
     PG_POOL_RECYCLE: int = 3600
     PG_POOL_TIMEOUT: int = 60
     PG_POOL_PRE_PING: bool = True
+    # 方案 A：PostgreSQL 数据源按 ds 的并发上限（信号量），连接用 NullPool，单 ds 同时最多 N 个操作
+    DS_PG_MAX_CONCURRENT: int = 30
     # qian wen 32k
     MAX_TOKEN_CHUNK: int = 30000
     TIKTOKEN_CACHE_DIR: str = '/opt/sqlbot/app/apps/tiktoken_cache'

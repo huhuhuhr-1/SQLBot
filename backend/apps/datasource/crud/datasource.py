@@ -12,7 +12,7 @@ from apps.datasource.crud.permission import get_column_permission_fields, get_ro
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
-from apps.db.db import get_tables, get_fields, exec_sql, check_connection
+from apps.db.db import get_tables, get_fields, exec_sql, check_connection, clear_ds_engine_cache
 from apps.db.engine import get_engine_config, get_engine_conn
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from common.core.config import settings
@@ -168,6 +168,7 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
         setattr(record, field, value)
     session.add(record)
     session.commit()
+    clear_ds_engine_cache(ds.id)
 
     run_save_ds_embeddings([ds.id])
     return ds
@@ -289,6 +290,7 @@ async def delete_ds(session: SessionDep, id: int):
 
     session.delete(term)
     session.commit()
+    clear_ds_engine_cache(id)
     delete_table_by_ds_id(session, id)
     delete_field_by_ds_id(session, id)
     if term:
