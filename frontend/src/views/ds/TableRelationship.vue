@@ -413,6 +413,55 @@ const save = () => {
     })
   })
 }
+
+const inferring = ref(false)
+const inferRelations = () => {
+  if (!graph || !nodeIds.value.length) {
+    ElMessage.warning(t('training.infer_relations_no_tables'))
+    return
+  }
+  inferring.value = true
+  datasourceApi
+    .relationInfer(props.id, nodeIds.value)
+    .then((edges: any) => {
+      if (!Array.isArray(edges) || !edges.length) {
+        ElMessage.info(t('training.infer_relations_none'))
+        return
+      }
+      const idSet = new Set(nodeIds.value.map(String))
+      const existing = new Set(
+        graph.getEdges().map((e: any) => {
+          const s = e.getSource()
+          const t = e.getTarget()
+          return `${s?.cell}-${s?.port}-${t?.cell}-${t?.port}`
+        })
+      )
+      let added = 0
+      edges.forEach((item: any) => {
+        const src = item.source?.cell != null ? String(item.source.cell) : null
+        const tgt = item.target?.cell != null ? String(item.target.cell) : null
+        if (!src || !tgt || !idSet.has(src) || !idSet.has(tgt)) return
+        const key = `${src}-${item.source?.port}-${tgt}-${item.target?.port}`
+        if (existing.has(key)) return
+        existing.add(key)
+        graph.addEdge(graph.createEdge({ ...item, ...edgeOPtion }))
+        added++
+      })
+      if (added > 0) {
+        ElMessage.success(t('training.infer_relations_success', { count: added }))
+      } else {
+        ElMessage.info(t('training.infer_relations_none'))
+      }
+    })
+    .catch(() => {
+      ElMessage.error(t('training.infer_relations_failed'))
+    })
+    .finally(() => {
+      inferring.value = false
+    })
+}
+
+defineExpose({ inferRelations })
 </script>
 
 <template>
@@ -447,6 +496,15 @@ const save = () => {
     @drop.prevent.stop="drop"
   ></div>
   <div class="save-btn">
+    <el-button
+      v-if="nodeIds.length"
+      :loading="inferring"
+      secondary
+      style="margin-right: 8px"
+      @click="inferRelations"
+    >
+      {{ t('training.infer_relations') }}
+    </el-button>
     <el-button v-if="nodeIds.length" type="primary" @click="save">
       {{ t('common.save') }}
     </el-button>
