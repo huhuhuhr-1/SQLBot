@@ -250,7 +250,8 @@ class _DsSessionContext:
         return False
 
 
-def get_session(ds: CoreDatasource | AssistantOutDsSchema):
+def get_session(ds: CoreDatasource | AssistantOutDsSchema) -> _DsSessionContext:
+    """Return a context manager that yields a SQLAlchemy session. Must be used with `with`."""
     if isinstance(ds, AssistantOutDsSchema):
         out_conf = get_out_ds_conf(ds, 30)
         ds.configuration = out_conf
@@ -266,8 +267,7 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
     if db.connect_type == ConnectType.sqlalchemy:
         try:
             with get_session(ds) as session:
-                with session.execute(text("select 1")) as result:
-                    result.fetchall()
+                session.execute(text("select 1")).scalar()
                 SQLBotLogUtil.info("success")
                 return True
         except Exception as e:
