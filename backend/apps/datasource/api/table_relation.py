@@ -1,5 +1,6 @@
 # Author: Junjun
 # Date: 2025/9/24
+import json
 import re
 from typing import List, Optional, Tuple, Union, Dict, Any
 
@@ -7,7 +8,8 @@ from fastapi import APIRouter, Path, Body
 from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel
 
-from apps.datasource.models.datasource import CoreDatasource, CoreTable, CoreField, FieldObj
+from apps.datasource.models.datasource import CoreDatasource, CoreTable, CoreField, FieldObj, DatasourceConf
+from apps.datasource.utils.utils import aes_decrypt
 from apps.datasource.crud.table import get_tables_by_ds_id
 from apps.datasource.crud.field import get_fields_by_table_id
 from apps.db.db_fk import get_fk_relations
@@ -77,9 +79,11 @@ def _infer_edges_by_naming(
             prefix = fname[:-3].lower()
             if not prefix:
                 continue
-            candidates = [prefix, prefix + "s", prefix + "es", prefix + "ies"]
+            candidates = [prefix, prefix + "s", prefix + "es"]
             if prefix.endswith("y"):
                 candidates.append(prefix[:-1] + "ies")
+            else:
+                candidates.append(prefix + "ies")
             ref_table = None
             for cand in candidates:
                 ref_table = name_to_table.get(cand)
@@ -109,18 +113,32 @@ def _infer_edges_by_naming(
     return edges
 
 
+def _get_ds_schema(ds: CoreDatasource) -> str:
+    """从数据源配置解析 schema/db 名，与 datasource.get_table_schema 保持一致。"""
+    try:
+        if ds.type == "excel":
+            from apps.db.engine import get_engine_config
+            conf = get_engine_config()
+        else:
+            conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+        return (conf.dbSchema or "").strip() or (conf.database or "").strip()
+    except Exception:
+        return ""
+
+
 def _build_schema_str_for_llm(
     tables: List[CoreTable],
     table_fields: Dict[int, List[CoreField]],
     ds: CoreDatasource,
 ) -> str:
     """构建与生成 SQL 一致的 m-schema 格式字符串，供 LLM 推断关系使用。"""
+    db_name = _get_ds_schema(ds)
     lines = []
     for t in tables:
         tname = (t.table_name or "").strip()
         comment = (t.custom_comment or "").strip()
-        if ds.type not in ("mysql", "es"):
-            lines.append(f"# Table: {tname}")
+        if ds.type not in ("mysql", "es") and db_name:
+            lines.append(f"# Table: {db_name}.{tname}")
         else:
             lines.append(f"# Table: {tname}")
         if comment:
