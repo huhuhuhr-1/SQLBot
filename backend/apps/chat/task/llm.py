@@ -1226,10 +1226,15 @@ class LLMService:
             sql_res = self.generate_sql(_session)
             full_sql_text = ''
             for chunk in sql_res:
-                full_sql_text += chunk.get('content')
+                # 确保 chunk 是字典类型，并安全访问键
+                if not isinstance(chunk, dict):
+                    chunk = {'content': str(chunk) if chunk else '', 'reasoning_content': ''}
+                content = chunk.get('content') or ''
+                reasoning_content = chunk.get('reasoning_content') or ''
+                full_sql_text += content
                 if in_chat:
                     yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                        {'content': content, 'reasoning_content': reasoning_content,
                          'type': 'sql-result'}).decode() + '\n\n'
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'

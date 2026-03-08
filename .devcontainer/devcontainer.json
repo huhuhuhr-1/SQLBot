@@ -1,0 +1,21 @@
+{
+  "name": "SQLBot",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  "forwardPorts": [3000, 5432, 5678, 8000, 8001],
+  "portsAttributes": {
+    "5678": { "label": "debugpy" },
+    "8000": { "label": "app" },
+    "8001": { "label": "mcp" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "ms-python.debugpy"]
+    }
+  },
+  "remoteEnv": {
+    "SQLBOT_DEBUG": "1"
+  }
+}

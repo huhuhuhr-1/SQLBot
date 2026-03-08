@@ -31,17 +31,12 @@ fi
 
 echo -e "${GREEN}✅ 找到基础镜像: ${BASE_IMAGE}${NC}"
 
-# 启用 BuildKit
+# 启用 BuildKit（仅影响 docker build 的缓存等）
 export DOCKER_BUILDKIT=1
 
-# 选择构建工具
-if docker buildx version >/dev/null 2>&1; then
-    BUILD_TOOL="buildx"
-    BUILD_CMD="docker buildx build --load"
-else
-    BUILD_TOOL="docker"
-    BUILD_CMD="docker build"
-fi
+# 有本地基础镜像时用 docker build，才能使用本地镜像；buildx 会从 registry 拉取导致失败
+BUILD_TOOL="docker"
+BUILD_CMD="docker build"
 
 echo -e "${BLUE}🔨 开始快速构建...${NC}"
 

@@ -1,4 +1,9 @@
 import os
+
+# 进程内清除代理，避免 LangChain/httpx 使用 SOCKS 代理报错；不影响本机其他程序（如 Clash）
+for _k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+    os.environ.pop(_k, None)
+
 from typing import Dict, Any
 
 import sqlbot_xpack

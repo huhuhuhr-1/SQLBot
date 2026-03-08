@@ -80,9 +80,8 @@ docker build -t zf-sqlbot:latest -f build/Dockerfile.update .
 
 - **基础镜像**：`sqlbot-dev-20251130:latest`（x86）、`sqlbot-dev-20251130:arm64`（ARM64）
 - **快速构建产出**：`zf-sqlbot:latest`（x86）、`zf-sqlbot:arm64`（ARM64）
-- `Dockerfile`：本目录内用于说明/参考的 Dockerfile（若存在）
-- `Dockerfile.update`：仅复制 backend 的更新用 Dockerfile
-- `Dockerfile.update.x86` / `Dockerfile.update.arm64`：对应架构的更新用 Dockerfile
+- 根目录 **Dockerfile**：完整构建用（build-base 使用）。
+- **build/Dockerfile.update**：快速构建用，仅复制 backend；x86 直接使用，arm64 由脚本内 `sed` 替换 `FROM` 后使用，不再维护单独的 `.x86`/`.arm64` 文件。
 
 ## 注意事项
 
@@ -90,4 +89,4 @@ docker build -t zf-sqlbot:latest -f build/Dockerfile.update .
 - 更新 Python 依赖或前端后，需重新执行 `build-base.sh`（或对应多平台脚本）。
 - 多平台脚本依赖 `docker buildx`，未安装时需先安装对应插件。
 
-更多安装与部署说明见项目根目录 [README.md](../README.md) 与 [docs/INSTALL.md](../docs/INSTALL.md)。
+更多安装与部署说明见项目根目录 [README.md](../README.md) 与 [docs/GUIDE.md](../docs/GUIDE.md)。

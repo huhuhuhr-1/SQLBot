@@ -311,7 +311,8 @@ class AiModelQuestion(BaseModel):
             _question = get_sql_template()['regenerate_hint'] + self.question
         return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=_question,
                                                  rule=self.rule, current_time=current_time, error_msg=self.error_msg,
-                                                 change_title=change_title)
+                                                 change_title=change_title,
+                                                 thinking_result=(self.enhanced_think_result or ''))
 
     def enhanced_think_question(self, current_time: str):
         return get_myself_template()['think_prompt'].format(user_info=self.user_name,

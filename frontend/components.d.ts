@@ -10,9 +10,12 @@ export {}
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
     About: typeof import('./src/components/about/index.vue')['default']
+    Apikey: typeof import('./src/components/layout/Apikey.vue')['default']
     DrawerEnumFilter: typeof import('./src/components/drawer-filter/src/DrawerEnumFilter.vue')['default']
     DrawerFilter: typeof import('./src/components/drawer-filter/src/DrawerFilter.vue')['default']
     DrawerMain: typeof import('./src/components/drawer-main/src/DrawerMain.vue')['default']
+    DrawerTimeFilter: typeof import('./src/components/drawer-filter/src/DrawerTimeFilter.vue')['default']
+    DrawerTreeFilter: typeof import('./src/components/drawer-filter/src/DrawerTreeFilter.vue')['default']
     ElAside: typeof import('element-plus-secondary/es')['ElAside']
     ElAvatar: typeof import('element-plus-secondary/es')['ElAvatar']
     ElButton: typeof import('element-plus-secondary/es')['ElButton']
@@ -21,6 +24,7 @@ declare module '@vue/runtime-core' {
     ElCol: typeof import('element-plus-secondary/es')['ElCol']
     ElColorPicker: typeof import('element-plus-secondary/es')['ElColorPicker']
     ElContainer: typeof import('element-plus-secondary/es')['ElContainer']
+    ElDatePicker: typeof import('element-plus-secondary/es')['ElDatePicker']
     ElDialog: typeof import('element-plus-secondary/es')['ElDialog']
     ElDivider: typeof import('element-plus-secondary/es')['ElDivider']
     ElDrawer: typeof import('element-plus-secondary/es')['ElDrawer']

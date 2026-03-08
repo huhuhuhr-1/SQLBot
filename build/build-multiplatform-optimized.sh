@@ -182,52 +182,12 @@ echo -e "  2. x86_64: FROM ${X86_IMAGE}"
 echo -e "  3. ARM64:  FROM ${ARM_IMAGE}"
 echo -e "  4. 运行 ${YELLOW}./build-quick.sh${NC} 构建最终镜像"
 
-# 创建平台特定的 Dockerfile.update
-echo
-echo -e "${BLUE}📝 创建平台特定的 Dockerfile.update...${NC}"
+# 快速构建脚本统一使用 build/Dockerfile.update（x86 直接用，arm64 用 sed 替换 FROM）
+echo -e "${GREEN}✅ 使用统一 Dockerfile.update，无需生成 .x86/.arm64 文件${NC}"
 
-# 创建 x86 版本
-sed "s/FROM sqlbot-dev-20251130:latest/FROM ${X86_IMAGE}/" build/Dockerfile.update > build/Dockerfile.update.x86
-
-# 创建 ARM 版本
-sed "s/FROM sqlbot-dev-20251130:latest/FROM ${ARM_IMAGE}/" build/Dockerfile.update > build/Dockerfile.update.arm64
-
-echo -e "${GREEN}✅ 已创建：${NC}"
-echo -e "  ${YELLOW}build/Dockerfile.update.x86${NC}  (x86_64平台)"
-echo -e "  ${YELLOW}build/Dockerfile.update.arm64${NC} (ARM64平台)"
-
-# 创建平台特定快速构建脚本
-cat > build/build-quick-x86.sh << 'EOF'
-#!/bin/bash
-# x86 平台快速构建脚本
-
-VERSION="20251130"
-BASE_IMAGE="sqlbot-dev-${VERSION}:latest"
-FINAL_IMAGE="zf-sqlbot:latest"
-
-echo "🔨 构建 x86 平台镜像..."
-docker build -f build/Dockerfile.update.x86 -t ${FINAL_IMAGE} .
-echo "✅ x86 镜像构建完成: ${FINAL_IMAGE}"
-EOF
-
-cat > build/build-quick-arm64.sh << 'EOF'
-#!/bin/bash
-# ARM64 平台快速构建脚本
-
-VERSION="20251130"
-BASE_IMAGE="sqlbot-dev-${VERSION}:arm64"
-FINAL_IMAGE="zf-sqlbot:arm64"
-
-echo "🔨 构建 ARM64 平台镜像..."
-docker build -f build/Dockerfile.update.arm64 -t ${FINAL_IMAGE} .
-echo "✅ ARM64 镜像构建完成: ${FINAL_IMAGE}"
-EOF
-
-chmod +x build/build-quick-x86.sh build/build-quick-arm64.sh
-
-echo -e "${GREEN}✅ 已创建快速构建脚本：${NC}"
-echo -e "  ${YELLOW}build/build-quick-x86.sh${NC}"
-echo -e "  ${YELLOW}build/build-quick-arm64.sh${NC}"
+chmod +x build/build-quick-x86.sh build/build-quick-arm64.sh 2>/dev/null || true
+echo -e "  ${YELLOW}build/build-quick-x86.sh${NC}  使用 build/Dockerfile.update"
+echo -e "  ${YELLOW}build/build-quick-arm64.sh${NC} 由 Dockerfile.update 动态替换 FROM"
 
 echo
 echo -e "${GREEN}🎯 多平台构建环境已准备就绪！${NC}"

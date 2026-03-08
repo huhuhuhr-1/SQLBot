@@ -54,7 +54,6 @@ const routerList = computed(() => {
       !route.path.includes('professional') &&
       !route.path.includes('401') &&
       !route.path.includes('training') &&
-      !route.path.includes('prompt') &&
       !route.path.includes('permission') &&
       !route.path.includes('embeddedCommon') &&
       !route.path.includes('preview') &&
@@ -69,6 +68,17 @@ const routerList = computed(() => {
     )
   })
 
+  // 确保「设置」下的「自定义提示词」子项出现在菜单中（与 member/training 等一致）
+  const setRoute = list.find((r: any) => r.name === 'set' || r.path === '/set')
+  if (setRoute?.children) {
+    const hasPrompt = setRoute.children.some((c: any) => c.name === 'prompt' || c.path?.includes('prompt'))
+    if (!hasPrompt) {
+      const promptRoute = router.getRoutes().find((r: any) => r.name === 'prompt')
+      if (promptRoute) {
+        setRoute.children = [...setRoute.children, promptRoute]
+      }
+    }
+  }
   return list
 })
 </script>

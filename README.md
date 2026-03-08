@@ -64,9 +64,10 @@ docker run -d \
 
 ### 更多文档
 
-- [安装与部署](docs/INSTALL.md) — Docker、离线安装包、自建镜像
+- [完整指南](docs/GUIDE.md) — 从安装部署到项目深度分析（安装、构建、开发、架构与流程）
+- [本地调试](docs/DEBUG.md) — PyCharm 调试、backend/frontend 联调、容器 debugpy
 - [构建与打包](build/README.md) — 本地构建脚本说明
-- [本地开发](docs/DEVELOPMENT.md) — 后端/前端开发与脚本说明
+- [安全与待办](docs/SECURITY_TODO.md) — 已知安全项与修复计划
 
 ### 联系我们
 

@@ -135,7 +135,7 @@ class OpenChatQuestion(AiModelQuestion):
                                                  current_time=current_time,
                                                  error_msg=self.error_msg,
                                                  change_title=change_title,
-                                                 thinking_result=self.enhanced_think_result)
+                                                 thinking_result=(self.enhanced_think_result or ''))
 
     # 获取增强思考的prompt
     def enhanced_think_question(self, current_time: str):
