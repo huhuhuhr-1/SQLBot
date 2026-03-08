@@ -5,12 +5,15 @@ import { useI18n } from 'vue-i18n'
 import { Graph, Cell, Shape } from '@antv/x6'
 import type { AnyColumn } from 'element-plus-secondary/es/components/table-v2/src/common.mjs'
 import { debounce } from 'lodash-es'
+import { Plus, Minus } from '@element-plus/icons-vue'
 
 const LINE_HEIGHT = 36
 const NODE_WIDTH = 180
+const NODE_HEADER_HEIGHT = 15 + LINE_HEIGHT
 const GRID_COLS = 4
 const GRID_STEP_X = 220
 const GRID_STEP_Y = 280
+const LAYOUT_GAP_Y = 24
 
 const props = withDefaults(
   defineProps<{
@@ -166,8 +169,11 @@ const initGraph = () => {
   graph = new Graph({
     mousewheel: {
       enabled: true,
-      modifiers: ['ctrl', 'meta'],
-      factor: 1.05,
+      factor: 1.1,
+    },
+    scaling: {
+      min: 0.2,
+      max: 2,
     },
     container: document.getElementById('container')!,
     autoResize: true,
@@ -474,7 +480,7 @@ const addAllTables = async (tables: any[]) => {
     })
     emits('getTableName', [...nodeIds.value])
     await nextTick()
-    if (graph) graph.zoomToFit({ padding: 100 })
+    autoLayout()
     if (failed.length) {
       ElMessage.warning(t('training.add_all_partial_failed', { count: failed.length }))
     } else {
@@ -485,6 +491,46 @@ const addAllTables = async (tables: any[]) => {
   } finally {
     addingAll.value = false
   }
+}
+
+const zoomIn = () => {
+  if (graph) graph.zoom(0.1)
+}
+const zoomOut = () => {
+  if (graph) graph.zoom(-0.1)
+}
+const zoomToFit = () => {
+  if (graph) graph.zoomToFit({ padding: 80 })
+}
+const zoomReset = () => {
+  if (graph) graph.zoomTo(1)
+}
+const getNodeHeight = (node: any) => {
+  const ports = node.getPorts?.() ?? []
+  const portCount = Array.isArray(ports) ? ports.length : 0
+  return NODE_HEADER_HEIGHT + portCount * LINE_HEIGHT
+}
+
+const autoLayout = () => {
+  if (!graph) return
+  const nodes = graph.getNodes()
+  if (!nodes.length) return
+  const sorted = [...nodes].sort((a, b) => {
+    const idA = a.id as number
+    const idB = b.id as number
+    return (idA - idB) || 0
+  })
+  let currentY = 0
+  for (let rowStart = 0; rowStart < sorted.length; rowStart += GRID_COLS) {
+    const rowNodes = sorted.slice(rowStart, rowStart + GRID_COLS)
+    const rowHeight =
+      Math.max(...rowNodes.map((n) => getNodeHeight(n)), NODE_HEADER_HEIGHT) + LAYOUT_GAP_Y
+    rowNodes.forEach((node, col) => {
+      node.setPosition({ x: col * GRID_STEP_X, y: currentY })
+    })
+    currentY += rowHeight
+  }
+  nextTick(() => graph.zoomToFit({ padding: 80 }))
 }
 
 const inferRelations = () => {
@@ -564,12 +610,40 @@ defineExpose({ inferRelations, addAllTables })
   >
     {{ t('training.add_it_here') }}
   </div>
-  <div
-    v-else
-    id="container"
-    v-loading="loading || addingAll"
-    :element-loading-text="addingAll ? t('training.adding_tables') : undefined"
-  ></div>
+  <div v-else class="relationship-canvas-wrap">
+    <div class="canvas-toolbar">
+      <el-button-group>
+        <el-tooltip :content="t('training.canvas_zoom_in')" placement="bottom">
+          <el-button size="small" secondary @click="zoomIn">
+            <el-icon><Plus /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :content="t('training.canvas_zoom_out')" placement="bottom">
+          <el-button size="small" secondary @click="zoomOut">
+            <el-icon><Minus /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :content="t('training.canvas_zoom_fit')" placement="bottom">
+          <el-button size="small" secondary @click="zoomToFit">
+            {{ t('training.canvas_zoom_fit') }}
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :content="t('training.canvas_zoom_reset')" placement="bottom">
+          <el-button size="small" secondary @click="zoomReset">100%</el-button>
+        </el-tooltip>
+      </el-button-group>
+      <el-tooltip :content="t('training.canvas_auto_layout')" placement="bottom">
+        <el-button size="small" secondary @click="autoLayout">
+          {{ t('training.canvas_auto_layout') }}
+        </el-button>
+      </el-tooltip>
+    </div>
+    <div
+      id="container"
+      v-loading="loading || addingAll"
+      :element-loading-text="addingAll ? t('training.adding_tables') : undefined"
+    ></div>
+  </div>
   <div
     v-show="dragging"
     class="drag-mask"
@@ -615,6 +689,52 @@ defineExpose({ inferRelations, addAllTables })
   border: 1px solid #303133;
   transform: translate(20px, -15px);
 }
+.relationship-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+}
+.canvas-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.relationship-canvas-wrap #container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  font-size: 14px;
+  user-select: text;
+  overflow: hidden;
+  outline: none;
+  touch-action: none;
+  box-sizing: border-box;
+  min-width: 400px;
+  min-height: 400px;
+  background-color: #f5f6f7;
+  :deep(.x6-edge-tool) {
+    display: none;
+    circle {
+      fill: var(--ed-color-primary) !important;
+    }
+  }
+  :deep(.x6-node-tool) {
+    circle {
+      fill: var(--ed-color-primary) !important;
+    }
+  }
+  :deep(.x6-node) {
+    filter: url(#filter-dropShadow-v0-3329848037);
+  }
+}
 .save-btn {
   position: absolute;
   right: 16px;
@@ -635,36 +755,5 @@ defineExpose({ inferRelations, addAllTables })
   width: 100%;
   height: 100%;
   font-size: 16px;
-}
-#container {
-  font-size: 14px;
-  user-select: text;
-  overflow: hidden;
-  outline: none;
-  touch-action: none;
-  box-sizing: border-box;
-  position: relative;
-  min-width: 400px;
-  min-height: 600px;
-  width: 100%;
-  height: 100%;
-  background-color: #f5f6f7;
-  :deep(.x6-edge-tool) {
-    display: none;
-
-    circle {
-      fill: var(--ed-color-primary) !important;
-    }
-  }
-
-  :deep(.x6-node-tool) {
-    circle {
-      fill: var(--ed-color-primary) !important;
-    }
-  }
-
-  :deep(.x6-node) {
-    filter: url(#filter-dropShadow-v0-3329848037);
-  }
 }
 </style>
