@@ -436,9 +436,9 @@
     "no_table": "No Table",
     "go_add": "Add",
     "get_schema": "Get Schema",
-    "copy_data_source": "Copy data source",
+    "copy_data_source": "Clone",
     "copy_data_source_name_hint": "Enter name for the new data source, or leave empty to use \"{name}_copy\"",
-    "copy_data_source_success": "Copied successfully; you can adjust selected tables below"
+    "copy_data_source_success": "Cloned successfully; you can adjust selected tables below"
   },
   "model": {
     "default_model": "Default model",

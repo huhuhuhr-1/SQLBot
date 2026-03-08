@@ -80,20 +80,7 @@ const handleEditDatasource = (res: any) => {
 }
 
 const handleCopyDatasource = (item: Datasource) => {
-  const defaultName = `${item.name}_copy`
-  ElMessageBox.prompt(t('datasource.copy_data_source_name_hint'), t('datasource.copy_data_source'), {
-    confirmButtonText: t('common.confirm'),
-    cancelButtonText: t('common.cancel'),
-    inputValue: defaultName,
-    inputPlaceholder: defaultName,
-  }).then(({ value }) => {
-    const name = (value || defaultName).trim()
-    return datasourceApi.copy(Number(item.id), name ? { name } : undefined)
-  }).then((res: any) => {
-    ElMessage.success(t('datasource.copy_data_source_success'))
-    search()
-    addDrawerRef.value.handleEditDatasource(res)
-  }).catch(() => {})
+  addDrawerRef.value.handleCopyDatasource(item)
 }
 
 const handleRecommendation = (res: Datasource) => {

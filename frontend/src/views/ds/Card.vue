@@ -131,7 +131,7 @@ const onClickOutside = () => {
           :virtual-ref="buttonRef"
           virtual-triggering
           trigger="click"
-          :teleported="false"
+          teleported
           popper-class="popover-card_ds"
           placement="bottom-end"
         >
