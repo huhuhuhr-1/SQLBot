@@ -8,6 +8,9 @@ import { debounce } from 'lodash-es'
 
 const LINE_HEIGHT = 36
 const NODE_WIDTH = 180
+const GRID_COLS = 4
+const GRID_STEP_X = 220
+const GRID_STEP_Y = 280
 
 const props = withDefaults(
   defineProps<{
@@ -333,13 +336,17 @@ const addNode = (node: any, tableX: any, tableY: any) => {
     initGraph()
   }
   const { x, y } = graph.pageToLocal(tableX, tableY)
+  addNodeAt(node, x, y)
+}
+
+const addNodeAt = (node: any, x: number, y: number) => {
+  if (!graph) {
+    initGraph()
+  }
   graph.addNode(
     graph.createNode({
       ...node,
-      position: {
-        x,
-        y,
-      },
+      position: { x, y },
       attrs: {
         label: {
           text: node.label,
@@ -415,6 +422,71 @@ const save = () => {
 }
 
 const inferring = ref(false)
+const addingAll = ref(false)
+
+const buildNodeFromTable = (table: any, fields: any[]) => ({
+  id: table.id,
+  shape: 'er-rect',
+  label: table.table_name,
+  width: 150,
+  height: 24,
+  ports: (fields || []).map((ele: any) => ({
+    id: ele.id,
+    group: 'list',
+    attrs: {
+      portNameLabel: { text: ele.field_name },
+      portTypeLabel: { text: ele.field_type },
+    },
+  })),
+})
+
+const addAllTables = async (tables: any[]) => {
+  if (!tables?.length) return
+  const idSet = new Set(nodeIds.value.map(String))
+  const toAdd = tables.filter((t) => !idSet.has(String(t.id)))
+  if (!toAdd.length) return
+  addingAll.value = true
+  try {
+    await nextTick()
+    if (!graph) {
+      initGraph()
+    }
+    const results = await Promise.all(
+      toAdd.map((t) => datasourceApi.fieldList(t.id).then((res) => ({ table: t, fields: res })))
+    )
+    const failed: string[] = []
+    const nodes: { node: any; x: number; y: number }[] = []
+    results.forEach((r) => {
+      if (!r || !Array.isArray(r.fields)) {
+        failed.push(r?.table?.table_name || '?')
+        return
+      }
+      const node = buildNodeFromTable(r.table, r.fields)
+      const i = nodeIds.value.length + nodes.length
+      const x = (i % GRID_COLS) * GRID_STEP_X
+      const y = Math.floor(i / GRID_COLS) * GRID_STEP_Y
+      nodes.push({ node, x, y })
+    })
+    await nextTick()
+    nodes.forEach(({ node, x, y }) => {
+      addNodeAt(node, x, y)
+      nodeIds.value = [...nodeIds.value, node.id]
+    })
+    emits('getTableName', [...nodeIds.value])
+    await nextTick()
+    if (graph) graph.zoomToFit({ padding: 100 })
+    if (failed.length) {
+      ElMessage.warning(t('training.add_all_partial_failed', { count: failed.length }))
+    } else {
+      ElMessage.success(t('training.add_all_success', { count: nodes.length }))
+    }
+  } catch (e) {
+    ElMessage.error(t('training.add_all_failed'))
+  } finally {
+    addingAll.value = false
+  }
+}
+
 const inferRelations = () => {
   if (!graph || !nodeIds.value.length) {
     ElMessage.warning(t('training.infer_relations_no_tables'))
@@ -461,7 +533,7 @@ const inferRelations = () => {
     })
 }
 
-defineExpose({ inferRelations })
+defineExpose({ inferRelations, addAllTables })
 </script>
 
 <template>
@@ -485,10 +557,19 @@ defineExpose({ inferRelations })
       </filter>
     </defs>
   </svg>
-  <div v-if="!nodeIds.length" v-loading="loading" class="relationship-empty">
+  <div
+    v-if="!nodeIds.length && !addingAll"
+    v-loading="loading"
+    class="relationship-empty"
+  >
     {{ t('training.add_it_here') }}
   </div>
-  <div v-else id="container" v-loading="loading"></div>
+  <div
+    v-else
+    id="container"
+    v-loading="loading || addingAll"
+    :element-loading-text="addingAll ? t('training.adding_tables') : undefined"
+  ></div>
   <div
     v-show="dragging"
     class="drag-mask"
@@ -503,7 +584,7 @@ defineExpose({ inferRelations })
       style="margin-right: 8px"
       @click="inferRelations"
     >
-      {{ t('training.infer_relations') }}
+      {{ t('training.infer_relations_short') }}
     </el-button>
     <el-button v-if="nodeIds.length" type="primary" @click="save">
       {{ t('common.save') }}

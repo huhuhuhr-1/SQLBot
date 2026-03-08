@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, reactive, nextTick } from 'vue'
 import { datasourceApi } from '@/api/datasource'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
@@ -93,8 +93,37 @@ const singleDragStartD = (e: DragEvent, ele: any) => {
   e.dataTransfer!.setData('table', JSON.stringify(ele))
 }
 
+const tableRelationshipRef = ref<{ addAllTables: (tables: any[]) => void } | null>(null)
 const getTableName = (val: any) => {
   tableName.value = val
+}
+
+const batchAddVisible = ref(false)
+const batchAddSelectedIds = ref<number[]>([])
+const handleOpenBatchAdd = () => {
+  if (!tableList.value.length) {
+    ElMessage.info(t('training.no_tables_to_add'))
+    return
+  }
+  batchAddSelectedIds.value = [...tableName.value]
+  batchAddVisible.value = true
+}
+const handleBatchSelectAll = (checked: boolean | unknown) => {
+  const allIds = tableList.value.map((t) => t.id)
+  batchAddSelectedIds.value = checked ? [...allIds] : []
+}
+const handleBatchAddConfirm = () => {
+  const idsOnCanvas = new Set(tableName.value)
+  const toAddIds = batchAddSelectedIds.value.filter((id) => !idsOnCanvas.has(id))
+  if (!toAddIds.length) {
+    batchAddVisible.value = false
+    return
+  }
+  const toAdd = tableList.value.filter((t) => toAddIds.includes(t.id))
+  batchAddVisible.value = false
+  nextTick(() => {
+    tableRelationshipRef.value?.addAllTables(toAdd)
+  })
 }
 
 const singleDragEnd = () => {
@@ -596,9 +625,17 @@ const btnSelectClick = (val: any) => {
       </div>
 
       <div v-if="activeRelationship" class="relationship-content">
-        <div class="title">{{ t('training.table_relationship_management') }}</div>
+        <div class="relationship-title-row">
+          <span class="title">{{ t('training.table_relationship_management') }}</span>
+          <div class="relationship-actions">
+            <el-button secondary @click="handleOpenBatchAdd">
+              {{ t('training.batch_add_tables') }}
+            </el-button>
+          </div>
+        </div>
         <div class="content">
           <TableRelationship
+            ref="tableRelationshipRef"
             :id="info.id"
             :dragging="isDrag"
             @get-table-name="getTableName"
@@ -817,6 +854,45 @@ const btnSelectClick = (val: any) => {
       <el-button type="primary" @click="saveField">{{ t('common.save') }}</el-button>
     </div>
   </el-dialog>
+
+  <el-dialog
+    v-model="batchAddVisible"
+    :title="t('training.batch_add_tables')"
+    width="480px"
+    :destroy-on-close="true"
+  >
+    <div class="batch-add-toolbar">
+      <el-checkbox
+        :model-value="batchAddSelectedIds.length === tableList.length"
+        :indeterminate="batchAddSelectedIds.length > 0 && batchAddSelectedIds.length < tableList.length"
+        @change="handleBatchSelectAll"
+      >
+        {{ t('training.select_all') }}
+      </el-checkbox>
+    </div>
+    <el-checkbox-group v-model="batchAddSelectedIds">
+      <div class="batch-add-list">
+        <el-checkbox
+          v-for="t in tableList"
+          :key="t.id"
+          :label="t.id"
+          class="batch-add-item"
+        >
+          {{ t.table_name }}
+        </el-checkbox>
+      </div>
+    </el-checkbox-group>
+    <template #footer>
+      <el-button secondary @click="batchAddVisible = false">{{ t('common.cancel') }}</el-button>
+      <el-button
+        type="primary"
+        :disabled="!batchAddSelectedIds.length"
+        @click="handleBatchAddConfirm"
+      >
+        {{ t('training.add_selected') }}
+      </el-button>
+    </template>
+  </el-dialog>
   <ParamsForm ref="paramsFormRef" @refresh="refresh"></ParamsForm>
 </template>
 
@@ -1016,13 +1092,25 @@ const btnSelectClick = (val: any) => {
         width: 100%;
       }
 
-      .title {
+      .relationship-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         height: 56px;
         padding-left: 24px;
+        padding-right: 16px;
         line-height: 56px;
-        font-weight: 500;
-        font-size: 16px;
         border-bottom: 1px solid #1f232926;
+
+        .title {
+          font-weight: 500;
+          font-size: 16px;
+        }
+
+        .relationship-actions {
+          display: flex;
+          gap: 8px;
+        }
       }
     }
     .info-table {
@@ -1217,6 +1305,20 @@ const btnSelectClick = (val: any) => {
 .notes-dialog {
   .ed-textarea__inner {
     line-height: 22px;
+  }
+}
+.batch-add-toolbar {
+  margin-bottom: 12px;
+}
+.batch-add-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .batch-add-item {
+    display: block;
   }
 }
 </style>
