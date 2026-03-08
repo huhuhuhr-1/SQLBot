@@ -106,6 +106,7 @@
     "infer_relations_none": "추론된 새 관계 없음",
     "infer_relations_success": "추론된 관계 {count}개 추가됨",
     "infer_relations_failed": "추론 실패",
+    "infer_relations_loading": "관계 추론 중…",
     "infer_relations_short": "자동 매핑",
     "add_all_tables": "전체 추가",
     "batch_add_tables": "일괄 추가",
@@ -319,7 +320,9 @@
     "rename_conversation_title": "대화 제목 이름 바꾸기",
     "conversation_title": "대화 제목",
     "copied": "복사됨",
-    "ask_failed": "데이터 조회 실패"
+    "ask_failed": "데이터 조회 실패",
+    "enhanced_think": "심층 사고",
+    "enhanced_think_tooltip": "켜면 SQL 생성 전에 심층 사고를 한 번 수행합니다. 정확도가 올라갈 수 있으나 시간이 더 걸립니다"
   },
   "ds": {
     "title": "데이터 소스",

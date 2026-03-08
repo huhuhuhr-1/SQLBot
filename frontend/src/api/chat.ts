@@ -58,6 +58,8 @@ export class ChatRecord {
   regenerate_record_id?: number
   duration?: number
   total_tokens?: number
+  /** 是否启用增强思考（发问时传给后端，控制生成 SQL 前是否先进行一步思考） */
+  is_enhanced_think?: boolean
 
   constructor()
   constructor(

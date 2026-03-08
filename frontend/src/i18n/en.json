@@ -106,6 +106,7 @@
     "infer_relations_none": "No new relations inferred",
     "infer_relations_success": "Added {count} inferred relation(s)",
     "infer_relations_failed": "Infer failed",
+    "infer_relations_loading": "Inferring relations…",
     "infer_relations_short": "Infer relations",
     "add_all_tables": "Add all",
     "batch_add_tables": "Batch add",
@@ -319,7 +320,9 @@
     "rename_conversation_title": "Rename conversation title",
     "conversation_title": "Conversation title",
     "copied": "Copied",
-    "ask_failed": "Q&A failed"
+    "ask_failed": "Q&A failed",
+    "enhanced_think": "Deep thinking",
+    "enhanced_think_tooltip": "When on, the model does a deep thinking step before generating SQL; may improve accuracy but takes longer"
   },
   "ds": {
     "title": "Data Sources",
