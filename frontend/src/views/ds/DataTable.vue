@@ -109,7 +109,7 @@ const handleOpenBatchAdd = () => {
   batchAddVisible.value = true
 }
 const handleBatchSelectAll = (checked: boolean | unknown) => {
-  const allIds = tableList.value.map((t) => t.id)
+  const allIds = tableList.value.map((table) => table.id)
   batchAddSelectedIds.value = checked ? [...allIds] : []
 }
 const handleBatchAddConfirm = () => {
@@ -119,7 +119,7 @@ const handleBatchAddConfirm = () => {
     batchAddVisible.value = false
     return
   }
-  const toAdd = tableList.value.filter((t) => toAddIds.includes(t.id))
+  const toAdd = tableList.value.filter((table) => toAddIds.includes(table.id))
   batchAddVisible.value = false
   nextTick(() => {
     tableRelationshipRef.value?.addAllTables(toAdd)
@@ -873,12 +873,12 @@ const btnSelectClick = (val: any) => {
     <el-checkbox-group v-model="batchAddSelectedIds">
       <div class="batch-add-list">
         <el-checkbox
-          v-for="t in tableList"
-          :key="t.id"
-          :label="t.id"
+          v-for="table in tableList"
+          :key="table.id"
+          :label="table.id"
           class="batch-add-item"
         >
-          {{ t.table_name }}
+          {{ table.table_name }}
         </el-checkbox>
       </div>
     </el-checkbox-group>

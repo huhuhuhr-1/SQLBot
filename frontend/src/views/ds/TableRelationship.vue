@@ -567,6 +567,9 @@ const inferRelations = () => {
       })
       if (added > 0) {
         ElMessage.success(t('training.infer_relations_success', { count: added }))
+        nextTick(() => {
+          autoLayout()
+        })
       } else {
         ElMessage.info(t('training.infer_relations_none'))
       }
@@ -610,7 +613,12 @@ defineExpose({ inferRelations, addAllTables })
   >
     {{ t('training.add_it_here') }}
   </div>
-  <div v-else class="relationship-canvas-wrap">
+  <div
+    v-else
+    class="relationship-canvas-wrap"
+    v-loading="inferring"
+    :element-loading-text="t('training.infer_relations_loading')"
+  >
     <div class="canvas-toolbar">
       <el-button-group>
         <el-tooltip :content="t('training.canvas_zoom_in')" placement="bottom">

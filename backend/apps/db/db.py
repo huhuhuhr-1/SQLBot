@@ -213,6 +213,9 @@ def get_engine(ds: CoreDatasource | AssistantOutDsSchema, timeout: int = 0) -> E
 
     if use_cache:
         with _engine_cache_lock:
+            if key in _engine_cache:
+                engine.dispose()
+                return _engine_cache[key]
             _engine_cache[key] = engine
     return engine
 
