@@ -22,6 +22,7 @@
 | `build-quick-arm64.sh` | 仅 ARM64 快速构建 | 本机 ARM64 开发 |
 | `build-multiplatform.sh` | 多平台基础镜像（x86 + arm64） | 需同时产出多架构镜像 |
 | `build-multiplatform-optimized.sh` | 多平台构建（优化缓存） | 多架构 + 利用本地缓存 |
+| `build-k8s.sh` | K8s 构建（构建 → tag → 可选推送 → 可选 Helm 部署） | 需产出镜像并推送到仓库或在 K8s 部署时使用 |
 
 根目录的 `quick.sh` 为单脚本一键构建当前平台最终镜像（不区分基础/快速，适合快速试跑）。
 
@@ -42,6 +43,7 @@ cd build
 - `quick-arm64` — 执行 `build-quick-arm64.sh`
 - `multiplatform` — 执行 `build-multiplatform.sh`
 - `multiplatform-optimized` — 执行 `build-multiplatform-optimized.sh`
+- `k8s [--push] [--helm-install]` — 执行 `build-k8s.sh`，可选推送镜像、可选执行 Helm 安装/升级
 - 不传参数 — 打印上述用法说明
 
 ### 直接调用具体脚本
@@ -90,3 +92,40 @@ docker build -t zf-sqlbot:latest -f build/Dockerfile.update .
 - 多平台脚本依赖 `docker buildx`，未安装时需先安装对应插件。
 
 更多安装与部署说明见项目根目录 [README.md](../README.md) 与 [docs/GUIDE.md](../docs/GUIDE.md)。
+
+## K8s 构建与部署
+
+`build-k8s.sh` 在现有构建流程上增加“打 tag → 可选推送 → 可选 Helm 安装/升级”，便于在 Kubernetes 集群部署。
+
+### 用法
+
+```bash
+cd build
+./build.sh k8s                    # 仅构建并打本地 tag
+./build.sh k8s --push             # 构建并推送到镜像仓库
+./build.sh k8s --push --helm-install   # 推送后在当前 K8s 执行 helm upgrade --install
+```
+
+或直接调用：
+
+```bash
+./build-k8s.sh
+./build-k8s.sh --push
+./build-k8s.sh --push --helm-install
+```
+
+### 环境变量
+
+| 变量 | 说明 | 默认 |
+|------|------|------|
+| `REGISTRY` | 镜像仓库地址（如 `registry.cn-qingdao.aliyuncs.com`） | 空（仅本地 tag 时不需） |
+| `IMAGE_NAME` | 镜像名 | `dataease/sqlbot` |
+| `IMAGE_TAG` | 镜像 tag | `latest` 或当前 git short SHA |
+| `HELM_NAMESPACE` | Helm 安装的命名空间 | `default` |
+| `HELM_RELEASE_NAME` | Helm release 名称 | `sqlbot` |
+
+推送前需先 `docker login` 对应仓库。使用 `--helm-install` 前需已安装 [Helm 3](https://helm.sh/) 并配置好 kubeconfig。
+
+### 与 Helm Chart 配合
+
+Chart 位于 `deploy/helm/sqlbot/`。脚本在 `--helm-install` 时会自动设置 `image.repository` 与 `image.tag`，其余配置使用 Chart 默认值，可通过 `helm upgrade -f custom-values.yaml` 覆盖。

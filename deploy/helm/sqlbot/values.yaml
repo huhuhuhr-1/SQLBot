@@ -1,0 +1,105 @@
+# SQLBot Helm Chart default values
+# All-in-one deployment (backend + frontend + g2-ssr + embedded PostgreSQL)
+
+# -- Image settings (repository can include registry, e.g. registry.cn-qingdao.aliyuncs.com/dataease/sqlbot)
+image:
+  repository: dataease/sqlbot
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# -- Replica count (must be 1 when using embedded PostgreSQL)
+replicaCount: 1
+
+# -- Application name
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Pod security: set to true if you need privileged (e.g. matching docker-compose)
+podSecurityContext:
+  privileged: false
+  runAsUser: 0
+  runAsNonRoot: false
+
+securityContext: {}
+
+# -- Service configuration
+service:
+  type: ClusterIP
+  apiPort: 8000
+  mcpPort: 8001
+
+# -- Ingress (optional)
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: sqlbot.example.com
+  tls: []
+  #  - secretName: sqlbot-tls
+  #    hosts:
+  #      - sqlbot.example.com
+
+# -- Persistence (PostgreSQL + app data)
+persistence:
+  enabled: true
+  storageClass: ""
+  postgresql:
+    size: 10Gi
+  data:
+    size: 5Gi
+  images:
+    size: 2Gi
+  logs:
+    size: 2Gi
+
+# -- Resource limits/requests
+resources:
+  requests:
+    memory: "2Gi"
+    cpu: "500m"
+  limits:
+    memory: "4Gi"
+    cpu: "2000m"
+
+# -- Liveness/readiness probes
+livenessProbe:
+  httpGet:
+    path: /openapi.json
+    port: api
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /openapi.json
+    port: api
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# -- Use existing secret for sensitive env (keys: postgres-password, secret-key)
+# If set, secret.yaml is not created and these keys are read from existingSecret
+existingSecret: ""
+
+# -- Application config (non-sensitive, can override in ConfigMap)
+config:
+  PROJECT_NAME: "SQLBot"
+  POSTGRES_SERVER: "localhost"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "sqlbot"
+  POSTGRES_USER: "root"
+  DEFAULT_PWD: "SQLBot@123456"
+  BACKEND_CORS_ORIGINS: "http://localhost,http://localhost:5173,https://localhost,https://localhost:5173"
+  SERVER_IMAGE_HOST: "http://YOUR_SERVE_IP:MCP_PORT/images/"
+  LOG_LEVEL: "INFO"
+  SQL_DEBUG: "false"
+  CACHE_TYPE: "memory"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "11520"
+
+# -- Sensitive config (used only when existingSecret is not set)
+secret:
+  POSTGRES_PASSWORD: "Password123@pg"
+  SECRET_KEY: ""  # 生产环境请设置强密钥；不设置时使用占位符

@@ -7,7 +7,19 @@ from apps.data_training.api import data_training
 from apps.datasource.api import datasource, table_relation, recommended_problem
 from apps.mcp import mcp
 from apps.openapi.demo import demo
-from apps.system.api import login, user, aimodel, workspace, assistant, parameter, apikey, variable_api
+from apps.system.api import (
+    login,
+    user,
+    aimodel,
+    workspace,
+    assistant,
+    parameter,
+    apikey,
+    variable_api,
+    template_prompt,
+    custom_prompt,
+    statistics,
+)
 from apps.terminology.api import terminology
 from apps.settings.api import base
 #from audit.api import audit_api
@@ -35,5 +47,8 @@ api_router.include_router(apikey.router)
 api_router.include_router(recommended_problem.router)
 
 api_router.include_router(variable_api.router)
+api_router.include_router(template_prompt.router)
+api_router.include_router(custom_prompt.router)
+api_router.include_router(statistics.router)
 
 #api_router.include_router(audit_api.router)

@@ -30,6 +30,7 @@ import Platform from '@/views/system/platform/index.vue'
 import Permission from '@/views/system/permission/index.vue'
 import User from '@/views/system/user/User.vue'
 import Workspace from '@/views/system/workspace/index.vue'
+import Statistics from '@/views/system/statistics/index.vue'
 import Page401 from '@/views/error/index.vue'
 import ChatPreview from '@/views/chat/preview.vue'
 
@@ -110,13 +111,13 @@ export const routes = [
     meta: { title: t('workspace.set'), iconActive: 'set', iconDeActive: 'noSet' },
     children: [
       {
-        path: '/set/member',
+        path: 'member',
         name: 'member',
         component: Member,
         meta: { title: t('workspace.member_management') },
       },
       {
-        path: '/set/permission',
+        path: 'permission',
         name: 'permission',
         component: Permission,
         meta: { title: t('workspace.permission_configuration') },
@@ -128,19 +129,19 @@ export const routes = [
         meta: { title: t('embedded.assistant_app') },
       }, */
       {
-        path: '/set/professional',
+        path: 'professional',
         name: 'professional',
         component: Professional,
         meta: { title: t('professional.professional_terminology') },
       },
       {
-        path: '/set/training',
+        path: 'training',
         name: 'training',
         component: Training,
         meta: { title: t('training.data_training') },
       },
       {
-        path: '/set/prompt',
+        path: 'prompt',
         name: 'prompt',
         component: Prompt,
         meta: { title: t('prompt.customize_prompt_words') },
@@ -171,6 +172,16 @@ export const routes = [
         name: 'user',
         component: User,
         meta: { title: t('user.user_management'), iconActive: 'user', iconDeActive: 'noUser' },
+      },
+      {
+        path: 'statistics',
+        name: 'statistics',
+        component: Statistics,
+        meta: {
+          title: '统计分析',
+          iconActive: 'dashboard',
+          iconDeActive: 'noDashboard',
+        },
       },
       {
         path: 'workspace',
@@ -205,7 +216,7 @@ export const routes = [
       {
         path: 'setting',
         meta: { title: t('system.system_settings'), iconActive: 'set', iconDeActive: 'noSet' },
-        redirect: 'system_/appearance',
+        redirect: { name: 'appearance' },
         name: 'setting',
         children: [
           {
@@ -237,6 +248,12 @@ export const routes = [
             name: 'platform',
             component: Platform,
             meta: { title: t('platform.title') },
+          },
+          {
+            path: 'prompt',
+            name: 'customPrompt',
+            component: Prompt,
+            meta: { title: t('prompt.customize_prompt_words') },
           },
         ],
       },
