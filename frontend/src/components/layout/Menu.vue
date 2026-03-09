@@ -28,6 +28,18 @@ const SET_MENU_SPEC = {
   ],
 }
 
+/** 「统计分析」菜单：与 getRoutes() 解耦，在非 /system 页面时也显示（因 system 路由被 meta.hidden 且列表过滤了 /system） */
+const STATISTICS_MENU_SPEC = {
+  path: '/system/statistics',
+  name: 'statistics',
+  meta: {
+    title: '统计分析',
+    iconActive: 'dashboard',
+    iconDeActive: 'noDashboard',
+  },
+  children: [] as any[],
+}
+
 /** 根据固定配置生成「设置」菜单节点（与 getRoutes 解耦），供侧栏使用 */
 function buildSetMenuNode(
   spec: typeof SET_MENU_SPEC,
@@ -114,7 +126,8 @@ const routerList = computed(() => {
   // 「设置」节点与 getRoutes() 完全解耦：用固定配置生成，不读 router 的 children，避免 xpack 修改路由后少项
   const setIndex = list.findIndex((r: any) => r.name === 'set' || r.path === '/set')
   if (!userStore.isSpaceAdmin) {
-    return list.filter((r: any) => r.name !== 'set' && r.path !== '/set')
+    const filtered = list.filter((r: any) => r.name !== 'set' && r.path !== '/set')
+    return insertStatisticsMenu(filtered)
   }
   const syntheticSet = buildSetMenuNode(SET_MENU_SPEC, t)
   // 只保留「设置」下的入口：排除 /set 及其子路径（如 /set/prompt），避免出现两个「自定义提示词」
@@ -125,12 +138,25 @@ const routerList = computed(() => {
       !String(r.path || '').startsWith('/set/')
   )
   if (setIndex === -1) {
-    return [...listWithoutSet, syntheticSet] as any[]
+    const listWithSet = [...listWithoutSet, syntheticSet] as any[]
+    return insertStatisticsMenu(listWithSet)
   }
   const result: any[] = [...listWithoutSet]
   result.splice(setIndex, 0, syntheticSet)
-  return result
+  return insertStatisticsMenu(result)
 })
+
+/** 在非 system 页面的菜单列表中插入「统计分析」入口（插在仪表盘之后），与路由解耦保证始终显示 */
+function insertStatisticsMenu(list: any[]): any[] {
+  const dashboardIndex = list.findIndex((r: any) => r.name === 'dashboard' && r.path?.includes('dashboard'))
+  const statisticsNode = { ...STATISTICS_MENU_SPEC }
+  if (dashboardIndex === -1) {
+    return [...list, statisticsNode]
+  }
+  const out = [...list]
+  out.splice(dashboardIndex + 1, 0, statisticsNode)
+  return out
+}
 </script>
 
 <template>
