@@ -146,6 +146,12 @@ export const routes = [
         component: Prompt,
         meta: { title: t('prompt.customize_prompt_words') },
       },
+      {
+        path: 'statistics',
+        name: 'statistics',
+        component: Statistics,
+        meta: { title: '统计分析' },
+      },
     ],
   },
   {
@@ -172,16 +178,6 @@ export const routes = [
         name: 'user',
         component: User,
         meta: { title: t('user.user_management'), iconActive: 'user', iconDeActive: 'noUser' },
-      },
-      {
-        path: 'statistics',
-        name: 'statistics',
-        component: Statistics,
-        meta: {
-          title: '统计分析',
-          iconActive: 'dashboard',
-          iconDeActive: 'noDashboard',
-        },
       },
       {
         path: 'workspace',

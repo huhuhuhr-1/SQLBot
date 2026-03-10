@@ -25,27 +25,24 @@ const SET_MENU_SPEC = {
     { name: 'professional', path: '/set/professional', titleKey: 'professional.professional_terminology' },
     { name: 'training', path: '/set/training', titleKey: 'training.data_training' },
     { name: 'prompt', path: '/set/prompt', titleKey: 'prompt.customize_prompt_words' },
+    { name: 'statistics', path: '/set/statistics', titleKey: 'menu.statistics' },
   ],
 }
 
-/** 「统计分析」菜单：与 getRoutes() 解耦，在非 /system 页面时也显示（因 system 路由被 meta.hidden 且列表过滤了 /system） */
-const STATISTICS_MENU_SPEC = {
-  path: '/system/statistics',
-  name: 'statistics',
-  meta: {
-    title: '统计分析',
-    iconActive: 'dashboard',
-    iconDeActive: 'noDashboard',
-  },
-  children: [] as any[],
-}
-
-/** 根据固定配置生成「设置」菜单节点（与 getRoutes 解耦），供侧栏使用 */
+/** 根据固定配置生成「设置」菜单节点（与 getRoutes 解耦），供侧栏使用；「自定义提示词」「统计分析」仅系统管理员可见 */
 function buildSetMenuNode(
   spec: typeof SET_MENU_SPEC,
-  tFn: (key: string) => string
+  tFn: (key: string) => string,
+  options?: { includePrompt?: boolean; includeStatistics?: boolean }
 ): { path: string; name: string; meta: { title: string; iconActive: string; iconDeActive: string }; children: any[] } {
-  const setChildren = spec.children.map((item) => ({
+  let children = spec.children
+  if (options?.includePrompt === false) {
+    children = children.filter((item: any) => item.name !== 'prompt')
+  }
+  if (options?.includeStatistics === false) {
+    children = children.filter((item: any) => item.name !== 'statistics')
+  }
+  const setChildren = children.map((item: any) => ({
     name: item.name,
     path: item.path,
     meta: { title: tFn(item.titleKey) },
@@ -76,6 +73,8 @@ const activeMenu = computed(() => route.path)
 const showSysmenu = computed(() => {
   return route.path.includes('/system')
 })
+/** 仅系统管理员（uid 为 1）：普通成员不可见「自定义提示词」「统计分析」 */
+const isSystemAdmin = computed(() => String(userStore.uid) === '1')
 
 const formatRoute = (arr: any, parentPath = '') => {
   return arr.map((element: any) => {
@@ -97,13 +96,32 @@ const routerList = computed(() => {
     const [sysRouter] = formatRoute(
       router.getRoutes().filter((route: any) => route?.name === 'system')
     )
-    return sysRouter.children
+    // 系统管理下不允许有「统计分析」：不把 statistics 放入侧栏
+    const systemChildrenWithoutStatistics = (sysRouter?.children || []).filter(
+      (r: any) => r.name !== 'statistics'
+    )
+    // 系统管理下的「系统设置」里不允许有「自定义提示词」
+    const systemChildren = systemChildrenWithoutStatistics.map((r: any) => {
+      if (r.name === 'setting' && r.children?.length) {
+        return {
+          ...r,
+          children: r.children.filter(
+            (c: any) => c.name !== 'prompt' && c.name !== 'customPrompt'
+          ),
+        }
+      }
+      return r
+    })
+    return systemChildren
   }
+  // 排除「设置」及 /set/*，避免 xpack 修改 router 后菜单仍用 getRoutes() 的 set 子项
   const list = router.getRoutes().filter((route) => {
+    if (route.name === 'set' || route.path === '/set' || String(route.path || '').startsWith('/set/')) {
+      return false
+    }
     return (
       !route.path.includes('embeddedPage') &&
       !route.path.includes('assistant') &&
-      !route.path.includes('embeddedPage') &&
       !route.path.includes('canvas') &&
       !route.path.includes('member') &&
       !route.path.includes('professional') &&
@@ -123,40 +141,18 @@ const routerList = computed(() => {
     )
   })
 
-  // 「设置」节点与 getRoutes() 完全解耦：用固定配置生成，不读 router 的 children，避免 xpack 修改路由后少项
-  const setIndex = list.findIndex((r: any) => r.name === 'set' || r.path === '/set')
   if (!userStore.isSpaceAdmin) {
-    const filtered = list.filter((r: any) => r.name !== 'set' && r.path !== '/set')
-    return insertStatisticsMenu(filtered)
+    return list
   }
-  const syntheticSet = buildSetMenuNode(SET_MENU_SPEC, t)
-  // 只保留「设置」下的入口：排除 /set 及其子路径（如 /set/prompt），避免出现两个「自定义提示词」
-  const listWithoutSet = list.filter(
-    (r: any) =>
-      r.name !== 'set' &&
-      r.path !== '/set' &&
-      !String(r.path || '').startsWith('/set/')
-  )
-  if (setIndex === -1) {
-    const listWithSet = [...listWithoutSet, syntheticSet] as any[]
-    return insertStatisticsMenu(listWithSet)
-  }
-  const result: any[] = [...listWithoutSet]
-  result.splice(setIndex, 0, syntheticSet)
-  return insertStatisticsMenu(result)
+  // 「设置」完全由固定配置生成，不受 xpack/LicenseGenerator.generateRouters 影响；「自定义提示词」「统计分析」仅系统管理员可见
+  const syntheticSet = buildSetMenuNode(SET_MENU_SPEC, t, {
+    includePrompt: isSystemAdmin.value,
+    includeStatistics: isSystemAdmin.value,
+  })
+  // 「设置」放到菜单最后一项
+  return [...list, syntheticSet]
 })
 
-/** 在非 system 页面的菜单列表中插入「统计分析」入口（插在仪表盘之后），与路由解耦保证始终显示 */
-function insertStatisticsMenu(list: any[]): any[] {
-  const dashboardIndex = list.findIndex((r: any) => r.name === 'dashboard' && r.path?.includes('dashboard'))
-  const statisticsNode = { ...STATISTICS_MENU_SPEC }
-  if (dashboardIndex === -1) {
-    return [...list, statisticsNode]
-  }
-  const out = [...list]
-  out.splice(dashboardIndex + 1, 0, statisticsNode)
-  return out
-}
 </script>
 
 <template>

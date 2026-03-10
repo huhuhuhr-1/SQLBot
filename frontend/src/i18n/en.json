@@ -2,6 +2,7 @@
   "menu": {
     "add_interface_credentials": "Please add interface credentials",
     "Data Q&A": "Data Q&A",
+    "statistics": "Statistical Analysis",
     "Data Connections": "Data Sources",
     "Dashboard": "Dashboard",
     "AI Model Configuration": "AI Model Config",

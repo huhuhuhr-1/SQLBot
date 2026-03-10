@@ -84,6 +84,9 @@ export const watchRouter = (router: Router) => {
 
 const accessCrossPermission = (to: any) => {
   if (!to?.path) return false
+  // 自定义提示词：空间管理员可访问（与可见数据源一致）；统计分析仅系统 admin 可访问
+  if (to.path.startsWith('/set/prompt') && !userStore.isSpaceAdmin) return true
+  if (to.path.startsWith('/set/statistics') && !userStore.isAdmin) return true
   return (
     (to.path.startsWith('/system') && !userStore.isAdmin) ||
     (to.path.startsWith('/set') && !userStore.isSpaceAdmin) ||
