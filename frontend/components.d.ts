@@ -49,6 +49,7 @@ declare module '@vue/runtime-core' {
     ElPagination: typeof import('element-plus-secondary/es')['ElPagination']
     ElPopover: typeof import('element-plus-secondary/es')['ElPopover']
     ElRadio: typeof import('element-plus-secondary/es')['ElRadio']
+    ElRadioButton: typeof import('element-plus-secondary/es')['ElRadioButton']
     ElRadioGroup: typeof import('element-plus-secondary/es')['ElRadioGroup']
     ElRow: typeof import('element-plus-secondary/es')['ElRow']
     ElScrollbar: typeof import('element-plus-secondary/es')['ElScrollbar']
