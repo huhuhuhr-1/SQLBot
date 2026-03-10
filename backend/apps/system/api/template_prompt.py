@@ -100,7 +100,7 @@ async def optimize_prompt(body: PromptOptimizeRequest):
     user_msg = f"请优化以下提示词：\n\n{body.prompt}"
     try:
         messages = [SystemMessage(content=system), HumanMessage(content=user_msg)]
-        result = llm.invoke(messages)
+        result = await llm.ainvoke(messages)
         content = result.content if hasattr(result, "content") else str(result)
         return PromptOptimizeResponse(optimized=(content or body.prompt).strip())
     except Exception:

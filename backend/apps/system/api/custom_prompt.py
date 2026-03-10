@@ -56,30 +56,6 @@ async def page(
     return {"data": [_row_to_dict(d) for d in data], "total_count": total_count}
 
 
-@router.get("/{id}", summary="获取单条自定义提示词")
-@require_permissions(permission=SqlbotPermission(role=["ws_admin"]))
-async def get_one(session: SessionDep, current_user: CurrentUser, id: int):
-    row = crud.get_one(session, id, current_user.oid)
-    if not row:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Not Found")
-    return _row_to_dict(row)
-
-
-@router.put("", summary="创建或更新自定义提示词")
-@require_permissions(permission=SqlbotPermission(role=["ws_admin"]))
-async def create_or_update(session: SessionDep, current_user: CurrentUser, body: CustomPromptBody):
-    data = body.model_dump()
-    row = crud.create_or_update(session, current_user.oid, data)
-    return _row_to_dict(row)
-
-
-@router.delete("", summary="批量删除自定义提示词")
-@require_permissions(permission=SqlbotPermission(role=["ws_admin"]))
-async def delete_ids(session: SessionDep, current_user: CurrentUser, id_list: List[int] = Body(..., embed=False)):
-    crud.delete_by_ids(session, current_user.oid, id_list)
-
-
 @router.get("/{type}/export", summary="导出自定义提示词")
 @require_permissions(permission=SqlbotPermission(role=["ws_admin"]))
 async def export_excel(
@@ -107,3 +83,31 @@ async def export_excel(
     except Exception:
         from fastapi.responses import JSONResponse
         return JSONResponse(content={"detail": "Export failed"}, status_code=500)
+
+
+@router.get("/{id}", summary="获取单条自定义提示词")
+@require_permissions(permission=SqlbotPermission(role=["ws_admin"]))
+async def get_one(session: SessionDep, current_user: CurrentUser, id: str):
+    from fastapi import HTTPException
+    try:
+        id_int = int(id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not Found")
+    row = crud.get_one(session, id_int, current_user.oid)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return _row_to_dict(row)
+
+
+@router.put("", summary="创建或更新自定义提示词")
+@require_permissions(permission=SqlbotPermission(role=["ws_admin"]))
+async def create_or_update(session: SessionDep, current_user: CurrentUser, body: CustomPromptBody):
+    data = body.model_dump()
+    row = crud.create_or_update(session, current_user.oid, data)
+    return _row_to_dict(row)
+
+
+@router.delete("", summary="批量删除自定义提示词")
+@require_permissions(permission=SqlbotPermission(role=["ws_admin"]))
+async def delete_ids(session: SessionDep, current_user: CurrentUser, id_list: List[int] = Body(..., embed=False)):
+    crud.delete_by_ids(session, current_user.oid, id_list)

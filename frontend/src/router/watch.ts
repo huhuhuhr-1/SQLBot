@@ -16,16 +16,27 @@ const assistantWhiteList = ['/assistant', '/embeddedPage', '/embeddedCommon', '/
 
 const wsAdminRouterList = ['/ds/index', '/as/index']
 
-/** xpack 会删掉 /set 下的 prompt 子路由，导致点击「自定义提示词」白屏。此处在其执行后补回。 */
-function ensureSetPromptRoute(router: Router) {
+/** xpack 会删掉 /set 下的非标准子路由，导致点击「自定义提示词」「统计分析」等白屏。此处在其执行后补回。 */
+function ensureSetExtraRoutes(router: Router) {
   const setRoute = router.getRoutes().find((r: any) => r.name === 'set')
-  const hasPrompt = setRoute?.children?.some((c: any) => c.name === 'prompt')
-  if (setRoute && !hasPrompt) {
+  if (!setRoute) return
+  const children = setRoute.children ?? []
+  const hasPrompt = children.some((c: any) => c.name === 'prompt')
+  const hasStatistics = children.some((c: any) => c.name === 'statistics')
+  if (!hasPrompt) {
     router.addRoute('set', {
       path: 'prompt',
       name: 'prompt',
       component: () => import('@/views/system/prompt/index.vue'),
       meta: { title: i18n.global.t('prompt.customize_prompt_words') },
+    })
+  }
+  if (!hasStatistics) {
+    router.addRoute('set', {
+      path: 'statistics',
+      name: 'statistics',
+      component: () => import('@/views/system/statistics/index.vue'),
+      meta: { title: i18n.global.t('menu.statistics') },
     })
   }
 }
@@ -35,7 +46,7 @@ export const watchRouter = (router: Router) => {
     await loadXpackStatic()
     await appearanceStore.setAppearance()
     LicenseGenerator.generateRouters(router)
-    ensureSetPromptRoute(router)
+    ensureSetExtraRoutes(router)
     if (to.path.startsWith('/login') && userStore.getUid) {
       next(to?.query?.redirect || '/')
       return

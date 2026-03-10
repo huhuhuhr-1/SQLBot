@@ -665,7 +665,7 @@ def get_records(
     if failed_only:
         filters.append(failed_cond)
 
-    stmt = (
+    base = (
         select(
             ChatRecord.id,
             ChatRecord.chat_id,
@@ -685,10 +685,11 @@ def get_records(
         .where(*filters)
         .order_by(ChatRecord.create_time.desc())
     )
-    all_rows = list(session.exec(stmt).all())
-    total = len(all_rows)
-    start = (page - 1) * size
-    page_rows = all_rows[start : start + size]
+    count_stmt = select(func.count(ChatRecord.id)).select_from(ChatRecord).join(Chat, ChatRecord.chat_id == Chat.id).where(*filters)
+    total = _scalar(session.exec(count_stmt).one())
+    page_rows = list(
+        session.exec(base.offset((page - 1) * size).limit(size)).all()
+    )
     record_ids = [r[0] for r in page_rows]
     token_map = aggregate_tokens_for_record_ids(session, record_ids)
 
