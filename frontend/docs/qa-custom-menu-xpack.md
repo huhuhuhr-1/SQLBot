@@ -68,6 +68,7 @@
 ## 相关文档
 
 - 菜单数据流与 xpack 影响分析：**`frontend/docs/menu-mechanism.md`**
+- 「设置」菜单权限与 xpack（普通成员为何仍看到统计/自定义提示词、根因反思）：**`frontend/docs/qa-set-menu-permission-and-xpack.md`**
 
 ---
 

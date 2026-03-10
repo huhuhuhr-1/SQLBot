@@ -107,9 +107,8 @@ routerList (computed)
 
 ## 6. 常见问题（Q&A）
 
-关于**自定义菜单**、**为何侧栏会少项**、**如何绕过 xpack 控制**以及**修改设置子项应改哪里**，见专门问答文档：
-
-- **[自定义菜单与绕过 xpack — 常见问题（Q&A）](./qa-custom-menu-xpack.md)**
+- **自定义菜单**、**为何侧栏会少项**、**如何绕过 xpack 控制**、**修改设置子项应改哪里**：**[qa-custom-menu-xpack.md](./qa-custom-menu-xpack.md)**
+- **「统计分析」「自定义提示词」为何普通成员仍可见、与 xpack 的关系、根因反思与正确做法**：**[qa-set-menu-permission-and-xpack.md](./qa-set-menu-permission-and-xpack.md)**
 
 ---
 
