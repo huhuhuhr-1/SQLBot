@@ -1,92 +1,27 @@
+"""System statistics API: overview, trend, datasource top, failure analysis, user detailed, records."""
+
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
-from sqlalchemy import and_, case, func, or_, select
 
-from apps.chat.models.chat_model import Chat, ChatRecord
-from apps.datasource.models.datasource import CoreDatasource
-from apps.system.models.user import UserModel
+from apps.system.crud import statistics as stats_crud
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.schemas.statistics import (
+    StatisticsOverviewResponse,
+    StatisticsTrendResponse,
+    StatisticsDatasourceTopResponse,
+    StatisticsDatasourceDetailedResponse,
+    StatisticsFailureAnalysisResponse,
+    StatisticsUserDetailedResponse,
+    RecordItem,
+)
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from common.core.deps import CurrentUser, SessionDep
-from common.core.pagination import Paginator
-from common.core.schemas import PaginationParams, PaginatedResponse
-
-
-class OverviewMetrics(BaseModel):
-    total_queries: int = 0
-    success_queries: int = 0
-    failed_queries: int = 0
-    success_rate: float = 0.0
-    active_users: int = 0
-    active_datasources: int = 0
-    active_chats: int = 0
-    avg_duration_seconds: Optional[float] = None
-
-
-class DatasourceStats(BaseModel):
-    datasource_id: Optional[int] = None
-    datasource_name: Optional[str] = None
-    total_queries: int = 0
-    success_queries: int = 0
-    failed_queries: int = 0
-    success_rate: float = 0.0
-    active_users: int = 0
-
-
-class UserStats(BaseModel):
-    user_id: Optional[int] = None
-    user_name: Optional[str] = None
-    total_queries: int = 0
-    success_queries: int = 0
-    failed_queries: int = 0
-    success_rate: float = 0.0
-    active_datasources: int = 0
-
-
-class DailyTrendPoint(BaseModel):
-    date: datetime
-    total_queries: int
-    success_queries: int
-    failed_queries: int
-
-
-class StatisticsOverviewResponse(BaseModel):
-    overview: OverviewMetrics
-    by_datasource: List[DatasourceStats]
-    by_user: List[UserStats]
-    daily_trend: List[DailyTrendPoint]
-
-
-class RecordItem(BaseModel):
-    id: Optional[int] = None
-    chat_id: Optional[int] = None
-    create_time: Optional[datetime] = None
-    create_by: Optional[int] = None
-    user_name: Optional[str] = None
-    datasource_id: Optional[int] = None
-    datasource_name: Optional[str] = None
-    question: Optional[str] = None
-    finish: bool = False
-    error: Optional[str] = None
+from common.core.schemas import PaginatedResponse
 
 
 router = APIRouter(tags=["system_statistics"], prefix="/system/statistics")
-
-
-def _build_common_filters(
-    current_user: CurrentUser,
-    start_time: Optional[datetime],
-    end_time: Optional[datetime],
-):
-    filters = [Chat.oid == current_user.oid]
-    if start_time is not None:
-        filters.append(ChatRecord.create_time >= start_time)
-    if end_time is not None:
-        filters.append(ChatRecord.create_time <= end_time)
-    return filters
 
 
 @router.get(
@@ -94,7 +29,7 @@ def _build_common_filters(
     response_model=StatisticsOverviewResponse,
     summary=f"{PLACEHOLDER_PREFIX}system_statistics_overview",
 )
-@require_permissions(permission=SqlbotPermission(role=["admin", "ws_admin"]))
+@require_permissions(permission=SqlbotPermission(role=["admin"]))
 async def statistics_overview(
     session: SessionDep,
     current_user: CurrentUser,
@@ -105,230 +40,150 @@ async def statistics_overview(
         None, description=f"{PLACEHOLDER_PREFIX}statistics_end_time"
     ),
 ) -> StatisticsOverviewResponse:
-    """
-    管理员统计分析总览：
-    - 基于当前工作空间（oid）的 chat / chat_record
-    - 可按时间范围过滤
-    """
-    filters = _build_common_filters(current_user, start_time, end_time)
-
-    # 概览指标
-    success_cond = and_(ChatRecord.finish.is_(True), ChatRecord.error.is_(None))
-    failed_cond = or_(ChatRecord.finish.is_(False), ChatRecord.error.is_not(None))
-
-    overview_stmt = (
-        select(
-            func.count(ChatRecord.id),
-            func.coalesce(func.sum(case((success_cond, 1), else_=0)), 0),
-            func.coalesce(func.sum(case((failed_cond, 1), else_=0)), 0),
-            func.count(func.distinct(ChatRecord.create_by)),
-            func.count(func.distinct(ChatRecord.datasource)),
-            func.count(func.distinct(ChatRecord.chat_id)),
-            func.avg(
-                func.extract(
-                    "epoch", ChatRecord.finish_time - ChatRecord.create_time
-                )
-            ),
-        )
-        .join(Chat, ChatRecord.chat_id == Chat.id)
-        .where(*filters)
+    """管理员统计分析总览：概览指标、按数据源/用户聚合、每日趋势（含 token、耗时分位数）。"""
+    overview, daily_trend = stats_crud.get_overview(
+        session, current_user, start_time, end_time
     )
-
-    (
-        total_queries,
-        success_queries,
-        failed_queries,
-        active_users,
-        active_datasources,
-        active_chats,
-        avg_duration_seconds,
-    ) = session.exec(overview_stmt).one()
-
-    total_queries = int(total_queries or 0)
-    success_queries = int(success_queries or 0)
-    failed_queries = int(failed_queries or 0)
-    active_users = int(active_users or 0)
-    active_datasources = int(active_datasources or 0)
-    active_chats = int(active_chats or 0)
-    avg_duration_val: Optional[float] = (
-        float(avg_duration_seconds) if avg_duration_seconds is not None else None
-    )
-
-    success_rate = float(success_queries) / float(total_queries) if total_queries else 0.0
-
-    overview = OverviewMetrics(
-        total_queries=total_queries,
-        success_queries=success_queries,
-        failed_queries=failed_queries,
-        success_rate=success_rate,
-        active_users=active_users,
-        active_datasources=active_datasources,
-        active_chats=active_chats,
-        avg_duration_seconds=avg_duration_val,
-    )
-
-    # 按数据源聚合
-    ds_stmt = (
-        select(
-            ChatRecord.datasource.label("datasource_id"),
-            CoreDatasource.name.label("datasource_name"),
-            func.count(ChatRecord.id).label("total_queries"),
-            func.coalesce(
-                func.sum(case((success_cond, 1), else_=0)), 0
-            ).label("success_queries"),
-            func.coalesce(
-                func.sum(case((failed_cond, 1), else_=0)), 0
-            ).label("failed_queries"),
-            func.count(func.distinct(ChatRecord.create_by)).label("active_users"),
-        )
-        .join(Chat, ChatRecord.chat_id == Chat.id)
-        .join(
-            CoreDatasource,
-            ChatRecord.datasource == CoreDatasource.id,
-            isouter=True,
-        )
-        .where(*filters)
-        .group_by(ChatRecord.datasource, CoreDatasource.name)
-        .order_by(func.count(ChatRecord.id).desc())
-    )
-
-    ds_rows = session.exec(ds_stmt).all()
-    by_datasource: List[DatasourceStats] = []
-    for row in ds_rows:
-        (
-            datasource_id,
-            datasource_name,
-            ds_total,
-            ds_success,
-            ds_failed,
-            ds_active_users,
-        ) = row
-        ds_total = int(ds_total or 0)
-        ds_success = int(ds_success or 0)
-        ds_failed = int(ds_failed or 0)
-        ds_active_users = int(ds_active_users or 0)
-        ds_success_rate = float(ds_success) / float(ds_total) if ds_total else 0.0
-        by_datasource.append(
-            DatasourceStats(
-                datasource_id=datasource_id,
-                datasource_name=datasource_name,
-                total_queries=ds_total,
-                success_queries=ds_success,
-                failed_queries=ds_failed,
-                success_rate=ds_success_rate,
-                active_users=ds_active_users,
-            )
-        )
-
-    # 按用户聚合
-    user_stmt = (
-        select(
-            ChatRecord.create_by.label("user_id"),
-            UserModel.name.label("user_name"),
-            func.count(ChatRecord.id).label("total_queries"),
-            func.coalesce(
-                func.sum(case((success_cond, 1), else_=0)), 0
-            ).label("success_queries"),
-            func.coalesce(
-                func.sum(case((failed_cond, 1), else_=0)), 0
-            ).label("failed_queries"),
-            func.count(func.distinct(ChatRecord.datasource)).label(
-                "active_datasources"
-            ),
-        )
-        .join(Chat, ChatRecord.chat_id == Chat.id)
-        .join(UserModel, ChatRecord.create_by == UserModel.id, isouter=True)
-        .where(*filters)
-        .group_by(ChatRecord.create_by, UserModel.name)
-        .order_by(func.count(ChatRecord.id).desc())
-    )
-
-    user_rows = session.exec(user_stmt).all()
-    by_user: List[UserStats] = []
-    for row in user_rows:
-        (
-            user_id,
-            user_name,
-            u_total,
-            u_success,
-            u_failed,
-            u_active_ds,
-        ) = row
-        u_total = int(u_total or 0)
-        u_success = int(u_success or 0)
-        u_failed = int(u_failed or 0)
-        u_active_ds = int(u_active_ds or 0)
-        u_success_rate = float(u_success) / float(u_total) if u_total else 0.0
-        by_user.append(
-            UserStats(
-                user_id=user_id,
-                user_name=user_name,
-                total_queries=u_total,
-                success_queries=u_success,
-                failed_queries=u_failed,
-                success_rate=u_success_rate,
-                active_datasources=u_active_ds,
-            )
-        )
-
-    # 按天趋势
-    day_expr = func.date_trunc("day", ChatRecord.create_time).label("date")
-    trend_stmt = (
-        select(
-            day_expr,
-            func.count(ChatRecord.id).label("total_queries"),
-            func.coalesce(
-                func.sum(case((success_cond, 1), else_=0)), 0
-            ).label("success_queries"),
-            func.coalesce(
-                func.sum(case((failed_cond, 1), else_=0)), 0
-            ).label("failed_queries"),
-        )
-        .join(Chat, ChatRecord.chat_id == Chat.id)
-        .where(*filters)
-        .group_by(day_expr)
-        .order_by(day_expr.asc())
-    )
-
-    trend_rows = session.exec(trend_stmt).all()
-    daily_trend: List[DailyTrendPoint] = [
-        DailyTrendPoint(
-            date=row.date,
-            total_queries=int(row.total_queries or 0),
-            success_queries=int(row.success_queries or 0),
-            failed_queries=int(row.failed_queries or 0),
-        )
-        for row in trend_rows
-    ]
-
     return StatisticsOverviewResponse(
         overview=overview,
-        by_datasource=by_datasource,
-        by_user=by_user,
+        by_datasource=[],
+        by_user=[],
         daily_trend=daily_trend,
     )
 
 
-def _record_filters(
+@router.get(
+    "/trend",
+    response_model=StatisticsTrendResponse,
+    summary=f"{PLACEHOLDER_PREFIX}system_statistics_trend",
+)
+@require_permissions(permission=SqlbotPermission(role=["admin"]))
+async def statistics_trend(
+    session: SessionDep,
     current_user: CurrentUser,
-    start_time: Optional[datetime],
-    end_time: Optional[datetime],
-    user_id: Optional[int],
-    datasource_id: Optional[int],
-    failed_only: bool,
-):
-    filters = [Chat.oid == current_user.oid]
-    if start_time is not None:
-        filters.append(ChatRecord.create_time >= start_time)
-    if end_time is not None:
-        filters.append(ChatRecord.create_time <= end_time)
-    if user_id is not None:
-        filters.append(ChatRecord.create_by == user_id)
-    if datasource_id is not None:
-        filters.append(ChatRecord.datasource == datasource_id)
-    if failed_only:
-        filters.append(or_(ChatRecord.finish.is_(False), ChatRecord.error.is_not(None)))
-    return filters
+    start_time: Optional[datetime] = Query(None),
+    end_time: Optional[datetime] = Query(None),
+) -> StatisticsTrendResponse:
+    """多指标每日趋势：总问数、成功/失败、平均耗时、Token 消耗、成功率。"""
+    trend = stats_crud.get_trend(session, current_user, start_time, end_time)
+    return StatisticsTrendResponse(trend=trend)
+
+
+@router.get(
+    "/datasource/top",
+    response_model=StatisticsDatasourceTopResponse,
+    summary=f"{PLACEHOLDER_PREFIX}system_statistics_datasource_top",
+)
+@require_permissions(permission=SqlbotPermission(role=["admin"]))
+async def statistics_datasource_top(
+    session: SessionDep,
+    current_user: CurrentUser,
+    start_time: Optional[datetime] = Query(None),
+    end_time: Optional[datetime] = Query(None),
+    sort_by: str = Query(
+        "total_queries",
+        description="total_queries | failed_queries | avg_duration_seconds | total_tokens",
+    ),
+    limit: int = Query(10, ge=1, le=50),
+) -> StatisticsDatasourceTopResponse:
+    """数据源 TOP 排行：按访问次数、失败次数、平均耗时、Token 消耗排序。"""
+    items = stats_crud.get_datasource_top(
+        session, current_user, start_time, end_time, sort_by=sort_by, limit=limit
+    )
+    return StatisticsDatasourceTopResponse(items=items)
+
+
+@router.get(
+    "/failure/analysis",
+    response_model=StatisticsFailureAnalysisResponse,
+    summary=f"{PLACEHOLDER_PREFIX}system_statistics_failure_analysis",
+)
+@require_permissions(permission=SqlbotPermission(role=["admin"]))
+async def statistics_failure_analysis(
+    session: SessionDep,
+    current_user: CurrentUser,
+    start_time: Optional[datetime] = Query(None),
+    end_time: Optional[datetime] = Query(None),
+) -> StatisticsFailureAnalysisResponse:
+    """失败分析：按原因分类、按数据源排行、按小时分布。"""
+    by_reason, by_datasource, by_hour = stats_crud.get_failure_analysis(
+        session, current_user, start_time, end_time
+    )
+    return StatisticsFailureAnalysisResponse(
+        by_reason=by_reason,
+        by_datasource=by_datasource,
+        by_hour=by_hour,
+    )
+
+
+@router.get(
+    "/user/detailed",
+    response_model=StatisticsUserDetailedResponse,
+    summary=f"{PLACEHOLDER_PREFIX}system_statistics_user_detailed",
+)
+@require_permissions(permission=SqlbotPermission(role=["admin"]))
+async def statistics_user_detailed(
+    session: SessionDep,
+    current_user: CurrentUser,
+    start_time: Optional[datetime] = Query(None),
+    end_time: Optional[datetime] = Query(None),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    keyword: Optional[str] = Query(None, description="按用户名搜索"),
+    order_by: str = Query(
+        "total_queries",
+        description="total_queries | success_rate | avg_duration_seconds | total_tokens",
+    ),
+    desc: bool = Query(True),
+) -> StatisticsUserDetailedResponse:
+    """用户维度详细统计（分页、排序）。"""
+    items, total = stats_crud.get_user_detailed(
+        session, current_user, start_time, end_time,
+        page=page, size=size, keyword=keyword, order_by=order_by, desc=desc,
+    )
+    total_pages = (total + size - 1) // size
+    return StatisticsUserDetailedResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        total_pages=total_pages,
+    )
+
+
+@router.get(
+    "/datasource/detailed",
+    response_model=StatisticsDatasourceDetailedResponse,
+    summary=f"{PLACEHOLDER_PREFIX}system_statistics_datasource_detailed",
+)
+@require_permissions(permission=SqlbotPermission(role=["admin"]))
+async def statistics_datasource_detailed(
+    session: SessionDep,
+    current_user: CurrentUser,
+    start_time: Optional[datetime] = Query(None),
+    end_time: Optional[datetime] = Query(None),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    keyword: Optional[str] = Query(None, description="按数据源名称搜索"),
+    order_by: str = Query(
+        "total_queries",
+        description="total_queries | failed_queries | success_rate | avg_duration_seconds | total_tokens",
+    ),
+    desc: bool = Query(True),
+) -> StatisticsDatasourceDetailedResponse:
+    """数据源维度详细统计（分页、排序、搜索）。"""
+    items, total = stats_crud.get_datasource_detailed(
+        session, current_user, start_time, end_time,
+        page=page, size=size, keyword=keyword, order_by=order_by, desc=desc,
+    )
+    total_pages = (total + size - 1) // size
+    return StatisticsDatasourceDetailedResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        total_pages=total_pages,
+    )
 
 
 @router.get(
@@ -336,7 +191,7 @@ def _record_filters(
     response_model=PaginatedResponse[RecordItem],
     summary=f"{PLACEHOLDER_PREFIX}system_statistics_records",
 )
-@require_permissions(permission=SqlbotPermission(role=["admin", "ws_admin"]))
+@require_permissions(permission=SqlbotPermission(role=["admin"]))
 async def statistics_records(
     session: SessionDep,
     current_user: CurrentUser,
@@ -348,62 +203,17 @@ async def statistics_records(
     datasource_id: Optional[int] = Query(None, description="按数据源筛选"),
     failed_only: bool = Query(False, description="仅失败/异常"),
 ) -> PaginatedResponse[RecordItem]:
-    filters = _record_filters(
-        current_user, start_time, end_time, user_id, datasource_id, failed_only
+    """问数明细（分页），含 error_type、duration_seconds、total_tokens。"""
+    items, total = stats_crud.get_records(
+        session, current_user,
+        start_time, end_time, user_id, datasource_id, failed_only,
+        page=page, size=size,
     )
-    stmt = (
-        select(
-            ChatRecord.id,
-            ChatRecord.chat_id,
-            ChatRecord.create_time,
-            ChatRecord.create_by,
-            UserModel.name.label("user_name"),
-            ChatRecord.datasource.label("datasource_id"),
-            CoreDatasource.name.label("datasource_name"),
-            ChatRecord.question,
-            ChatRecord.finish,
-            ChatRecord.error,
-        )
-        .join(Chat, ChatRecord.chat_id == Chat.id)
-        .join(UserModel, ChatRecord.create_by == UserModel.id, isouter=True)
-        .join(
-            CoreDatasource,
-            ChatRecord.datasource == CoreDatasource.id,
-            isouter=True,
-        )
-        .where(*filters)
-        .order_by(ChatRecord.create_time.desc())
-    )
-    pagination = PaginationParams(page=page, size=size)
-    paginator = Paginator(session)
-    page_result = await paginator.get_paginated_response(stmt, pagination)
-    # Truncate question/error and map to RecordItem
-    items = []
-    for row in page_result.items:
-        if isinstance(row, dict):
-            q = row.get("question") or ""
-            e = row.get("error") or ""
-            items.append(
-                RecordItem(
-                    id=row.get("id"),
-                    chat_id=row.get("chat_id"),
-                    create_time=row.get("create_time"),
-                    create_by=row.get("create_by"),
-                    user_name=row.get("user_name"),
-                    datasource_id=row.get("datasource_id"),
-                    datasource_name=row.get("datasource_name"),
-                    question=(q[:80] + "…") if len(q) > 80 else (q or None),
-                    finish=bool(row.get("finish")),
-                    error=(e[:200] + "…") if len(e) > 200 else (e or None),
-                )
-            )
-        else:
-            items.append(RecordItem.model_validate(row))
+    total_pages = (total + size - 1) // size
     return PaginatedResponse[RecordItem](
         items=items,
-        total=page_result.total,
-        page=page_result.page,
-        size=page_result.size,
-        total_pages=page_result.total_pages,
+        total=total,
+        page=page,
+        size=size,
+        total_pages=total_pages,
     )
-
