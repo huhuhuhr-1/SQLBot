@@ -6,6 +6,7 @@ import { request } from '@/utils/request'
 import type { Router } from 'vue-router'
 import { generateDynamicRouters } from './dynamic'
 import { toLoginPage } from '@/utils/utils'
+import { i18n } from '@/i18n'
 
 const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
@@ -14,11 +15,38 @@ const whiteList = ['/login', '/admin-login']
 const assistantWhiteList = ['/assistant', '/embeddedPage', '/embeddedCommon', '/401']
 
 const wsAdminRouterList = ['/ds/index', '/as/index']
+
+/** xpack 会删掉 /set 下的非标准子路由，导致点击「自定义提示词」「统计分析」等白屏。此处在其执行后补回。 */
+function ensureSetExtraRoutes(router: Router) {
+  const setRoute = router.getRoutes().find((r: any) => r.name === 'set')
+  if (!setRoute) return
+  const children = setRoute.children ?? []
+  const hasPrompt = children.some((c: any) => c.name === 'prompt')
+  const hasStatistics = children.some((c: any) => c.name === 'statistics')
+  if (!hasPrompt) {
+    router.addRoute('set', {
+      path: 'prompt',
+      name: 'prompt',
+      component: () => import('@/views/system/prompt/index.vue'),
+      meta: { title: i18n.global.t('prompt.customize_prompt_words') },
+    })
+  }
+  if (!hasStatistics) {
+    router.addRoute('set', {
+      path: 'statistics',
+      name: 'statistics',
+      component: () => import('@/views/system/statistics/index.vue'),
+      meta: { title: i18n.global.t('menu.statistics') },
+    })
+  }
+}
+
 export const watchRouter = (router: Router) => {
   router.beforeEach(async (to: any, from: any, next: any) => {
     await loadXpackStatic()
     await appearanceStore.setAppearance()
     LicenseGenerator.generateRouters(router)
+    ensureSetExtraRoutes(router)
     if (to.path.startsWith('/login') && userStore.getUid) {
       next(to?.query?.redirect || '/')
       return
@@ -67,6 +95,9 @@ export const watchRouter = (router: Router) => {
 
 const accessCrossPermission = (to: any) => {
   if (!to?.path) return false
+  // 自定义提示词：空间管理员可访问（与可见数据源一致）；统计分析仅系统 admin 可访问
+  if (to.path.startsWith('/set/prompt') && !userStore.isSpaceAdmin) return true
+  if (to.path.startsWith('/set/statistics') && !userStore.isAdmin) return true
   return (
     (to.path.startsWith('/system') && !userStore.isAdmin) ||
     (to.path.startsWith('/set') && !userStore.isSpaceAdmin) ||

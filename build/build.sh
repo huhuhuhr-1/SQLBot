@@ -14,8 +14,10 @@ usage() {
     echo "  quick-arm64           ARM64 快速构建 (build-quick-arm64.sh)"
     echo "  multiplatform         多平台基础镜像 (build-multiplatform.sh)"
     echo "  multiplatform-optimized  多平台构建-优化版 (build-multiplatform-optimized.sh)"
+    echo "  k8s                   K8s 构建 (build-k8s.sh)，支持 --push --helm-install"
     echo ""
     echo "示例: $0 quick"
+    echo "      $0 k8s --push --helm-install"
     exit 0
 }
 
@@ -26,6 +28,7 @@ case "${1:-}" in
     quick-arm64)             ./build-quick-arm64.sh ;;
     multiplatform)           ./build-multiplatform.sh ;;
     multiplatform-optimized) ./build-multiplatform-optimized.sh ;;
+    k8s)                     shift; ./build-k8s.sh "$@" ;;
     -h|--help|"")            usage ;;
     *)                      echo "未知目标: $1"; usage ;;
 esac

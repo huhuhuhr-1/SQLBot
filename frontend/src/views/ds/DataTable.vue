@@ -533,7 +533,6 @@ const btnSelectClick = (val: any) => {
               </el-button>
             </el-tooltip>
             <el-tooltip
-              v-if="ds.type !== 'excel'"
               effect="dark"
               :content="$t('ds.smart_detect_tooltip')"
               placement="top"
@@ -699,7 +698,6 @@ const btnSelectClick = (val: any) => {
               {{ t('ds.sync_fields') }}
             </el-button>
             <el-select
-              v-if="ds.type !== 'excel'"
               v-model="smartCommentMode"
               size="default"
               style="margin-left: 12px; width: 140px"
@@ -708,7 +706,6 @@ const btnSelectClick = (val: any) => {
               <el-option value="overwrite_all" :label="t('ds.smart_comment_mode_overwrite_all')" />
             </el-select>
             <el-button
-              v-if="ds.type !== 'excel'"
               :loading="smartCommentLoading"
               style="margin-left: 8px"
               @click="smartComment()"

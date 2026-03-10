@@ -40,6 +40,7 @@ from apps.datasource.crud.permission import get_row_permission_filters, is_norma
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection
+from apps.system.crud import custom_prompt as system_custom_prompt_crud
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
 from apps.system.schemas.system_schema import AssistantOutDsSchema
@@ -295,24 +296,64 @@ class LLMService:
 
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, oid: int = None,
                               ds_id: int = None):
+        calculate_oid = oid
+        calculate_ds_id = ds_id
+        if self.current_assistant:
+            calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.current_user.oid
+            if self.current_assistant.type == 1:
+                calculate_ds_id = None
+
+        self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = start_log(
+            session=_session,
+            operate=OperationEnum.FILTER_CUSTOM_PROMPT,
+            record_id=self.record.id,
+            local_operation=True,
+        )
+
+        # 1. 兼容 xpack 自定义提示词（如有 License）
+        xpack_prompt: str = ""
+        xpack_list: list = []
         if SQLBotLicenseUtil.valid():
-            calculate_oid = oid
-            calculate_ds_id = ds_id
-            if self.current_assistant:
-                calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.current_user.oid
-                if self.current_assistant.type == 1:
-                    calculate_ds_id = None
-            self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = start_log(session=_session,
-                                                                              operate=OperationEnum.FILTER_CUSTOM_PROMPT,
-                                                                              record_id=self.record.id,
-                                                                              local_operation=True)
-            self.chat_question.custom_prompt, prompt_list = find_custom_prompts(_session, custom_prompt_type,
-                                                                                calculate_oid,
-                                                                                calculate_ds_id)
-            self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
-                                                                            log=self.current_logs[
-                                                                                OperationEnum.FILTER_CUSTOM_PROMPT],
-                                                                            full_message=prompt_list)
+            xpack_prompt, xpack_list = find_custom_prompts(
+                _session,
+                custom_prompt_type,
+                calculate_oid,
+                calculate_ds_id,
+            )
+
+        # 2. 系统内置 custom_prompt 作为补充规则，统一包成 <rule> 片段
+        system_rules_str: str = ""
+        system_rows = []
+        if custom_prompt_type in (
+            CustomPromptTypeEnum.GENERATE_SQL,
+            CustomPromptTypeEnum.ANALYSIS,
+            CustomPromptTypeEnum.PREDICT_DATA,
+        ):
+            system_rules_str, system_rows = system_custom_prompt_crud.build_rule_snippets(
+                _session,
+                calculate_oid or 1,
+                custom_prompt_type.value,
+                calculate_ds_id,
+            )
+
+        # 3. 合并结果：xpack 在前，系统规则在后
+        pieces: list[str] = []
+        if xpack_prompt:
+            pieces.append(xpack_prompt)
+        if system_rules_str:
+            pieces.append(system_rules_str)
+        self.chat_question.custom_prompt = "\n".join(pieces) if pieces else ""
+
+        # 4. 记录日志，包含 xpack 与系统规则明细，便于排查
+        full_message = {
+            "xpack": xpack_list,
+            "system": [r.prompt for r in system_rows],
+        }
+        self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(
+            session=_session,
+            log=self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT],
+            full_message=full_message,
+        )
 
     def filter_training_template(self, _session: Session, oid: int = None, ds_id: int = None):
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = start_log(session=_session,

@@ -198,6 +198,81 @@ const dataTableDetail = (ele: any) => {
   currentDataTable.value = ele
 }
 
+const selectedIds = ref<string[]>([])
+
+const hasSelection = computed(() => selectedIds.value.length > 0)
+
+const allVisibleIds = computed<string[]>(() =>
+  datasourceListWithSearch.value.map((ele: any) => String(ele.id))
+)
+
+const allSelected = computed(
+  () =>
+    allVisibleIds.value.length > 0 &&
+    allVisibleIds.value.every((id) => selectedIds.value.includes(id))
+)
+
+const isSelected = (item: Datasource) => {
+  return selectedIds.value.includes(String(item.id))
+}
+
+const toggleSelect = (item: Datasource) => {
+  const id = String(item.id)
+  if (selectedIds.value.includes(id)) {
+    selectedIds.value = selectedIds.value.filter((x) => x !== id)
+  } else {
+    selectedIds.value = [...selectedIds.value, id]
+  }
+}
+
+const clearSelection = () => {
+  selectedIds.value = []
+}
+
+const toggleSelectAll = () => {
+  if (allSelected.value) {
+    clearSelection()
+    return
+  }
+  selectedIds.value = [...allVisibleIds.value]
+}
+
+const handleBatchDelete = async () => {
+  if (!selectedIds.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      `将删除选中的 ${selectedIds.value.length} 个数据源，且无法恢复，是否继续？`,
+      t('common.confirm'),
+      {
+        confirmButtonText: t('dashboard.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+      }
+    )
+  } catch {
+    return
+  }
+
+  const ids = [...selectedIds.value]
+  const all = datasourceList.value as any[]
+
+  for (const id of ids) {
+    const item = all.find((d: any) => String(d.id) === id)
+    if (!item) continue
+    try {
+      await datasourceApi.delete(item.id, item.name)
+    } catch (e: any) {
+      ElMessage({
+        type: 'error',
+        message: e?.message || '删除数据源失败',
+      })
+    }
+  }
+
+  clearSelection()
+  search()
+}
+
 const back = () => {
   currentDataTable.value = null
 }
@@ -276,6 +351,38 @@ useEmitt({
         </el-button>
       </div>
     </div>
+
+    <!-- 列表选择工具栏：与卡片列表视觉关联，仅在有数据时展示 -->
+    <div
+      v-if="datasourceListWithSearch.length"
+      class="selection-toolbar"
+    >
+      <el-checkbox
+        class="selection-toolbar__select-all"
+        :indeterminate="selectedIds.length > 0 && !allSelected"
+        :model-value="allSelected"
+        @change="toggleSelectAll"
+      >
+        {{ $t('datasource.select_all') }}
+      </el-checkbox>
+      <template v-if="hasSelection">
+        <span class="selection-toolbar__count">
+          {{ $t('user.selected_2_items', { msg: selectedIds.length }) }}
+        </span>
+        <el-button
+          type="danger"
+          text
+          class="selection-toolbar__delete"
+          @click="handleBatchDelete"
+        >
+          {{ $t('dashboard.delete') }}
+        </el-button>
+        <el-button text @click="clearSelection">
+          {{ $t('common.cancel') }}
+        </el-button>
+      </template>
+    </div>
+
     <EmptyBackground
       v-if="!!keywords && !datasourceListWithSearch.length"
       :description="$t('datasource.relevant_content_found')"
@@ -295,21 +402,28 @@ useEmitt({
           :xl="6"
           class="mb-16"
         >
-          <Card
-            :id="ele.id"
-            :key="ele.id"
-            :name="ele.name"
-            :type="ele.type"
-            :type-name="ele.type_name"
-            :num="ele.num"
-            :description="ele.description"
-            @question="handleQuestion"
-            @edit="handleEditDatasource(ele)"
-            @copy="handleCopyDatasource(ele)"
-            @recommendation="handleRecommendation(ele)"
-            @del="deleteHandler(ele)"
-            @data-table-detail="dataTableDetail(ele)"
-          ></Card>
+          <div class="card-with-select">
+            <el-checkbox
+              class="card-select"
+              :model-value="isSelected(ele)"
+              @change="() => toggleSelect(ele)"
+            />
+            <Card
+              :id="ele.id"
+              :key="ele.id"
+              :name="ele.name"
+              :type="ele.type"
+              :type-name="ele.type_name"
+              :num="ele.num"
+              :description="ele.description"
+              @question="handleQuestion"
+              @edit="handleEditDatasource(ele)"
+              @copy="handleCopyDatasource(ele)"
+              @recommendation="handleRecommendation(ele)"
+              @del="deleteHandler(ele)"
+              @data-table-detail="dataTableDetail(ele)"
+            ></Card>
+          </div>
         </el-col>
       </el-row>
     </div>
@@ -357,6 +471,30 @@ useEmitt({
       font-weight: 500;
       font-size: 20px;
       line-height: 28px;
+    }
+  }
+
+  .selection-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 24px;
+    margin-bottom: 8px;
+    min-height: 44px;
+    background: var(--ed-fill-color-light, #f7f8fa);
+    border-radius: 8px;
+    margin-left: 24px;
+    margin-right: 24px;
+
+    .selection-toolbar__select-all {
+      font-size: 14px;
+      color: var(--ed-text-color-regular, #646a73);
+    }
+
+    .selection-toolbar__count {
+      font-size: 14px;
+      color: var(--ed-text-color-secondary, #8f959e);
+      margin-right: auto;
     }
   }
 

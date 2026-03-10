@@ -294,16 +294,22 @@ class AiModelQuestion(BaseModel):
             'example_answer_2']
         _example_answer_3 = _sql_template['example_answer_3_with_limit'] if enable_query_limit else _sql_template[
             'example_answer_3']
-        return _base_template['system'].format(engine=self.engine, schema=self.db_schema, question=self.question,
-                                               lang=self.lang, terminologies=self.terminologies,
-                                               data_training=self.data_training, custom_prompt=self.custom_prompt,
-                                               process_check=_process_check,
-                                               base_sql_rules=_base_sql_rules,
-                                               basic_sql_examples=_sql_examples,
-                                               example_engine=_example_engine,
-                                               example_answer_1=_example_answer_1,
-                                               example_answer_2=_example_answer_2,
-                                               example_answer_3=_example_answer_3)
+        return _base_template['system'].format(
+            engine=self.engine,
+            schema=self.db_schema,
+            question=self.question,
+            lang=self.lang,
+            terminologies=self.terminologies,
+            data_training=self.data_training,
+            custom_prompt=self.custom_prompt or "",
+            process_check=_process_check,
+            base_sql_rules=_base_sql_rules,
+            basic_sql_examples=_sql_examples,
+            example_engine=_example_engine,
+            example_answer_1=_example_answer_1,
+            example_answer_2=_example_answer_2,
+            example_answer_3=_example_answer_3,
+        )
 
     def sql_user_question(self, current_time: str, change_title: bool):
         _question = self.question

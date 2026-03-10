@@ -151,6 +151,7 @@ template:
           提问中如果有涉及数据源名称或数据源描述的内容，则忽略数据源的信息，直接根据剩余内容生成SQL
         </rule>
         {base_sql_rules}
+        {custom_prompt}
         <rule>
           如果生成SQL的字段内有时间格式的字段:
           - 若提问中没有指定查询顺序，则默认按时间升序排序
@@ -328,7 +329,6 @@ template:
       {terminologies}
       {data_training}
       </Info>
-      {custom_prompt}
       
       ### 响应, 请根据上述要求直接返回JSON结果:
       ```json
@@ -574,12 +574,12 @@ template:
         <rule>
           避免重复。如果输出内容重复，请立即停止并给出唯一的答案。
         </rule>
+        {custom_prompt}
       </Rules>
       
       <Info>
       {terminologies}
       </Info>
-      {custom_prompt}
     user: |
       <fields>
       {fields}
@@ -616,8 +616,8 @@ template:
         <rule>
           预测的数据不需要返回用户提供的原有数据，请直接返回你预测的部份
         </rule>
+        {custom_prompt}
       </Rules>
-      {custom_prompt}
       
       ### 响应, 请根据上述要求直接返回JSON结果:
       ```json

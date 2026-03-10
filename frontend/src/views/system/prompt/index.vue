@@ -1,7 +1,9 @@
 <script lang="ts" setup>
-import { nextTick, onMounted, reactive, ref, unref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, unref } from 'vue'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
-import { promptApi } from '@/api/prompt'
+import { promptApi, type DefaultPromptsResponse } from '@/api/prompt'
+
+type PromptTypeKey = keyof DefaultPromptsResponse
 import { formatTimestamp } from '@/utils/date'
 import { datasourceApi } from '@/api/datasource'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
@@ -17,6 +19,7 @@ import { convertFilterText, FilterText } from '@/components/filter-text'
 import { DrawerMain } from '@/components/drawer-main'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
 import Uploader from '@/views/system/excel-upload/Uploader.vue'
+import { InfoFilled } from '@element-plus/icons-vue'
 
 interface Form {
   id?: string | null
@@ -34,11 +37,11 @@ const multipleSelectionAll = ref<any[]>([])
 const keywords = ref('')
 const oldKeywords = ref('')
 const searchLoading = ref(false)
-const currentType = ref('GENERATE_SQL')
+const currentType = ref<PromptTypeKey>('GENERATE_SQL')
 
 const options = ref<any[]>([])
-const selectable = () => {
-  return true
+const selectable = (row: any) => {
+  return !row?.isDefault
 }
 
 const state = reactive<any>({
@@ -46,10 +49,72 @@ const state = reactive<any>({
   filterTexts: [],
 })
 
+const defaultPrompts = ref<DefaultPromptsResponse | null>(null)
+const defaultPromptsLoading = ref(false)
+const optimizeLoading = ref(false)
+
+const loadDefaultPrompts = () => {
+  defaultPromptsLoading.value = true
+  promptApi
+    .getDefaultPrompts()
+    .then((res: any) => {
+      defaultPrompts.value = res
+    })
+    .finally(() => {
+      defaultPromptsLoading.value = false
+    })
+}
+
+const currentDefaultPrompt = computed(() => {
+  if (!defaultPrompts.value) return null
+  const key: PromptTypeKey = currentType.value
+  return defaultPrompts.value[key] ?? null
+})
+
+/** 展示用列表：首条为默认提示词（一条），其余为自定义列表 */
+const displayList = computed(() => {
+  const list = fieldList.value ? [...fieldList.value] : []
+  const def = currentDefaultPrompt.value
+  if (!def) return list
+  const defaultRow = {
+    id: null,
+    name: t('prompt.default_prompt'),
+    prompt: def.defaultContent,
+    isDefault: true,
+    variables: def.variables || [],
+    specific_ds: false,
+    datasource_ids: [],
+    datasource_names: [],
+    create_time: null,
+  }
+  return [defaultRow, ...list]
+})
+
+const handleOptimizePrompt = async () => {
+  const prompt = pageForm.value.prompt?.trim()
+  if (!prompt) {
+    ElMessage.warning(t('prompt.please_enter_prompt_first'))
+    return
+  }
+  optimizeLoading.value = true
+  try {
+    const res = await promptApi.optimizePrompt(currentType.value, prompt)
+    if (res?.optimized) {
+      pageForm.value.prompt = res.optimized
+      ElMessage.success(t('prompt.optimize_success'))
+    }
+  } catch (e) {
+    ElMessage.error(t('prompt.optimize_failed'))
+  } finally {
+    optimizeLoading.value = false
+  }
+}
+
 onMounted(() => {
   datasourceApi.list().then((res) => {
     filterOption.value[0].option = [...res]
   })
+  loadDefaultPrompts()
   search()
 })
 
@@ -85,6 +150,13 @@ const copyCode = () => {
       ElMessage.error(t('embedded.copy_failed'))
     })
 }
+
+const copyPromptText = (text: string) => {
+  copy(text)
+    .then(() => ElMessage.success(t('embedded.copy_successful')))
+    .catch(() => ElMessage.error(t('embedded.copy_failed')))
+}
+
 const cancelDelete = () => {
   handleToggleRowSelection(false)
   multipleSelectionAll.value = []
@@ -372,7 +444,7 @@ const handleChange = () => {
 
 const typeChange = (val: any) => {
   currentType.value = val
-  pageInfo.currentPage = 0
+  pageInfo.currentPage = 1
   search()
 }
 
@@ -516,13 +588,20 @@ const drawerMainClose = () => {
       <div class="preview-or-schema">
         <el-table
           ref="multipleTableRef"
-          :data="fieldList"
+          :data="displayList"
           style="width: 100%"
           @row-click="handleRowClick"
           @selection-change="handleSelectionChange"
         >
           <el-table-column :selectable="selectable" type="selection" width="55" />
           <el-table-column prop="name" :label="$t('prompt.prompt_word_name')" width="280">
+            <template #default="scope">
+              <span v-if="scope.row.isDefault" class="default-prompt-name">
+                {{ scope.row.name }}
+                <el-tag size="small" type="info" class="default-tag">{{ $t('prompt.default_tag') }}</el-tag>
+              </span>
+              <span v-else>{{ scope.row.name }}</span>
+            </template>
           </el-table-column>
           <el-table-column prop="prompt" :label="$t('prompt.prompt_word_content')" min-width="240">
             <template #default="scope">
@@ -554,36 +633,58 @@ const drawerMainClose = () => {
           <el-table-column fixed="right" width="80" :label="t('ds.actions')">
             <template #default="scope">
               <div class="field-comment">
-                <el-tooltip
-                  :offset="14"
-                  effect="dark"
-                  :content="$t('datasource.edit')"
-                  placement="top"
-                >
-                  <el-icon class="action-btn" size="16" @click.stop="editHandler(scope.row)">
-                    <IconOpeEdit></IconOpeEdit>
-                  </el-icon>
-                </el-tooltip>
-                <el-tooltip
-                  :offset="14"
-                  effect="dark"
-                  :content="$t('dashboard.delete')"
-                  placement="top"
-                >
-                  <el-icon class="action-btn" size="16" @click.stop="deleteHandler(scope.row)">
-                    <IconOpeDelete></IconOpeDelete>
-                  </el-icon>
-                </el-tooltip>
+                <template v-if="scope.row.isDefault">
+                  <el-popover placement="left" :width="320" trigger="click">
+                    <template #reference>
+                      <el-tooltip :offset="14" effect="dark" :content="$t('prompt.available_variables')" placement="top">
+                        <el-icon class="action-btn" size="16"><InfoFilled /></el-icon>
+                      </el-tooltip>
+                    </template>
+                    <div class="variables-popover">
+                      <div class="section-label">{{ $t('prompt.available_variables') }}</div>
+                      <div class="variables-list">
+                        <el-tag
+                          v-for="v in (scope.row.variables || [])"
+                          :key="v.name"
+                          size="small"
+                          class="var-tag"
+                        >
+                          {{ v.name }}
+                          <el-tooltip :content="v.description" placement="top">
+                            <el-icon class="var-tip"><InfoFilled /></el-icon>
+                          </el-tooltip>
+                        </el-tag>
+                      </div>
+                    </div>
+                  </el-popover>
+                  <el-tooltip :offset="14" effect="dark" :content="$t('datasource.copy')" placement="top">
+                    <el-icon class="action-btn" size="16" @click.stop="copyPromptText(scope.row.prompt)">
+                      <icon_copy_outlined />
+                    </el-icon>
+                  </el-tooltip>
+                </template>
+                <template v-else>
+                  <el-tooltip :offset="14" effect="dark" :content="$t('datasource.edit')" placement="top">
+                    <el-icon class="action-btn" size="16" @click.stop="editHandler(scope.row)">
+                      <IconOpeEdit></IconOpeEdit>
+                    </el-icon>
+                  </el-tooltip>
+                  <el-tooltip :offset="14" effect="dark" :content="$t('dashboard.delete')" placement="top">
+                    <el-icon class="action-btn" size="16" @click.stop="deleteHandler(scope.row)">
+                      <IconOpeDelete></IconOpeDelete>
+                    </el-icon>
+                  </el-tooltip>
+                </template>
               </div>
             </template>
           </el-table-column>
           <template #empty>
             <EmptyBackground
-              v-if="!!oldKeywords && !fieldList.length"
+              v-if="!!oldKeywords && !displayList.length"
               :description="$t('datasource.relevant_content_found')"
               img-type="tree"
             />
-            <template v-if="!oldKeywords && !fieldList.length">
+            <template v-if="!oldKeywords && !displayList.length">
               <EmptyBackground
                 class="datasource-yet"
                 :description="$t('prompt.no_prompt_words')"
@@ -666,12 +767,29 @@ const drawerMainClose = () => {
         />
       </el-form-item>
       <el-form-item prop="prompt" :label="t('prompt.prompt_word_content')">
-        <el-input
-          v-model="pageForm.prompt"
-          :placeholder="$t('prompt.replaced_with')"
-          :autosize="{ minRows: 3.636, maxRows: 11.09 }"
-          type="textarea"
-        />
+        <div class="prompt-append-hint">
+          <span class="hint-icon">i</span>
+          {{ t('prompt.append_hint') }}
+        </div>
+        <div class="prompt-input-row">
+          <el-input
+            v-model="pageForm.prompt"
+            :placeholder="$t('prompt.replaced_with')"
+            :autosize="{ minRows: 4, maxRows: 18 }"
+            type="textarea"
+            class="prompt-textarea"
+          />
+          <div class="prompt-actions">
+            <el-button
+              class="optimize-btn"
+              secondary
+              :loading="optimizeLoading"
+              @click="handleOptimizePrompt"
+            >
+              {{ t('prompt.llm_optimize') }}
+            </el-button>
+          </div>
+        </div>
         <div class="tips">
           {{ t('prompt.loss_exercise_caution') }}
         </div>
@@ -778,6 +896,77 @@ const drawerMainClose = () => {
     gap: 8px;
   }
 
+  .default-prompt-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    .default-tag {
+      flex-shrink: 0;
+    }
+  }
+  .variables-popover {
+    .section-label {
+      font-size: 12px;
+      color: var(--ed-text-third, #646a73);
+      margin-bottom: 8px;
+    }
+    .variables-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .var-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      .var-tip {
+        cursor: help;
+        font-size: 12px;
+      }
+    }
+  }
+
+  .prompt-append-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--ed-text-secondary, #1f2329);
+    margin-bottom: 10px;
+    line-height: 1.5;
+    padding: 10px 12px;
+    background: var(--ed-fill-color-light, #f7f8fa);
+    border-radius: 8px;
+    border: 1px solid var(--ed-border-color-lighter, #e5e6eb);
+    .hint-icon {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      line-height: 16px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ed-color-primary, #1cba90);
+      background: rgba(28, 186, 144, 0.12);
+      border-radius: 50%;
+    }
+  }
+  .prompt-input-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
+  .prompt-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+    .optimize-btn {
+      min-width: 96px;
+    }
+  }
   .tool-left {
     display: flex;
     align-items: center;
@@ -982,20 +1171,41 @@ const drawerMainClose = () => {
 }
 
 .prompt-add_drawer {
+  .ed-form-item {
+    margin-bottom: 20px;
+  }
+  .ed-form-item__label {
+    font-weight: 500;
+    color: var(--ed-text-primary, #1f2329);
+  }
   .tips {
-    font-weight: 400;
-    font-size: 14px;
-    line-height: 22px;
-    color: #ff8800;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #e67e00;
+    padding: 8px 12px;
+    background: #fff8f0;
+    border-radius: 6px;
+    border: 1px solid #ffecd2;
+    margin-top: 8px;
   }
   .no-error.no-error {
     .ed-form-item__error {
       display: none;
     }
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
   .ed-textarea__inner {
-    line-height: 22px;
+    line-height: 1.6;
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .prompt-textarea.ed-input {
+    --ed-input-border-radius: 8px;
+  }
+  .dialog-footer {
+    padding: 16px 0 0;
+    border-top: 1px solid var(--ed-border-color-lighter, #e5e6eb);
+    margin-top: 8px;
   }
 }
 </style>

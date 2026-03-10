@@ -1,0 +1,14 @@
+apiVersion: v2
+name: sqlbot
+description: SQLBot - AI-powered SQL assistant (all-in-one with embedded PostgreSQL)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.19.0"
+keywords:
+  - sqlbot
+  - sql
+  - ai
+home: https://github.com/dataease/sqlbot
+sources: []
+maintainers: []
