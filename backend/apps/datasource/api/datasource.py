@@ -27,13 +27,19 @@ from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.utils import SQLBotLogUtil
 from apps.ai_model.model_factory import create_llm
-from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
-    execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum, \
-    check_status_by_id, sync_single_fields, copy_ds
+from ..crud.datasource import (
+    get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields,
+    execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField,
+    get_ds, fieldEnum, check_status_by_id, sync_single_fields, copy_ds,
+    export_datasources, import_datasources,
+)
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
-from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField, FieldObj, \
-    TableSchemaResponse, ColumnSchemaResponse, PreviewResponse
+from ..models.datasource import (
+    CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField, FieldObj,
+    TableSchemaResponse, ColumnSchemaResponse, PreviewResponse,
+    DatasourceExportPayload, DatasourceImportPayload,
+)
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 
@@ -129,6 +135,33 @@ async def delete(session: SessionDep, id: int = Path(..., description=f"{PLACEHO
 
 class CopyDatasourceRequest(BaseModel):
     name: Optional[str] = None
+
+
+class DatasourceExportRequest(BaseModel):
+    """批量导出数据源：请求体为要导出的数据源 id 列表"""
+    ids: List[int] = []
+
+
+@router.post("/export", response_model=DatasourceExportPayload, summary="批量导出数据源",
+             description="导出数据源基础信息、选中表、表映射关系、标准元数据(表/字段备注)。")
+@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+async def export_datasources_api(
+    session: SessionDep, user: CurrentUser, body: DatasourceExportRequest = Body(default=None),
+):
+    ids = (body.ids if body and body.ids else []) or []
+    if not ids:
+        return DatasourceExportPayload(datasources=[])
+    return export_datasources(session, user, ids)
+
+
+@router.post("/import", response_model=List[CoreDatasource], summary="批量导入数据源",
+             description="从导出 JSON 批量创建数据源，含表、字段元数据及表映射关系。")
+@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.DATASOURCE))
+async def import_datasources_api(
+    session: SessionDep, trans: Trans, user: CurrentUser, body: DatasourceImportPayload,
+):
+    return await import_datasources(session, trans, user, body)
 
 
 @router.post("/copy/{id}", response_model=CoreDatasource, summary=f"{PLACEHOLDER_PREFIX}ds_copy")

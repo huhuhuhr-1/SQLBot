@@ -1,11 +1,15 @@
 import json
-from typing import List, Union
+from typing import List, Union, Optional
 
 from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Path, Query, Body
+from pydantic import BaseModel
 from apps.ai_model.model_factory import LLMConfig, LLMFactory
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
-from apps.system.schemas.ai_model_schema import AiModelConfigItem, AiModelCreator, AiModelEditor, AiModelGridItem
-from fastapi import APIRouter, Path, Query
+from apps.system.schemas.ai_model_schema import (
+    AiModelConfigItem, AiModelCreator, AiModelEditor, AiModelGridItem,
+    AiModelExportItem, AiModelExportPayload,
+)
 from sqlmodel import func, select, update
 
 from apps.system.models.system_model import AiModelDetail
@@ -95,6 +99,114 @@ async def query(
     items = session.exec(statement).all()
     return items
 
+
+class AiModelExportRequest(BaseModel):
+    """批量导出 AI 模型：请求体为要导出的模型 id 列表，空则导出全部"""
+    ids: Optional[List[int]] = None
+
+
+@router.post("/export", response_model=AiModelExportPayload, summary="批量导出 AI 模型配置",
+             description="导出 AI 模型配置（含 api_domain/api_key 解密后导出，便于迁移或备份）。")
+@require_permissions(permission=SqlbotPermission(role=['admin']))
+async def export_aimodels(
+    session: SessionDep,
+    body: AiModelExportRequest = Body(default=None),
+):
+    ids = body.ids if body and body.ids else None
+    if ids is not None and len(ids) == 0:
+        items = []
+    else:
+        stmt = select(AiModelDetail).order_by(AiModelDetail.default_model.desc(), AiModelDetail.name)
+        if ids:
+            stmt = stmt.where(AiModelDetail.id.in_(ids))
+        rows = session.exec(stmt).all()
+        items = []
+        for db_model in rows:
+            config_list: List[AiModelConfigItem] = []
+            if db_model.config:
+                try:
+                    raw = json.loads(db_model.config)
+                    config_list = [AiModelConfigItem(**item) for item in raw]
+                except Exception:
+                    pass
+            try:
+                api_key = await sqlbot_decrypt(db_model.api_key) if db_model.api_key else ""
+                api_domain = await sqlbot_decrypt(db_model.api_domain) if db_model.api_domain else ""
+            except Exception:
+                api_key = db_model.api_key or ""
+                api_domain = db_model.api_domain or ""
+            items.append(
+                AiModelExportItem(
+                    name=db_model.name,
+                    model_type=db_model.model_type,
+                    base_model=db_model.base_model,
+                    supplier=db_model.supplier,
+                    protocol=db_model.protocol,
+                    default_model=db_model.default_model,
+                    api_domain=api_domain,
+                    api_key=api_key or "",
+                    config_list=config_list,
+                )
+            )
+    return AiModelExportPayload(version=1, models=items)
+
+
+@router.post("/import", summary="批量导入 AI 模型配置",
+             description="从导出的 JSON 批量导入，合并模式：同名称则更新，否则新建，不报错。")
+@require_permissions(permission=SqlbotPermission(role=['admin']))
+@system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.AI_MODEL))
+async def import_aimodels(
+    session: SessionDep,
+    body: AiModelExportPayload = Body(...),
+):
+    result = []
+    for item in body.models or []:
+        if not item.name:
+            continue
+        try:
+            existing = session.exec(
+                select(AiModelDetail).where(AiModelDetail.name == item.name)
+            ).first()
+            config_json = json.dumps([c.model_dump(exclude_unset=True) for c in (item.config_list or [])])
+            if existing:
+                existing.model_type = item.model_type
+                existing.base_model = item.base_model
+                existing.supplier = item.supplier
+                existing.protocol = item.protocol
+                existing.api_domain = item.api_domain or ""
+                existing.api_key = item.api_key or ""
+                existing.config = config_json
+                session.add(existing)
+                session.commit()
+                session.refresh(existing)
+                result.append(existing)
+            else:
+                data = {
+                    "name": item.name,
+                    "model_type": item.model_type,
+                    "base_model": item.base_model,
+                    "supplier": item.supplier,
+                    "protocol": item.protocol,
+                    "default_model": False,
+                    "api_domain": item.api_domain or "",
+                    "api_key": item.api_key or "",
+                    "config": config_json,
+                }
+                detail = AiModelDetail.model_validate(data)
+                detail.create_time = get_timestamp()
+                count = session.exec(select(func.count(AiModelDetail.id))).one()
+                if count == 0:
+                    detail.default_model = True
+                session.add(detail)
+                session.commit()
+                session.refresh(detail)
+                result.append(detail)
+        except Exception as e:
+            SQLBotLogUtil.warning(f"import_aimodels skip {item.name}: {e}")
+            continue
+    return result
+
+
 @router.get("/{id}", response_model=AiModelEditor, summary=f"{PLACEHOLDER_PREFIX}system_model_query", description=f"{PLACEHOLDER_PREFIX}system_model_query")
 @require_permissions(permission=SqlbotPermission(role=['admin'])) 
 async def get_model_by_id(
@@ -170,9 +282,6 @@ async def delete_model(
 ):
     item = session.get(AiModelDetail, id)
     if item.default_model:
-        raise Exception(trans('i18n_llm.delete_default_error', key = item.name))
+        raise Exception(trans('i18n_llm.delete_default_error', key=item.name))
     session.delete(item)
     session.commit()
-    
-
-    

@@ -39,6 +39,8 @@ const activeType = ref('')
 const modelFormRef = ref()
 const cardRefs = ref<any[]>([])
 const showCardError = ref(false) // if you don`t want card mask error, just change this to false
+const exportModelLoading = ref(false)
+const modelImportFileRef = ref<HTMLInputElement | null>(null)
 reactive({
   form: {
     id: '',
@@ -289,6 +291,67 @@ const search = () => {
       searchLoading.value = false
     })
 }
+
+const exportModelBatch = () => {
+  exportModelLoading.value = true
+  modelApi
+    .exportBatch()
+    .then((res) => {
+      if (!res?.models?.length) {
+        ElMessage.warning(t('model.batch_export_empty'))
+        return
+      }
+      const blob = new Blob([JSON.stringify(res, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `aimodels_export_${Date.now()}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      ElMessage.success(t('model.batch_export_success'))
+    })
+    .finally(() => {
+      exportModelLoading.value = false
+    })
+}
+
+const triggerModelImportFile = () => {
+  modelImportFileRef.value?.click()
+}
+
+const onModelImportFile = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(reader.result as string)
+      if (!payload.models || !Array.isArray(payload.models)) {
+        ElMessage.error(t('model.batch_import_invalid'))
+        return
+      }
+      searchLoading.value = true
+      modelApi
+        .importBatch(payload)
+        .then((created) => {
+          ElMessage.success(t('model.batch_import_success', { count: created?.length ?? 0 }))
+          search()
+        })
+        .catch((err) => {
+          ElMessage.error(err?.message || t('model.batch_import_failed'))
+        })
+        .finally(() => {
+          searchLoading.value = false
+        })
+    } catch {
+      ElMessage.error(t('model.batch_import_invalid'))
+    }
+    input.value = ''
+  }
+  reader.readAsText(file)
+}
+
 search()
 
 const submit = (item: any) => {
@@ -357,6 +420,19 @@ const submit = (item: any) => {
           </div>
         </el-popover>
 
+        <el-button @click="exportModelBatch" :loading="exportModelLoading">
+          {{ t('model.batch_export') }}
+        </el-button>
+        <el-button @click="triggerModelImportFile">
+          {{ t('model.batch_import') }}
+        </el-button>
+        <input
+          ref="modelImportFileRef"
+          type="file"
+          accept=".json"
+          style="display: none"
+          @change="onModelImportFile"
+        />
         <el-button type="primary" @click="handleAddModel">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>

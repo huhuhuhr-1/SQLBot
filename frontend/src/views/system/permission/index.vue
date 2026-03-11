@@ -303,6 +303,105 @@ const handleSearch = () => {
     })
 }
 handleSearch()
+
+const exportLoading = ref(false)
+const exportAll = () => {
+  exportLoading.value = true
+  getList()
+    .then((res: any) => {
+      const list = res || []
+      if (!list.length) {
+        ElMessage.warning(t('permission.no_permission_rule'))
+        return
+      }
+      const payload = { version: 1, rules: list }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `permission-rules-${Date.now()}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      ElMessage.success(t('common.save_success'))
+    })
+    .catch(() => ElMessage.error(t('permission.batch_import_failed')))
+    .finally(() => { exportLoading.value = false })
+}
+
+/** 将导出的规则项规范为 save 接口所需格式（含 permission_list/expression_tree），避免 xpack 报 NoneType.permission_list */
+function normalizeRuleForSave(rule: any) {
+  const permissions = Array.isArray(rule?.permissions) ? rule.permissions : []
+  const permissionsObj = permissions
+    .filter((p: any) => p != null && typeof p === 'object')
+    .map((ele: any) => ({
+      ...cloneDeep(ele),
+      permissions:
+        ele.type !== 'row'
+          ? typeof ele.permissions === 'object'
+            ? JSON.stringify(ele.permissions || [])
+            : (ele.permissions ?? '[]')
+          : '[]',
+      permission_list: Array.isArray(ele.permission_list) ? ele.permission_list : [],
+      expression_tree:
+        ele.type === 'row'
+          ? typeof ele.expression_tree === 'object'
+            ? JSON.stringify(ele.expression_tree || {})
+            : (ele.expression_tree ?? '{}')
+          : '{}',
+    }))
+  return {
+    id: rule?.id,
+    name: rule?.name,
+    permissions: permissionsObj,
+    users: Array.isArray(rule?.users) ? rule.users : [],
+  }
+}
+
+const importInputRef = ref<HTMLInputElement | null>(null)
+const onImportFile = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = async () => {
+    try {
+      const raw = reader.result as string
+      const data = JSON.parse(raw)
+      const rules = Array.isArray(data?.rules) ? data.rules : Array.isArray(data) ? data : []
+      if (!rules.length) {
+        ElMessage.error(t('permission.batch_import_invalid'))
+        input.value = ''
+        return
+      }
+      const current = await getList().then((r: any) => r || [])
+      const byName = (current as any[]).reduce((acc: any, c: any) => {
+        acc[c.name] = c
+        return acc
+      }, {})
+      let count = 0
+      for (const item of rules) {
+        const name = item?.name
+        if (!name) continue
+        const existing = byName[name]
+        const toSave = normalizeRuleForSave(item)
+        if (existing?.id) toSave.id = existing.id
+        else delete toSave.id
+        try {
+          await savePermissions(toSave)
+          count += 1
+        } catch (_) {
+          // 单条失败不中断
+        }
+      }
+      ElMessage.success(t('permission.batch_import_success', { count }))
+      handleSearch()
+    } catch {
+      ElMessage.error(t('permission.batch_import_invalid'))
+    }
+    input.value = ''
+  }
+  reader.readAsText(file)
+}
 const addHandler = () => {
   editRule.value = 0
   setDrawerTitle()
@@ -549,6 +648,19 @@ const columnRules = {
           </template>
         </el-input>
 
+        <el-button @click="exportAll" :loading="exportLoading">
+          {{ $t('permission.export_all') }}
+        </el-button>
+        <el-button secondary @click="importInputRef?.click()">
+          {{ $t('permission.batch_import') }}
+        </el-button>
+        <input
+          ref="importInputRef"
+          type="file"
+          accept=".json,application/json"
+          style="display: none"
+          @change="onImportFile"
+        />
         <el-button type="primary" @click="addHandler()">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
