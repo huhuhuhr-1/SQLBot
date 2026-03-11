@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
 COPY frontend /tmp/frontend
-RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
+RUN cd /tmp/frontend && npm config set registry https://registry.npmmirror.com && npm install && npm run build && mv dist ${UI_HOME}/dist
 
 
 FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS sqlbot-builder
@@ -57,10 +57,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpixman-1-dev libfreetype6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# configure npm
+# configure npm (use China mirror for faster downloads)
 RUN npm config set fund false \
     && npm config set audit false \
-    && npm config set progress false
+    && npm config set progress false \
+    && npm config set registry https://registry.npmmirror.com
 
 COPY g2-ssr/app.js g2-ssr/package.json /app/
 COPY g2-ssr/charts/* /app/charts/

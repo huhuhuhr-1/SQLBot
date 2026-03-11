@@ -199,6 +199,8 @@ const dataTableDetail = (ele: any) => {
 }
 
 const selectedIds = ref<string[]>([])
+const exportLoading = ref(false)
+const importFileRef = ref<HTMLInputElement | null>(null)
 
 const hasSelection = computed(() => selectedIds.value.length > 0)
 
@@ -277,6 +279,67 @@ const back = () => {
   currentDataTable.value = null
 }
 
+const exportBatch = () => {
+  const ids = (datasourceList.value || []).map((d: any) => d.id).filter(Boolean)
+  if (!ids.length) {
+    ElMessage.warning(t('ds.batch_export_empty'))
+    return
+  }
+  exportLoading.value = true
+  datasourceApi
+    .exportBatch(ids)
+    .then((res) => {
+      const blob = new Blob([JSON.stringify(res, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `datasources_export_${Date.now()}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      ElMessage.success(t('ds.batch_export_success'))
+    })
+    .finally(() => {
+      exportLoading.value = false
+    })
+}
+
+const triggerImportFile = () => {
+  importFileRef.value?.click()
+}
+
+const onImportFile = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(reader.result as string)
+      if (!payload.datasources || !Array.isArray(payload.datasources)) {
+        ElMessage.error(t('ds.batch_import_invalid'))
+        return
+      }
+      searchLoading.value = true
+      datasourceApi
+        .importBatch(payload)
+        .then((created) => {
+          ElMessage.success(t('ds.batch_import_success', { count: created?.length ?? 0 }))
+          search()
+        })
+        .catch((err) => {
+          ElMessage.error(err?.message || t('ds.batch_import_failed'))
+        })
+        .finally(() => {
+          searchLoading.value = false
+        })
+    } catch {
+      ElMessage.error(t('ds.batch_import_invalid'))
+    }
+    input.value = ''
+  }
+  reader.readAsText(file)
+}
+
 useEmitt({
   name: 'ds-index-click',
   callback: back,
@@ -343,6 +406,19 @@ useEmitt({
           </div>
         </el-popover>
 
+        <el-button @click="exportBatch" :loading="exportLoading">
+          {{ $t('ds.batch_export') }}
+        </el-button>
+        <el-button @click="triggerImportFile">
+          {{ $t('ds.batch_import') }}
+        </el-button>
+        <input
+          ref="importFileRef"
+          type="file"
+          accept=".json"
+          style="display: none"
+          @change="onImportFile"
+        />
         <el-button type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>

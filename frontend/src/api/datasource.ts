@@ -41,4 +41,10 @@ export const datasourceApi = {
       responseType: 'blob',
       requestOptions: { customError: true },
     }),
+  /** 批量导出数据源（基础信息、选中表、表映射、元数据） */
+  exportBatch: (ids: number[]) =>
+    request.post<{ datasources: any[] }>('/datasource/export', { ids }),
+  /** 批量导入数据源 */
+  importBatch: (payload: { datasources: any[] }) =>
+    request.post<any[]>('/datasource/import', payload),
 }

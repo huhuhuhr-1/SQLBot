@@ -28,3 +28,14 @@ class AiModelCreator(AiModelItem):
     
 class AiModelEditor(AiModelCreator, BaseCreatorDTO):
     pass
+
+
+class AiModelExportItem(AiModelCreator):
+    """单条 AI 模型导出结构，用于批量导入导出（不含 id）。"""
+    pass
+
+
+class AiModelExportPayload(BaseModel):
+    """AI 模型批量导出响应 / 导入请求"""
+    version: int = 1
+    models: List[AiModelExportItem] = []
