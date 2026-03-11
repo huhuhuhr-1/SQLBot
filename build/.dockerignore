@@ -19,7 +19,11 @@ coverage.xml
 .pytest_cache
 .hypothesis
 
-# 排除敏感配置
+# 排除敏感配置（含 backend/.env，避免构建时带入本地配置）
 .env
 .env.local
 .env.*.local
+backend/.env
+**/.env
+**/.env.local
+**/.env.*.local
