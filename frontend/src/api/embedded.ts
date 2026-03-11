@@ -8,6 +8,15 @@ export const saveAssistant = (data: any) => request.post('/system/assistant', da
 export const getOne = (id: any) => request.get(`/system/assistant/${id}`)
 export const delOne = (id: any) => request.delete(`/system/assistant/${id}`)
 export const dsApi = (id: any) => request.get(`/datasource/ws/${id}`)
+export interface ValidateDomainRes {
+  valid: boolean
+  message?: string
+  invalid_value?: string
+  unreachable_list?: Array<{ url: string; reason: string }>
+}
+
+export const validateAssistantDomain = (domain: string) =>
+  request.post<ValidateDomainRes>('/system/assistant/validate-domain', { domain })
 
 export const embeddedApi = {
   getList: (pageNum: any, pageSize: any, params: any) =>
