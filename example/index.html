@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>小助手嵌入示例 - 导航</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f5f6f8;
+      color: #1f2329;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    .header {
+      background: #fff;
+      padding: 20px 24px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.06);
+    }
+    .header h1 { font-size: 20px; font-weight: 600; }
+    .header p { margin-top: 6px; color: #8f959e; font-size: 14px; }
+    .main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+      transition: box-shadow .2s;
+    }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+    .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .card p { font-size: 13px; color: #8f959e; margin-bottom: 12px; }
+    .card a {
+      display: inline-block;
+      padding: 8px 14px;
+      background: #1cba90;
+      color: #fff;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 13px;
+    }
+    .card a:hover { background: #18a67e; }
+    .config {
+      margin-top: 32px;
+      padding: 16px 20px;
+      background: #fff;
+      border-radius: 12px;
+      font-size: 13px;
+      color: #646a73;
+    }
+    .config strong { color: #1f2329; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>小助手嵌入示例</h1>
+    <p>选择下方任一示例，在页面中体验基础应用 / 高级应用的浮窗或全屏嵌入。使用前请在 config.js 中填写 SQLBot 地址与小助手 ID，并在 SQLBot 中配置跨域。</p>
+  </header>
+  <main class="main">
+    <div class="cards">
+      <div class="card">
+        <h2>基础应用 · 浮窗</h2>
+        <p>右下角浮窗按钮，点击后打开对话。</p>
+        <a href="basic-floating.html">打开示例</a>
+      </div>
+      <div class="card">
+        <h2>基础应用 · 全屏</h2>
+        <p>整页展示小助手对话界面。</p>
+        <a href="basic-fullscreen.html">打开示例</a>
+      </div>
+      <div class="card">
+        <h2>高级应用 · 浮窗</h2>
+        <p>浮窗模式，数据源由第三方接口提供。</p>
+        <a href="advanced-floating.html">打开示例</a>
+      </div>
+      <div class="card">
+        <h2>高级应用 · 全屏</h2>
+        <p>全屏模式，数据源由第三方接口提供。</p>
+        <a href="advanced-fullscreen.html">打开示例</a>
+      </div>
+    </div>
+    <div class="config" id="config">
+      <strong>当前配置</strong>（来自 config.js）：<br>
+      SQLBOT_BASE_URL: <span id="url">-</span><br>
+      BASIC_ASSISTANT_ID: <span id="basicId">-</span><br>
+      ADVANCED_ASSISTANT_ID: <span id="advancedId">-</span>
+    </div>
+  </main>
+  <script src="config.js"></script>
+  <script>
+    var c = window.SQLBOT_EXAMPLE_CONFIG || {};
+    document.getElementById('url').textContent = c.SQLBOT_BASE_URL || '(未配置)';
+    document.getElementById('basicId').textContent = c.BASIC_ASSISTANT_ID || '(未配置)';
+    document.getElementById('advancedId').textContent = c.ADVANCED_ASSISTANT_ID || '(未配置)';
+  </script>
+</body>
+</html>

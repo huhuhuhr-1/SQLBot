@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>基础应用 - 全屏模式</title>
+  <script src="config.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #fff; color: #1f2329; height: 100vh; overflow: hidden; }
+    .bar { background: #fff; padding: 10px 24px; border-bottom: 1px solid #e5e6eb; flex-shrink: 0; }
+    .bar a { color: #1cba90; text-decoration: none; font-size: 14px; }
+    .bar a:hover { text-decoration: underline; }
+    .wrap { display: flex; flex-direction: column; height: 100vh; }
+    .copilot { flex: 1; min-height: 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar"><a href="index.html">← 返回示例首页</a></div>
+    <div class="copilot" id="copilot-root"></div>
+  </div>
+  <script>
+    (function () {
+      var c = window.SQLBOT_EXAMPLE_CONFIG || {};
+      var id = c.BASIC_ASSISTANT_ID;
+      var base = (c.SQLBOT_BASE_URL || '').replace(/\/$/, '');
+      if (!id || !base) {
+        document.getElementById('copilot-root').innerHTML = '<p style="padding:24px;color:#8f959e;">请在 config.js 中配置 SQLBOT_BASE_URL 和 BASIC_ASSISTANT_ID</p>';
+        return;
+      }
+      var script = document.createElement('script');
+      script.src = base + '/xpack_static/sqlbot-embedded-dynamic.umd.js';
+      script.onload = function () {
+        var timer = setInterval(function () {
+          if (window.sqlbot_embedded_handler && window.sqlbot_embedded_handler.mounted) {
+            clearInterval(timer);
+            window.sqlbot_embedded_handler.mounted('.copilot', { embeddedId: String(id) });
+          }
+        }, 100);
+        setTimeout(function () { clearInterval(timer); }, 15000);
+      };
+      document.head.appendChild(script);
+    })();
+  </script>
+</body>
+</html>
