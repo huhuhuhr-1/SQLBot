@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 import orjson
 import pandas as pd
+from psycopg2 import sql
 from fastapi import APIRouter, File, UploadFile, HTTPException, Path
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_
@@ -382,10 +383,10 @@ def insert_pg(df, tableName, engine):
         # output.seek(0)
 
         # pg copy
-        cursor.copy_expert(
-            sql=f"""COPY "{tableName}" FROM STDIN WITH CSV DELIMITER E'\t'""",
-            file=output
+        query = sql.SQL("COPY {} FROM STDIN WITH CSV DELIMITER E'\t'").format(
+            sql.Identifier(tableName)
         )
+        cursor.copy_expert(sql=query.as_string(cursor.connection), file=output)
         conn.commit()
     except Exception as e:
         traceback.print_exc()
