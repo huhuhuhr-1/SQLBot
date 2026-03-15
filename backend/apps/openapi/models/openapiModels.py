@@ -162,7 +162,7 @@ class OpenChatQuestion(AiModelQuestion):
     def plan_prompt(self, current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')):
         return get_myself_template()['plan_prompt'].format(schema=self.db_schema,
                                                            terminologies=self.terminologies,
-                                                           max_lenght=self.max_data_length,
+                                                           max_length=self.max_data_length,
                                                            current_date=current_time)
 
 

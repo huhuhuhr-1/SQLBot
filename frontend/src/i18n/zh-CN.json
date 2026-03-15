@@ -10,15 +10,18 @@
     "Details": "详情"
   },
   "deep_analysis": {
-    "desc": "根据分析意图自主规划，可多次查数与分析，流式展示过程与结论。",
+    "desc": "按六节结构输出综合分析报告；取数与推理过程默认收起。",
     "datasource": "数据源",
     "select_datasource": "请选择数据源",
     "question": "分析意图 / 问题",
     "question_placeholder": "描述要做的数据分析，例如：分析近一年各区域销售趋势并找出异常。",
+    "max_rows": "单次取数最大行数",
     "start": "开始分析",
     "analyzing": "分析中…",
     "stop": "停止",
     "process": "分析过程",
+    "process_collapsed": "展开取数与推理过程（SQL / 中间步骤）",
+    "report_title": "综合分析报告",
     "thinking": "思考",
     "waiting": "正在规划与执行，请稍候…",
     "empty_tip": "选择数据源并输入分析意图后，点击「开始分析」。"

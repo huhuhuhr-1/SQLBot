@@ -13,6 +13,7 @@
           :placeholder="t('deep_analysis.select_datasource')"
           filterable
           class="ds-select"
+          :disabled="loading"
         >
           <el-option
             v-for="ds in datasourceList"
@@ -31,6 +32,18 @@
           :placeholder="t('deep_analysis.question_placeholder')"
           maxlength="2000"
           show-word-limit
+          :disabled="loading"
+        />
+      </div>
+      <div class="form-item">
+        <label>{{ t('deep_analysis.max_rows') }}</label>
+        <el-input-number
+          v-model="maxDataLength"
+          :min="100"
+          :max="5000"
+          :step="100"
+          :disabled="loading"
+          class="max-rows-input"
         />
       </div>
       <div class="actions">
@@ -50,36 +63,48 @@
       <el-alert type="error" :title="errorMsg" show-icon />
     </div>
 
-    <div class="process-block">
-      <div v-if="steps.length > 0" class="process-title">
-        {{ t('deep_analysis.process') }}
-      </div>
-      <div class="steps-container">
-        <div v-for="(step, idx) in steps" :key="idx" class="step-item">
-          <div v-if="step.reasoning_content" class="step-thinking">
-            <el-collapse>
-              <el-collapse-item :name="idx">
-                <template #title>
-                  <span class="thinking-title">{{ t('deep_analysis.thinking') }} ({{ idx + 1 }})</span>
-                </template>
-                <div class="thinking-content">{{ step.reasoning_content }}</div>
-              </el-collapse-item>
-            </el-collapse>
+    <!-- 主报告：默认展开 -->
+    <div v-if="reportHtml" class="report-block">
+      <div class="report-title">{{ t('deep_analysis.report_title') }}</div>
+      <div class="report-body markdown-body" v-html="reportHtml"></div>
+    </div>
+
+    <!-- 取数 / 推理过程：默认收起 -->
+    <div v-if="processChunks.length > 0 || (loading && !reportHtml)" class="process-block">
+      <el-collapse v-model="processCollapse">
+        <el-collapse-item :title="t('deep_analysis.process_collapsed')" name="1">
+          <div v-if="loading && processChunks.length === 0" class="loading-tip">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            {{ t('deep_analysis.waiting') }}
           </div>
-          <div
-            v-if="step.content"
-            class="step-content markdown-body"
-            v-html="renderedContent(step.content)"
-          ></div>
-        </div>
-      </div>
-      <div v-if="loading && steps.length === 0" class="loading-tip">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        {{ t('deep_analysis.waiting') }}
-      </div>
-      <div v-else-if="!loading && steps.length === 0 && !errorMsg" class="empty-tip">
-        {{ t('deep_analysis.empty_tip') }}
-      </div>
+          <div class="steps-container">
+            <div v-for="(step, idx) in processChunks" :key="idx" class="step-item">
+              <div v-if="step.reasoning_content" class="step-thinking">
+                <el-collapse>
+                  <el-collapse-item :name="idx">
+                    <template #title>
+                      <span class="thinking-title">{{ t('deep_analysis.thinking') }} ({{ idx + 1 }})</span>
+                    </template>
+                    <div class="thinking-content">{{ step.reasoning_content }}</div>
+                  </el-collapse-item>
+                </el-collapse>
+              </div>
+              <div
+                v-if="step.content"
+                class="step-content markdown-body"
+                v-html="renderedContent(step.content)"
+              ></div>
+            </div>
+          </div>
+        </el-collapse-item>
+      </el-collapse>
+    </div>
+
+    <div
+      v-if="!loading && !errorMsg && !reportHtml && processChunks.length === 0"
+      class="empty-tip process-block empty-only"
+    >
+      {{ t('deep_analysis.empty_tip') }}
     </div>
   </div>
 </template>
@@ -99,9 +124,13 @@ const { t } = useI18n()
 const datasourceList = ref<any[]>([])
 const datasourceId = ref<number | undefined>()
 const question = ref('')
+const maxDataLength = ref(1000)
 const loading = ref(false)
 const errorMsg = ref('')
-const steps = ref<Array<{ content?: string; reasoning_content?: string; type?: string }>>([])
+const reportMarkdown = ref('')
+const reportHtml = ref('')
+const processChunks = ref<Array<{ content?: string; reasoning_content?: string; type?: string }>>([])
+const processCollapse = ref<string[]>([]) /* 默认收起 */
 let abortController: AbortController | null = null
 let stopFlag = false
 
@@ -127,7 +156,10 @@ async function loadDatasources() {
 async function startAnalysis() {
   if (!datasourceId.value || !question.value.trim()) return
   errorMsg.value = ''
-  steps.value = []
+  reportMarkdown.value = ''
+  reportHtml.value = ''
+  processChunks.value = []
+  processCollapse.value = []
   loading.value = true
   stopFlag = false
   abortController = new AbortController()
@@ -139,7 +171,7 @@ async function startAnalysis() {
         datasource_id: datasourceId.value,
         question: question.value.trim(),
         no_reasoning: false,
-        max_data_length: 1000,
+        max_data_length: maxDataLength.value,
         is_chart_output: true,
       },
       abortController
@@ -178,17 +210,28 @@ async function startAnalysis() {
           }
           if (data.type === 'finish') {
             loading.value = false
+            if (reportMarkdown.value) {
+              reportHtml.value = renderedContent(reportMarkdown.value)
+            }
             break
           }
           const c = typeof data.content === 'string' ? data.content : ''
           const r = typeof data.reasoning_content === 'string' ? data.reasoning_content : ''
-          if (c || r) {
-            steps.value.push({ content: c, reasoning_content: r, type: data.type })
+          if (data.type === 'report' && c) {
+            reportMarkdown.value = c
+            reportHtml.value = renderedContent(c)
+          } else if ((data.type === 'process' || data.type === 'analysis-result') && (c || r)) {
+            processChunks.value.push({ content: c, reasoning_content: r, type: data.type })
+          } else if (c || r) {
+            processChunks.value.push({ content: c, reasoning_content: r, type: data.type })
           }
         } catch (e) {
           console.warn('Parse SSE chunk failed', e)
         }
       }
+    }
+    if (reportMarkdown.value && !reportHtml.value) {
+      reportHtml.value = renderedContent(reportMarkdown.value)
     }
   } catch (e: any) {
     if (e?.name !== 'AbortError') {
@@ -212,7 +255,7 @@ onMounted(() => loadDatasources())
 <style scoped>
 .deep-analysis-page {
   padding: 16px 24px;
-  max-width: 900px;
+  max-width: 960px;
   margin: 0 auto;
 }
 .page-header {
@@ -241,6 +284,9 @@ onMounted(() => loadDatasources())
   width: 100%;
   max-width: 360px;
 }
+.max-rows-input {
+  width: 160px;
+}
 .config-row .question-item :deep(.el-textarea__inner) {
   font-family: inherit;
 }
@@ -253,18 +299,56 @@ onMounted(() => loadDatasources())
 .error-block {
   margin: 16px 0;
 }
-.process-block {
-  margin-top: 24px;
-  border: 1px solid var(--el-border-color-lighter);
+.report-block {
+  margin-top: 20px;
+  border: 1px solid var(--el-color-primary-light-5);
   border-radius: 8px;
-  padding: 16px;
-  min-height: 120px;
+  padding: 20px;
   background: var(--el-fill-color-blank);
 }
-.process-title {
-  font-size: 14px;
+.report-title {
+  font-size: 16px;
   font-weight: 600;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  color: var(--el-text-color-primary);
+}
+.report-body {
+  font-size: 14px;
+  line-height: 1.65;
+}
+.report-body :deep(h2) {
+  font-size: 15px;
+  margin: 20px 0 10px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  padding-bottom: 6px;
+}
+.report-body :deep(pre) {
+  background: var(--el-fill-color-light);
+  padding: 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.report-body :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0;
+}
+.report-body :deep(th),
+.report-body :deep(td) {
+  border: 1px solid var(--el-border-color-lighter);
+  padding: 8px 10px;
+}
+.process-block {
+  margin-top: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 8px 16px 16px;
+  background: var(--el-fill-color-blank);
+}
+.process-block.empty-only {
+  text-align: center;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
 .steps-container {
   display: flex;
@@ -308,11 +392,10 @@ onMounted(() => loadDatasources())
   border: 1px solid var(--el-border-color-lighter);
   padding: 6px 10px;
 }
-.loading-tip,
-.empty-tip {
+.loading-tip {
   color: var(--el-text-color-secondary);
   font-size: 13px;
-  padding: 24px 0;
+  padding: 16px 0;
   text-align: center;
 }
 .loading-tip .el-icon {

@@ -1354,6 +1354,12 @@ class LLMService:
                                                                            CustomPromptTypeEnum.GENERATE_SQL,
                                                                            oid, ds_id)
 
+            _last_sql_err = get_last_execute_sql_error(_session, self.chat_question.chat_id)
+            if _last_sql_err:
+                self.chat_question.error_msg = f'<error-msg>\n{_last_sql_err}\n</error-msg>'
+            else:
+                self.chat_question.error_msg = ''
+
             self.init_messages(_session)
 
             # select datasource if datasource is none
@@ -1492,9 +1498,20 @@ class LLMService:
             except Exception as e:
                 SQLBotLogUtil.error(f"{e}")
                 SQLBotLogUtil.error("执行sql失败")
+                try:
+                    self.save_error(
+                        session=_session,
+                        message=orjson.dumps({
+                            "message": "Execute SQL Failed",
+                            "traceback": str(e),
+                            "type": "exec-sql-err",
+                        }).decode(),
+                    )
+                except Exception:
+                    pass
                 yield {
-                    "data": "执行sql失败",
-                    "type": "error"
+                    "data": f"执行sql失败: {str(e)}",
+                    "type": "error",
                 }
                 return
 

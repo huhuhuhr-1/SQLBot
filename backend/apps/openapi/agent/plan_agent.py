@@ -83,8 +83,8 @@ class PlanAgent:
         # 消息队列
         self.queue = queue
 
-        # 默认返回的message_type
-        self.message_type = "analysis-result"
+        # 工具过程类推送统一为 process，最终报告由 final_answer 推 report
+        self.message_type = "process"
         self.session = session
 
     async def execute_plan(self):
@@ -95,10 +95,13 @@ class PlanAgent:
             # 初始化LLMService
             await self.llm_service_wrapper.initialize_service()
 
-            self.context = AnalysisContext(llm_service=self.llm_service_wrapper.llm_service,
-                                           message_type=self.message_type,
-                                           is_chart_output=self.chat_question.is_chart_output,
-                                           queue=self.queue)
+            self.context = AnalysisContext(
+                llm_service=self.llm_service_wrapper.llm_service,
+                message_type=self.message_type,
+                is_chart_output=self.chat_question.is_chart_output,
+                queue=self.queue,
+                max_data_size=getattr(self.chat_question, 'max_data_length', None) or 1000,
+            )
 
             # 创建LangChain Agent使用的工具
             tools = [
@@ -135,7 +138,6 @@ class PlanAgent:
 
             await self.analysis(agent_executor)
 
-            await self.queue.put(self.create_result(content=f"\n全部分析结束\n"))
             await self.queue.put(self.create_result(message_type="finish"))
 
             return None
@@ -197,28 +199,22 @@ class PlanAgent:
                 "type": message_type}
 
     async def analysis(self, agent_executor):
-        step = 1
-
-        await self.queue.put(self.create_result(content=f"# 分析任务  \n{self.question}  \n"))
-        await self.queue.put(self.create_result(content=f"\n# 分析过程  \n"))
-        await self.queue.put(self.create_result(content=f"\n## 分析步骤 {step}  \n"))
+        # 对用户仅推送「过程」类片段（默认 UI 收起）；不再逐步推送「分析步骤 1…N」
+        await self.queue.put(self.create_result(
+            content=f"**分析意图**：{self.question}\n\n*取数与推理过程见下方折叠区域，最终以报告为准。*\n",
+            message_type="process",
+        ))
 
         async for chunk in agent_executor.astream({"input": self.question}):
-            # SQLBotLogUtil.info(chunk)
-            # SQLBotLogUtil.info(chunk.keys())
-
             if "steps" in chunk.keys():
-                step += 1
-                await self.queue.put(self.create_result(content=f"\n## 分析步骤 {step}  \n"))
-
+                continue
             elif "actions" in chunk.keys():
                 content = self.get_message_content(chunk)
                 if len(content) != 0:
-                    await self.queue.put(self.create_result(content=content))
-
+                    await self.queue.put(self.create_result(content=content, message_type="process"))
             elif "output" in chunk.keys():
                 content = self.get_message_content(chunk)
                 if len(content) != 0:
-                    await self.queue.put(self.create_result(content=content))
+                    await self.queue.put(self.create_result(content=content, message_type="process"))
             else:
                 continue

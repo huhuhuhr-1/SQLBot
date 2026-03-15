@@ -21,10 +21,12 @@ class AnalysisContext(object):
                  llm_service,
                  message_type,
                  is_chart_output,
-                 queue: asyncio.Queue = None,**kwargs):
+                 queue: asyncio.Queue = None,
+                 max_data_size: int = 1000,
+                 **kwargs):
         self.llm_service = llm_service
         self.message_type = message_type
-        self.max_data_size = 1000
+        self.max_data_size = max(1, int(max_data_size or 1000))
         self.insights = []
         self.queue = queue
         self.is_chart_output = is_chart_output

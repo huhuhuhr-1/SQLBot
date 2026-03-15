@@ -24,7 +24,10 @@ pd.set_option("display.max_columns", None)
 
 class GetDataTool(BaseTool):
     name: str = "get_data"
-    description: str = "这是一个取数智能体。可以使用此工具获取需要的数据，非常聪明，能够准确理解你的取数需求，返回 pd.DataFrame 的json格式数据"
+    description: str = (
+        "取数智能体：自然语言描述需求，返回 pd.DataFrame 的 JSON。"
+        "**同一表同一时间窗尽量一次取全多维度**；常态下全任务调用本工具约 2～4 次即可，避免同表重复查。"
+    )
 
     class GetDataInput(BaseModel):
         query: str = Field(
@@ -314,11 +317,23 @@ class DataTransTool(BaseTool):
 
 class FinalAnswerTool(BaseTool):
     name: str = "final_answer"
-    description: str = "为用户的任务提供最终答案"
+    description: str = (
+        "输出唯一面向用户的综合分析报告（Markdown）。必须包含六级标题："
+        "## 1. 问题与口径 / ## 2. 核心结论（3～5 条）/ ## 3. 数据支撑 / ## 4. 风险与异常 / "
+        "## 5. 建议（可执行）/ ## 6. 局限。禁止仅输出几句话。禁止程序代码。"
+    )
 
     class FinalAnswerInput(BaseModel):
         answer: str = Field(
-            description="如果完成分析任务则返回完成分析结论，如果没有完成则给出没有完成的原因\n\n            ## 要求\n            1. 如果完成分析，则返回分析结论\n            2. 如果没有完成分析，则返回没有完成分析的原因\n            3. **必须使用中文回答，禁止给出任何程序代码**\n            4. 使用 **markdown** 格式")
+            description=(
+                "完整 Markdown 报告，必须依次包含："
+                "## 1. 问题与口径（问题、时间范围、主数据源与辅表、指标说明）；"
+                "## 2. 核心结论（3～5 条 bullet）；"
+                "## 3. 数据支撑（表格+简短解释，可选 SQL）；"
+                "## 4. 风险与异常；## 5. 建议；## 6. 局限。"
+                "中文，无代码。"
+            )
+        )
 
     args_schema: Type[BaseModel] = FinalAnswerInput
     context: AnalysisContext = None
@@ -337,8 +352,8 @@ class FinalAnswerTool(BaseTool):
                 "summary": answer,
             }
 
-            self.context.queue.put_nowait(self.context.create_result(content=f"\n### 总结结果  \n"))
-            self.context.queue.put_nowait(self.context.create_result(content=f"\n  {answer}  \n"))
+            self.context.queue.put_nowait(
+                self.context.create_result(content=answer, message_type="report"))
 
             return json.dumps(result, ensure_ascii=False)
 
