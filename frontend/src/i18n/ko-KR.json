@@ -24,7 +24,11 @@
     "report_title": "종합 보고서",
     "thinking": "추론",
     "waiting": "계획 및 실행 중…",
-    "empty_tip": "데이터 소스와 질문을 입력한 뒤 시작하세요."
+    "empty_tip": "데이터 소스와 질문을 입력한 뒤 시작하세요.",
+    "new_analysis": "새 분석",
+    "export_report": "보고서 내보내기",
+    "export_success": "보고서가 내보내졌습니다",
+    "no_sessions": "분석 기록 없음"
   },
   "sync": {
     "integration": "플랫폼 통합을 활성화해야 합니다.",

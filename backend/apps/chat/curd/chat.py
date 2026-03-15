@@ -41,10 +41,33 @@ def get_chat(session: SessionDep, chat_id: int) -> Chat:
 
 
 def list_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
+    """智能问数会话列表：仅返回 origin in (0, 2)，排除深度分析(origin=1)"""
     oid = current_user.oid if current_user.oid is not None else 1
-    chart_list = session.query(Chat).filter(and_(Chat.create_by == current_user.id, Chat.oid == oid)).order_by(
-        Chat.create_time.desc()).all()
+    chart_list = session.query(Chat).filter(
+        and_(
+            Chat.create_by == current_user.id,
+            Chat.oid == oid,
+            Chat.origin.in_([0, 2]),
+        )
+    ).order_by(Chat.create_time.desc()).all()
     return chart_list
+
+
+def list_deep_analysis_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
+    """深度分析会话列表：仅返回 origin=1"""
+    oid = current_user.oid if current_user.oid is not None else 1
+    return (
+        session.query(Chat)
+        .filter(
+            and_(
+                Chat.create_by == current_user.id,
+                Chat.oid == oid,
+                Chat.origin == 1,
+            )
+        )
+        .order_by(Chat.create_time.desc())
+        .all()
+    )
 
 
 def list_recent_questions(session: SessionDep, current_user: CurrentUser, datasource_id: int) -> List[str]:

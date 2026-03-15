@@ -24,7 +24,11 @@
     "report_title": "Analysis report",
     "thinking": "Thinking",
     "waiting": "Planning and executing…",
-    "empty_tip": "Choose a data source, enter your goal, then click Start."
+    "empty_tip": "Choose a data source, enter your goal, then click Start.",
+    "new_analysis": "New analysis",
+    "export_report": "Export report",
+    "export_success": "Report exported",
+    "no_sessions": "No analysis sessions yet"
   },
   "variables": {
     "built_in": "Built-in",

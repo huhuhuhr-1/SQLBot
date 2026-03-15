@@ -24,7 +24,11 @@
     "report_title": "综合分析报告",
     "thinking": "思考",
     "waiting": "正在规划与执行，请稍候…",
-    "empty_tip": "选择数据源并输入分析意图后，点击「开始分析」。"
+    "empty_tip": "选择数据源并输入分析意图后，点击「开始分析」。",
+    "new_analysis": "新建分析",
+    "export_report": "导出报告",
+    "export_success": "报告已导出",
+    "no_sessions": "暂无分析记录"
   },
   "sync": {
     "integration": "需开启平台对接",

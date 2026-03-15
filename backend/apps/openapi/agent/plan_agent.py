@@ -138,7 +138,10 @@ class PlanAgent:
 
             await self.analysis(agent_executor)
 
-            await self.queue.put(self.create_result(message_type="finish"))
+            await self.queue.put({
+                **self.create_result(message_type="finish"),
+                "chat_id": self.chat_question.chat_id,
+            })
 
             return None
 

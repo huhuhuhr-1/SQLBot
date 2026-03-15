@@ -13,8 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from starlette.responses import StreamingResponse
 
 from apps.ai_model.model_factory import create_llm
-from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat
-from apps.chat.models.chat_model import CreateChat
+from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat, list_deep_analysis_chats
+from apps.chat.models.chat_model import CreateChat, Chat
 from apps.datasource.crud.datasource import get_datasource_list_for_openapi, get_datasource_list_for_openapi_excels, \
     create_ds
 from apps.datasource.models.datasource import CoreDatasource, CreateDatasource, CoreTable, DatasourceConf
@@ -384,6 +384,13 @@ async def bind_data_source(session: SessionDep, current_user: CurrentUser, db_bi
             status_code=500,
             detail=str(e)
         )
+
+
+@router.get("/deep-analysis/sessions", response_model=List[Chat], summary="深度分析会话列表",
+            description="仅返回 origin=1 的深度分析会话，供深度分析页左侧列表使用",
+            dependencies=[Depends(common_headers)])
+async def deep_analysis_sessions(session: SessionDep, current_user: CurrentUser):
+    return list_deep_analysis_chats(session, current_user)
 
 
 @router.post("/deep-analysis", summary="深度分析",
