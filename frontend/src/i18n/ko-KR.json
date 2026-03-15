@@ -1,12 +1,27 @@
 {
   "menu": {
     "add_interface_credentials": "인터페이스 자격 증명을 추가하십시오",
+    "deep_analysis": "심층 분석",
     "Data Q&A": "스마트 데이터 조회",
     "statistics": "통계 분석",
     "Data Connections": "데이터 소스",
     "Dashboard": "대시보드",
     "AI Model Configuration": "모델 구성",
     "Details": "세부"
+  },
+  "deep_analysis": {
+    "desc": "분석 의도에 따라 자동 계획·다회 조회·스트리밍 과정과 결론을 보여 줍니다.",
+    "datasource": "데이터 소스",
+    "select_datasource": "데이터 소스 선택",
+    "question": "분석 의도 / 질문",
+    "question_placeholder": "분석 내용을 입력하세요.",
+    "start": "분석 시작",
+    "analyzing": "분석 중…",
+    "stop": "중지",
+    "process": "분석 과정",
+    "thinking": "추론",
+    "waiting": "계획 및 실행 중…",
+    "empty_tip": "데이터 소스와 질문을 입력한 뒤 시작하세요."
   },
   "sync": {
     "integration": "플랫폼 통합을 활성화해야 합니다.",

@@ -13,6 +13,7 @@ import { getLocale } from './utils'
 import { useAssistantStore } from '@/stores/assistant'
 import { useRouter } from 'vue-router'
 import JSONBig from 'json-bigint'
+import { ElMessage } from 'element-plus-secondary'
 // import { i18n } from '@/i18n'
 // const t = i18n.global.t
 const assistantStore = useAssistantStore()

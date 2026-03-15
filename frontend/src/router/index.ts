@@ -61,6 +61,23 @@ export const routes = [
     ],
   },
   {
+    path: '/deep-analysis',
+    component: LayoutDsl,
+    redirect: '/deep-analysis/index',
+    children: [
+      {
+        path: 'index',
+        name: 'deepAnalysis',
+        component: () => import('@/views/deep-analysis/index.vue'),
+        meta: {
+          title: t('menu.deep_analysis'),
+          iconActive: 'model',
+          iconDeActive: 'noModel',
+        },
+      },
+    ],
+  },
+  {
     path: '/dsTable',
     component: SinglePage,
     children: [

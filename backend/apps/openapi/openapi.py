@@ -24,7 +24,7 @@ from apps.openapi.agent.chat_agent import ChatAgent
 from apps.openapi.agent.plan_agent import PlanAgent
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql
+    OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, DeepAnalysisRequest
 from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.openapi.service.openapi_llm import LLMService
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
@@ -384,6 +384,96 @@ async def bind_data_source(session: SessionDep, current_user: CurrentUser, db_bi
             status_code=500,
             detail=str(e)
         )
+
+
+@router.post("/deep-analysis", summary="深度分析",
+            description="独立菜单「深度分析」：Agent 自主规划、多次查数、意图驱动分析，流式返回过程与结果",
+            dependencies=[Depends(common_headers)])
+async def deep_analysis(
+        session: SessionDep,
+        current_user: CurrentUser,
+        body: DeepAnalysisRequest,
+        current_assistant: CurrentAssistant
+):
+    """
+    深度分析：根据用户意图自主规划，可多次查数、多次分析，流式返回每步过程与最终结果。
+    前端可展示：规划步骤、取数 SQL、执行结果、分析结论、最终报告等。
+    """
+    try:
+        chat_id = body.chat_id
+        if chat_id is None:
+            create_chat_obj = CreateChat(
+                datasource=body.datasource_id,
+                question=body.question[:50] if len(body.question) > 50 else body.question,
+                origin=1,
+            )
+            chat_info = create_chat(session, current_user, create_chat_obj, require_datasource=True,
+                                    current_assistant=current_assistant)
+            chat_id = chat_info.id
+            if not chat_id:
+                raise HTTPException(status_code=500, detail="创建会话失败")
+
+        chat_question = OpenChatQuestion(
+            chat_id=chat_id,
+            question=body.question,
+            task_type="chat",
+            chat_mode="plan",
+            no_reasoning=body.no_reasoning or False,
+            history_open=True,
+            max_data_length=body.max_data_length or 1000,
+            is_chart_output=body.is_chart_output is not False,
+        )
+
+        queue = asyncio.Queue()
+        llm = await create_llm()
+
+        async def _stream(q):
+            try:
+                while True:
+                    try:
+                        data = await asyncio.wait_for(q.get(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        continue
+                    yield 'data:' + orjson.dumps(data).decode() + '\n\n'
+                    if isinstance(data, dict) and data.get('type') == 'finish':
+                        break
+                    if isinstance(data, dict) and data.get('type') == 'error':
+                        break
+            except GeneratorExit:
+                return
+            except Exception as e:
+                yield 'data:' + orjson.dumps({
+                    'type': 'error',
+                    'content': str(e),
+                    'reasoning_content': '',
+                }).decode() + '\n\n'
+
+        def run_plan(context, user, question, assistant, q):
+            from common.core.db import get_db_session
+            with get_db_session() as thread_session:
+                context.run(lambda: asyncio.run(
+                    PlanAgent(
+                        session=thread_session,
+                        current_user=user,
+                        chat_question=question,
+                        current_assistant=assistant,
+                        queue=q,
+                        llm=llm,
+                    ).execute_plan()))
+
+        thread = threading.Thread(
+            target=run_plan,
+            args=(contextvars.copy_context(), current_user, chat_question, current_assistant, queue),
+            daemon=True,
+        )
+        thread.start()
+
+        return StreamingResponse(_stream(queue), media_type="text/event-stream")
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/getRecommend", dependencies=[Depends(common_headers)])

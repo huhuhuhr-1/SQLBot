@@ -1191,12 +1191,26 @@ class LLMService:
                     for v in chart.get('columns'):
                         v['value'] = v.get('value').lower()
                 if chart.get('axis'):
-                    if chart.get('axis').get('x'):
-                        chart.get('axis').get('x')['value'] = chart.get('axis').get('x').get('value').lower()
-                    if chart.get('axis').get('y'):
-                        chart.get('axis').get('y')['value'] = chart.get('axis').get('y').get('value').lower()
-                    if chart.get('axis').get('series'):
-                        chart.get('axis').get('series')['value'] = chart.get('axis').get('series').get('value').lower()
+                    axis = chart['axis']
+                    if axis.get('x') and axis['x'].get('value'):
+                        axis['x']['value'] = axis['x']['value'].lower()
+                    # axis.y 支持单对象或数组（LLM 常返回数组）
+                    if axis.get('y'):
+                        y = axis['y']
+                        if isinstance(y, list):
+                            for item in y:
+                                if item and item.get('value'):
+                                    item['value'] = item['value'].lower()
+                        elif isinstance(y, dict) and y.get('value'):
+                            y['value'] = y['value'].lower()
+                    if axis.get('series'):
+                        s = axis['series']
+                        if isinstance(s, list):
+                            for item in s:
+                                if item and item.get('value'):
+                                    item['value'] = item['value'].lower()
+                        elif isinstance(s, dict) and s.get('value'):
+                            s['value'] = s['value'].lower()
             elif data['type'] == 'error':
                 message = data['reason']
                 error = True
@@ -1554,8 +1568,16 @@ class LLMService:
         except Exception as e:
             SQLBotLogUtil.error(f"{e}")
             SQLBotLogUtil.error("plan获取数据失败")
+            err_msg = "获取数据失败"
+            if isinstance(e, SingleMessageError):
+                try:
+                    payload = orjson.loads(str(e))
+                    if isinstance(payload, dict) and payload.get("message"):
+                        err_msg = f"获取数据失败：{payload['message']}"
+                except Exception:
+                    pass
             yield {
-                "data": "获取数据失败",
+                "data": err_msg,
                 "type": "error"
             }
             return

@@ -428,7 +428,7 @@ const handleCurrentChange = (val: number) => {
           </el-input>
         </div>
       </div>
-      <div class="table-content" :class="multipleSelectionAll.length && 'show-pagination_height'">
+      <div class="table-content" :class="multipleSelectionAll.length ?  'show-pagination_height' : ''">
         <div class="preview-or-schema">
           <el-table
             ref="multipleTableRef"

@@ -26,6 +26,19 @@ from apps.openapi.service.openapi_prompt import get_myself_template
 from apps.template.generate_sql.generator import get_sql_template
 
 
+class DeepAnalysisRequest(BaseModel):
+    """
+    深度分析请求模型
+    用于单独菜单「深度分析」：Agent 自主规划、多次查数、意图驱动分析
+    """
+    datasource_id: int = Body(..., description='数据源 ID')
+    question: str = Body(..., description='用户分析意图/问题')
+    chat_id: Optional[int] = Body(None, description='可选，已有会话 ID；不传则自动创建新会话')
+    no_reasoning: Optional[bool] = Body(default=False, description='是否关闭思考过程')
+    max_data_length: Optional[int] = Body(default=1000, description='单次取数最大条数')
+    is_chart_output: Optional[bool] = Body(default=True, description='是否输出图表')
+
+
 class OpenClean(BaseModel):
     """
     聊天记录清理请求模型

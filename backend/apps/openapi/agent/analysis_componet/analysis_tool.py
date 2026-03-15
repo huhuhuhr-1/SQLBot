@@ -69,7 +69,8 @@ class GetDataTool(BaseTool):
                 if result_type == "error":
                     await self.context.queue.put(
                         self.context.create_result(content=f"\n {result_data} \n"))
-                    return "获取数据异常,请重新尝试"
+                    # 将具体错误原因返回给 agent，避免同一错误反复重试（如图表配置解析失败）
+                    return result_data if isinstance(result_data, str) and result_data.strip() else "获取数据异常,请重新尝试"
 
                 elif result_type == "sql_result":
                     sql = result_data["sql"]

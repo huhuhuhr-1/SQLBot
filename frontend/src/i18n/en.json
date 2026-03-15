@@ -1,12 +1,27 @@
 {
   "menu": {
     "add_interface_credentials": "Please add interface credentials",
+    "deep_analysis": "Deep Analysis",
     "Data Q&A": "Data Q&A",
     "statistics": "Statistical Analysis",
     "Data Connections": "Data Sources",
     "Dashboard": "Dashboard",
     "AI Model Configuration": "AI Model Config",
     "Details": "Details"
+  },
+  "deep_analysis": {
+    "desc": "Plan and run multi-step analysis with streaming progress and conclusions.",
+    "datasource": "Data source",
+    "select_datasource": "Select data source",
+    "question": "Analysis goal / question",
+    "question_placeholder": "Describe the analysis, e.g. regional sales trend for the past year.",
+    "start": "Start",
+    "analyzing": "Analyzing…",
+    "stop": "Stop",
+    "process": "Process",
+    "thinking": "Thinking",
+    "waiting": "Planning and executing…",
+    "empty_tip": "Choose a data source, enter your goal, then click Start."
   },
   "variables": {
     "built_in": "Built-in",

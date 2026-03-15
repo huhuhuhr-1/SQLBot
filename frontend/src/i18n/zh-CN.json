@@ -1,12 +1,27 @@
 {
   "menu": {
     "add_interface_credentials": "请添加接口凭证",
+    "deep_analysis": "深度分析",
     "Data Q&A": "智能问数",
     "statistics": "统计分析",
     "Data Connections": "数据源",
     "Dashboard": "仪表盘",
     "AI Model Configuration": "模型配置",
     "Details": "详情"
+  },
+  "deep_analysis": {
+    "desc": "根据分析意图自主规划，可多次查数与分析，流式展示过程与结论。",
+    "datasource": "数据源",
+    "select_datasource": "请选择数据源",
+    "question": "分析意图 / 问题",
+    "question_placeholder": "描述要做的数据分析，例如：分析近一年各区域销售趋势并找出异常。",
+    "start": "开始分析",
+    "analyzing": "分析中…",
+    "stop": "停止",
+    "process": "分析过程",
+    "thinking": "思考",
+    "waiting": "正在规划与执行，请稍候…",
+    "empty_tip": "选择数据源并输入分析意图后，点击「开始分析」。"
   },
   "sync": {
     "integration": "需开启平台对接",
