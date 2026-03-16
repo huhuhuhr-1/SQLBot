@@ -262,11 +262,25 @@ class AttributionInsightType(InsightType):
             return False
         df = data.get_data()
         df = df.sort_values(by=data.measure.column, ascending=False)
-        y = df[data.measure.column].values
+
+        # 将指标列安全转换为数值；无法转换的视为缺失并过滤掉，避免出现 str 与 int 比较
+        y_series = pd.to_numeric(pd.Series(df[data.measure.column].values), errors="coerce")
+        y = y_series.to_numpy()
+        y = y[~np.isnan(y)]
+
+        if y.size <= 2:
+            return False
+
+        # 保证全部为非负数且和不为 0
+        if not np.all(y >= 0):
+            return False
+        if y.sum() == 0:
+            return False
 
         # 最后一个条件表示占比类的指标不使用这个分析
-        return y.size > 2 and np.all(y >= 0) and np.max(y) / y.sum() >= 0.5 and int(np.max(y) * 100) != int(
-            np.max(y) / y.sum() * 100)
+        max_val = float(np.max(y))
+        rate = max_val / float(y.sum())
+        return rate >= 0.5 and int(max_val * 100) != int(rate * 100)
 
     @classmethod
     def _from_data(cls, data: SiblingGroup, **kwargs) -> "InsightType":

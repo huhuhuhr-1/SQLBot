@@ -807,6 +807,16 @@ def save_deep_analysis_result(
     chat = session.get(Chat, chat_id)
     if not chat:
         return None
+
+    # 使用本次深度分析的提问内容刷新会话标题，
+    # 避免新建深度分析时留下的时间戳标题一直保留。
+    safe_question = (question or "").strip()
+    if safe_question:
+        chat.brief = safe_question[:20]
+        # 由真实问题生成的标题，标记为非自动生成，方便后续逻辑区分
+        chat.brief_generate = False
+        session.add(chat)
+
     payload = {
         "plan": plan_md or "",
         "report": report_md or "",

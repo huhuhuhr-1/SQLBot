@@ -37,6 +37,7 @@ class DeepAnalysisRequest(BaseModel):
     no_reasoning: Optional[bool] = Body(default=False, description='是否关闭思考过程')
     max_data_length: Optional[int] = Body(default=1000, description='单次取数最大条数')
     is_chart_output: Optional[bool] = Body(default=True, description='是否输出图表')
+    max_steps: Optional[int] = Body(default=None, description='最大执行步骤数（迭代次数），不填则自动推断')
 
 
 class OpenClean(BaseModel):

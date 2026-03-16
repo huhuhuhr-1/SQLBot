@@ -146,46 +146,37 @@
         </el-tooltip>
       </div>
 
-      <!-- 中间：新建分析 + 选表 -->
+      <!-- 中间：无 session 欢迎态 / 有 session 工作台 -->
       <el-main
         class="da-center-main"
         :class="{ 'hide-sidebar': !sessionSideBarShow }"
       >
         <div class="da-center-inner">
-          <!-- 选表：数据源列表 -->
-          <section class="da-datasource-section">
-            <div class="da-section-head">
-              <span class="da-section-title">{{ t('deep_analysis.select_datasource_title') }}</span>
+          <!-- 无 session：欢迎 + 选择数据源入口 -->
+          <template v-if="currentSessionId === undefined">
+            <div class="da-welcome-block">
+              <div class="da-welcome-desc">{{ t('deep_analysis.starter_desc') }}</div>
+              <el-button type="primary" size="large" class="da-welcome-btn" @click="openBindDsPopup">
+                <el-icon style="margin-right: 8px"><icon_database_colorful /></el-icon>
+                {{ t('deep_analysis.bind_datasource_start') }}
+              </el-button>
             </div>
-            <el-input
-              v-model="datasourceSearch"
-              clearable
-              class="da-ds-search"
-              :placeholder="t('deep_analysis.datasource_search_placeholder')"
-            >
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
-            <el-scrollbar class="da-ds-list">
-              <div
-                v-for="ds in filteredDatasourceList"
-                :key="ds.id"
-                class="da-ds-item"
-                :class="{ isActive: datasourceId === ds.id }"
-                @click="datasourceId = ds.id"
-              >
-                <el-icon size="16" class="da-ds-icon"><icon_database_colorful /></el-icon>
-                <span class="da-ds-name">{{ ds.name }}</span>
-              </div>
-              <div v-if="filteredDatasourceList.length === 0" class="da-ds-empty">
-                {{ t('datasource.relevant_content_found') }}
-              </div>
-            </el-scrollbar>
-          </section>
+          </template>
 
-          <!-- 新建分析：输入与操作 -->
-          <section class="da-composer-section">
+          <!-- 有 session：数据源只读 + 分析工作台 -->
+          <template v-else>
+            <section class="da-datasource-section">
+              <div class="da-section-head">
+                <span class="da-section-title">{{ t('deep_analysis.select_datasource_title') }}</span>
+              </div>
+              <div class="da-ds-readonly">
+                <el-icon size="16" class="da-ds-icon"><icon_database_colorful /></el-icon>
+                <span class="da-ds-name">{{ currentSessionDatasourceName || t('deep_analysis.select_datasource') }}</span>
+              </div>
+            </section>
+
+            <!-- 新建分析：输入与操作 -->
+            <section class="da-composer-section">
             <div class="da-section-head">
               <span class="da-section-title">{{ t('deep_analysis.workspace_label') }}</span>
             </div>
@@ -203,6 +194,20 @@
                   />
                   <span class="field-hint">{{ t('deep_analysis.rows_hint') }}</span>
                 </div>
+                <div class="composer-field steps-field">
+                  <label>{{ t('deep_analysis.max_steps') }}</label>
+                  <el-input-number
+                    v-model="maxSteps"
+                    :min="4"
+                    :max="30"
+                    :step="1"
+                    :disabled="loading"
+                    clearable
+                    :placeholder="t('deep_analysis.max_steps_hint')"
+                    class="max-steps-input"
+                  />
+                  <span class="field-hint">{{ t('deep_analysis.max_steps_hint') }}</span>
+                </div>
               </div>
               <div class="composer-field question-field">
                 <label>{{ t('deep_analysis.question') }}</label>
@@ -218,7 +223,7 @@
                   @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
                 />
               </div>
-              <div v-if="recommendLoading || quickExamples.length" class="da-example-block">
+              <div v-if="false && (recommendLoading || quickExamples.length)" class="da-example-block">
                 <div class="da-example-title">{{ t('deep_analysis.examples') }}</div>
                 <div class="da-example-list">
                   <template v-if="recommendLoading">
@@ -253,6 +258,7 @@
               </div>
             </div>
           </section>
+          </template>
         </div>
       </el-main>
 
@@ -280,7 +286,7 @@
             <div v-if="datasourceId || currentStage || loading || hasContent" class="da-summary-grid">
               <div class="da-summary-card">
                 <div class="summary-label">{{ t('deep_analysis.selected_datasource') }}</div>
-                <div class="summary-value">{{ selectedDatasourceName || '--' }}</div>
+                <div class="summary-value">{{ currentSessionDatasourceName || selectedDatasourceName || '--' }}</div>
               </div>
               <div class="da-summary-card">
                 <div class="summary-label">{{ t('deep_analysis.current_stage') }}</div>
@@ -291,6 +297,10 @@
               <div class="da-summary-card">
                 <div class="summary-label">{{ t('deep_analysis.max_rows') }}</div>
                 <div class="summary-value">{{ maxDataLength }}</div>
+              </div>
+              <div class="da-summary-card">
+                <div class="summary-label">{{ t('deep_analysis.max_steps') }}</div>
+                <div class="summary-value">{{ maxSteps ?? t('deep_analysis.max_steps_auto') }}</div>
               </div>
             </div>
             <div v-if="errorMsg" class="error-block">
@@ -373,6 +383,53 @@
       </aside>
     </el-container>
 
+    <!-- 绑定数据源弹层（新建分析） -->
+    <el-dialog
+      v-model="bindDsPopupVisible"
+      :title="t('deep_analysis.bind_datasource_title')"
+      width="560"
+      :close-on-click-modal="false"
+      class="da-bind-ds-dialog"
+      @closed="bindDsSelectedId = undefined"
+    >
+      <el-input
+        v-model="datasourceSearch"
+        clearable
+        class="da-ds-search"
+        :placeholder="t('deep_analysis.datasource_search_placeholder')"
+      >
+        <template #prefix>
+          <el-icon><Search /></el-icon>
+        </template>
+      </el-input>
+      <el-scrollbar class="da-bind-ds-list">
+        <div
+          v-for="ds in filteredDatasourceList"
+          :key="ds.id"
+          class="da-ds-item"
+          :class="{ isActive: bindDsSelectedId === ds.id }"
+          @click="selectDsInBindPopup(ds.id)"
+        >
+          <el-icon size="16" class="da-ds-icon"><icon_database_colorful /></el-icon>
+          <span class="da-ds-name">{{ ds.name }}</span>
+        </div>
+        <div v-if="filteredDatasourceList.length === 0" class="da-ds-empty">
+          {{ t('datasource.relevant_content_found') }}
+        </div>
+      </el-scrollbar>
+      <template #footer>
+        <el-button @click="closeBindDsPopup">{{ t('common.cancel') }}</el-button>
+        <el-button
+          type="primary"
+          :loading="bindDsLoading"
+          :disabled="bindDsSelectedId == null"
+          @click="confirmBindDs"
+        >
+          {{ t('datasource.confirm') }}
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 重命名弹窗 -->
     <el-dialog
       v-model="renameDialogVisible"
@@ -410,7 +467,6 @@ import { Search, Loading } from '@element-plus/icons-vue'
 import { request } from '@/utils/request'
 import { datasourceApi } from '@/api/datasource'
 import { deepAnalysisApi } from '@/api/deepAnalysis'
-import { recommendedApi } from '@/api/recommendedApi'
 import { chatApi } from '@/api/chat'
 import type { ChatInfo } from '@/api/chat'
 import md from '@/utils/markdown.ts'
@@ -434,6 +490,7 @@ const datasourceSearch = ref('')
 const datasourceId = ref<number | undefined>()
 const question = ref('')
 const maxDataLength = ref(1000)
+const maxSteps = ref<number | undefined>(undefined)
 const loading = ref(false)
 const errorMsg = ref('')
 const planMarkdown = ref('')
@@ -465,6 +522,11 @@ const renameDialogVisible = ref(false)
 const renameLoading = ref(false)
 const renameFormRef = ref()
 const renameForm = reactive({ name: '', id: 0 })
+
+const bindDsPopupVisible = ref(false)
+const bindDsSelectedId = ref<number | undefined>()
+const bindDsLoading = ref(false)
+const currentSessionDatasourceName = ref('')
 const renameRules = {
   name: [
     {
@@ -621,6 +683,7 @@ function closeSessionPopover() {
 }
 function goNewAnalysis() {
   currentSessionId.value = undefined
+  currentSessionDatasourceName.value = ''
   persistCurrentSession()
   errorMsg.value = ''
   planMarkdown.value = ''
@@ -631,43 +694,65 @@ function goNewAnalysis() {
   processCollapse.value = []
   currentStage.value = ''
   question.value = ''
+  datasourceId.value = undefined
+  openBindDsPopup()
 }
 
-async function loadRecommendedQuestions(dsId: number | undefined) {
-  if (!dsId) {
-    recommendedQuestions.value = []
-    recommendLoading.value = false
+function openBindDsPopup() {
+  bindDsSelectedId.value = undefined
+  datasourceSearch.value = ''
+  bindDsPopupVisible.value = true
+  loadDatasources()
+}
+
+function closeBindDsPopup() {
+  bindDsPopupVisible.value = false
+  bindDsSelectedId.value = undefined
+}
+
+function selectDsInBindPopup(dsId: number) {
+  bindDsSelectedId.value = dsId
+}
+
+async function confirmBindDs() {
+  if (bindDsSelectedId.value == null) return
+  bindDsLoading.value = true
+  try {
+    await datasourceApi.check_by_id(bindDsSelectedId.value)
+  } catch {
+    bindDsLoading.value = false
     return
   }
-  recommendLoading.value = true
-  recommendedQuestions.value = []
   try {
-    const llmRes = await deepAnalysisApi.recommendQuestions(dsId)
-    if (llmRes?.questions?.length) {
-      recommendedQuestions.value = llmRes.questions
-      return
-    }
-  } catch {
-    // 忽略 LLM 推荐失败，走数据源配置
-  }
-  try {
-    const res = await recommendedApi.get_datasource_recommended_base(dsId)
-    if (res?.recommended_config === 2 && res?.questions) {
-      const raw = res.questions
-      const arr = typeof raw === 'string' ? (() => { try { return JSON.parse(raw) } catch { return [] } })() : raw
-      recommendedQuestions.value = Array.isArray(arr) ? arr.filter((q: any) => typeof q === 'string') : []
-    }
-  } catch {
-    // 保持为空
+    const chat = await deepAnalysisApi.startSession(bindDsSelectedId.value)
+    sessionList.value.unshift(chat)
+    currentSessionId.value = chat.id
+    datasourceId.value = chat.datasource
+    question.value = chat.brief || ''
+    currentSessionDatasourceName.value = chat.datasource_name || ''
+    persistCurrentSession()
+    await loadSessions()
+    closeBindDsPopup()
+    if (chat.id != null) loadSessionDetail(chat.id)
+    loadRecommendedQuestions(chat.datasource)
+  } catch (e: any) {
+    ElMessage.error(e?.message || String(e))
   } finally {
-    recommendLoading.value = false
+    bindDsLoading.value = false
   }
+}
+
+async function loadRecommendedQuestions(_dsId: number | undefined) {
+  // 由于推荐问题较慢，这里直接禁用推荐逻辑，保持空列表
+  recommendedQuestions.value = []
+  recommendLoading.value = false
 }
 
 async function loadSessionDetail(chatId: number) {
   try {
     const res = await chatApi.get(chatId)
     const info = chatApi.toChatInfo(res)
+    currentSessionDatasourceName.value = info?.datasource_name || ''
     const records = info?.records || []
     const withAnalysis = records.filter((r: any) => r?.analysis && String(r.analysis).trim().startsWith('{'))
     const last = withAnalysis.length ? withAnalysis[withAnalysis.length - 1] : records[records.length - 1]
@@ -706,6 +791,7 @@ function selectSession(item: ChatInfo) {
   currentSessionId.value = item.id
   datasourceId.value = item.datasource
   question.value = item.brief || ''
+  currentSessionDatasourceName.value = item.datasource_name || ''
   persistCurrentSession()
   if (item.id != null) loadSessionDetail(item.id)
 }
@@ -789,6 +875,7 @@ async function startAnalysis() {
         chat_id: currentSessionId.value ?? undefined,
         no_reasoning: false,
         max_data_length: maxDataLength.value,
+        max_steps: maxSteps.value,
         is_chart_output: true,
       },
       abortController
@@ -1223,6 +1310,47 @@ onMounted(async () => {
   font-size: 13px;
   color: #646a73;
 }
+.da-welcome-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  padding: 40px 24px;
+  text-align: center;
+}
+.da-welcome-desc {
+  font-size: 14px;
+  color: #646a73;
+  margin-bottom: 24px;
+  max-width: 360px;
+  line-height: 1.6;
+}
+.da-welcome-btn {
+  font-size: 15px;
+}
+.da-ds-readonly {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(222, 224, 227, 1);
+  border-radius: 12px;
+  background: #fafbfc;
+  color: rgba(31, 35, 41, 0.88);
+  font-size: 14px;
+}
+.da-bind-ds-list {
+  max-height: 320px;
+  margin-top: 12px;
+  border: 1px solid rgba(222, 224, 227, 1);
+  border-radius: 12px;
+  background: #fafbfc;
+}
+.da-bind-ds-list .da-ds-item {
+  margin: 4px 8px;
+}
 .da-composer-card {
   border: 1px solid rgba(222, 224, 227, 1);
   border-radius: 16px;
@@ -1231,6 +1359,9 @@ onMounted(async () => {
 }
 .da-composer-top {
   margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
 }
 .composer-field {
   min-width: 0;
@@ -1241,7 +1372,8 @@ onMounted(async () => {
   color: #646a73;
   margin-bottom: 8px;
 }
-.max-rows-input {
+.max-rows-input,
+.max-steps-input {
   width: 160px;
 }
 .field-hint {

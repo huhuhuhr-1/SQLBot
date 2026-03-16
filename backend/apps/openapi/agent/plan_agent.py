@@ -8,7 +8,7 @@
 import asyncio
 import json
 import re
-from typing import Any
+from typing import Any, Optional
 
 from langchain.agents import AgentExecutor
 from langchain.agents import create_tool_calling_agent
@@ -61,14 +61,16 @@ class PlanAgent:
                  current_user: CurrentUser,
                  chat_question: OpenChatQuestion,
                  current_assistant: CurrentAssistant,
-                 max_steps=20,
+                 max_steps: Optional[int] = None,
                  queue: asyncio.Queue = None,
                  llm: Any = None
                  ):
         self.current_user = current_user
         self.chat_question = chat_question
         self.question = self.chat_question.question
-        self.max_steps = max_steps
+        # 用户可选传入 max_steps 作为迭代次数上限；未传则由复杂度自动推断
+        self._override_max_steps = max_steps
+        self.max_steps = max_steps or 20
         self.current_assistant = current_assistant
 
         self.llm = llm
@@ -247,6 +249,10 @@ class PlanAgent:
         else:
             complexity = "simple"
             max_steps = 4
+
+        # 如用户通过 API 传入了 max_steps，则以用户配置为准
+        if self._override_max_steps and self._override_max_steps > 0:
+            max_steps = self._override_max_steps
 
         return {
             "complexity": complexity,

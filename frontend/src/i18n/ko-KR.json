@@ -16,6 +16,9 @@
     "question": "분석 의도 / 질문",
     "question_placeholder": "분석 내용을 입력하세요.",
     "max_rows": "최대 결과 행 수",
+    "max_steps": "최대 반복 횟수",
+    "max_steps_hint": "비워두면 질문 복잡도에 따라 자동 추정(약 4~12단계)",
+    "max_steps_auto": "자동",
     "start": "분석 시작",
     "analyzing": "분석 중…",
     "stop": "중지",
@@ -51,6 +54,8 @@
     "result_panel_title": "분석 결과",
     "result_empty_tip": "분석 결과가 여기에 표시됩니다",
     "select_datasource_title": "데이터 소스 선택",
+    "bind_datasource_title": "데이터 소스 선택",
+    "bind_datasource_start": "데이터 소스를 선택하여 분석 시작",
     "datasource_search_placeholder": "데이터 소스 검색"
   },
   "sync": {

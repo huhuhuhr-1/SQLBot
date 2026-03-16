@@ -519,7 +519,7 @@ async def deep_analysis(
 
         class DeepAnalysisAccumulator:
             """包装 queue，在流式输出时累积 plan/report/process，在 finish 时写入 DB 以便刷新/切回后恢复。"""
-            __slots__ = ('_q', '_sess', '_uid', '_cid', '_qtext', 'plan', 'report', 'process')
+            __slots__ = ('_q', '_sess', '_uid', '_cid', '_qtext', 'plan', 'report', 'process', '_loop')
 
             def __init__(self, q, sess, uid, cid, qtext):
                 self._q = q
@@ -530,8 +530,11 @@ async def deep_analysis(
                 self.plan = None
                 self.report = None
                 self.process = []
+                self._loop = None
 
             async def put(self, msg):
+                if self._loop is None:
+                    self._loop = asyncio.get_running_loop()
                 if isinstance(msg, dict):
                     t = msg.get('type')
                     c = msg.get('content')
@@ -550,6 +553,16 @@ async def deep_analysis(
                         )
                 await self._q.put(msg)
 
+            def put_nowait(self, msg):
+                """供同步 Tool 调用：将 put 调度到事件循环并等待完成，与 asyncio.Queue.put_nowait 行为兼容。"""
+                if self._loop is None:
+                    return
+                fut = asyncio.run_coroutine_threadsafe(self.put(msg), self._loop)
+                try:
+                    fut.result(timeout=10)
+                except Exception:
+                    pass
+
         def run_plan(context, user, question, assistant, q):
             from common.core.db import get_db_session
             with get_db_session() as thread_session:
@@ -562,6 +575,7 @@ async def deep_analysis(
                         current_user=user,
                         chat_question=question,
                         current_assistant=assistant,
+                        max_steps=body.max_steps,
                         queue=acc,
                         llm=llm,
                     ).execute_plan()))

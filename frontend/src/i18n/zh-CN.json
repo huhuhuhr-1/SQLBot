@@ -15,7 +15,10 @@
     "select_datasource": "请选择数据源",
     "question": "分析意图 / 问题",
     "question_placeholder": "描述要做的数据分析，例如：分析近一年各区域销售趋势并找出异常。",
-    "max_rows": "最大结果行数",
+    "max_rows": "问数最大返回数据条数",
+    "max_steps": "最大迭代次数",
+    "max_steps_hint": "不填则根据问题复杂度自动推断（约 4～12 步）",
+    "max_steps_auto": "自动",
     "start": "开始分析",
     "analyzing": "分析中…",
     "stop": "停止",
@@ -51,6 +54,8 @@
     "result_panel_title": "分析结果",
     "result_empty_tip": "分析结果将在此展示",
     "select_datasource_title": "选择数据源",
+    "bind_datasource_title": "选择数据源",
+    "bind_datasource_start": "选择数据源开始分析",
     "datasource_search_placeholder": "搜索数据源"
   },
   "sync": {

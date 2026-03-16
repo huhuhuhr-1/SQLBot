@@ -16,6 +16,9 @@
     "question": "Analysis goal / question",
     "question_placeholder": "Describe the analysis, e.g. regional sales trend for the past year.",
     "max_rows": "Max result rows",
+    "max_steps": "Max iterations",
+    "max_steps_hint": "Leave empty to auto-infer from question complexity (about 4–12 steps)",
+    "max_steps_auto": "Auto",
     "start": "Start",
     "analyzing": "Analyzing…",
     "stop": "Stop",
@@ -51,6 +54,8 @@
     "result_panel_title": "Analysis Result",
     "result_empty_tip": "Analysis result will appear here",
     "select_datasource_title": "Select datasource",
+    "bind_datasource_title": "Select datasource",
+    "bind_datasource_start": "Select datasource to start analysis",
     "datasource_search_placeholder": "Search datasource"
   },
   "variables": {
