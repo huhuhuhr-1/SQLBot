@@ -38,6 +38,7 @@
     "capability_trace": "完整保留取数与推理过程，便于复盘和核验",
     "capability_report": "输出可导出、可沉淀的综合分析报告",
     "examples": "试试这些分析目标",
+    "recommend_loading": "加载推荐中…",
     "example_sales": "分析近 12 个月各区域销售趋势，并解释异常波动原因",
     "example_users": "对比新老用户近 90 天留存与复购表现，找出关键差异",
     "example_quality": "排查本月订单履约异常，定位高风险环节与影响范围",

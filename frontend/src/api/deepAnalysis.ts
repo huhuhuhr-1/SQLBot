@@ -10,4 +10,15 @@ export const deepAnalysisApi = {
       return chatApi.toChatInfoList(Array.isArray(res) ? res : [])
     })
   },
+
+  /**
+   * 根据数据源库表 + LLM 推荐深度分析目标（用于「试试这些分析目标」）
+   */
+  recommendQuestions: (datasourceId: number): Promise<{ questions: string[] }> => {
+    return request.get('/openapi/deep-analysis/recommend-questions', {
+      params: { datasource_id: datasourceId },
+    }).then((res: any) => ({
+      questions: Array.isArray(res?.questions) ? res.questions : [],
+    }))
+  },
 }

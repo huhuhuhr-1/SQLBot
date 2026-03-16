@@ -38,6 +38,7 @@
     "capability_trace": "Keep the full query and reasoning trail for review",
     "capability_report": "Deliver exportable, reusable comprehensive reports",
     "examples": "Try these analysis goals",
+    "recommend_loading": "Loading recommendations…",
     "example_sales": "Analyze regional sales trends over the past 12 months and explain abnormal fluctuations",
     "example_users": "Compare 90-day retention and repurchase behavior between new and existing users",
     "example_quality": "Investigate fulfillment anomalies this month and identify high-risk stages",

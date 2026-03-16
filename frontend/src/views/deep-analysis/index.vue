@@ -218,18 +218,23 @@
                   @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
                 />
               </div>
-              <div class="da-example-block">
+              <div v-if="recommendLoading || quickExamples.length" class="da-example-block">
                 <div class="da-example-title">{{ t('deep_analysis.examples') }}</div>
                 <div class="da-example-list">
-                  <button
-                    v-for="ex in quickExamples"
-                    :key="ex"
-                    type="button"
-                    class="da-example-chip"
-                    @click="applyExample(ex)"
-                  >
-                    {{ ex }}
-                  </button>
+                  <template v-if="recommendLoading">
+                    <span class="da-example-loading">{{ t('deep_analysis.recommend_loading') }}</span>
+                  </template>
+                  <template v-else>
+                    <button
+                      v-for="ex in quickExamples"
+                      :key="ex"
+                      type="button"
+                      class="da-example-chip"
+                      @click="applyExample(ex)"
+                    >
+                      {{ ex }}
+                    </button>
+                  </template>
                 </div>
               </div>
               <div class="da-composer-bottom">
@@ -379,13 +384,14 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, ref, reactive } from 'vue'
+import { computed, onMounted, ref, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { Search, Loading } from '@element-plus/icons-vue'
 import { request } from '@/utils/request'
 import { datasourceApi } from '@/api/datasource'
 import { deepAnalysisApi } from '@/api/deepAnalysis'
+import { recommendedApi } from '@/api/recommendedApi'
 import { chatApi } from '@/api/chat'
 import type { ChatInfo } from '@/api/chat'
 import md from '@/utils/markdown.ts'
@@ -490,11 +496,9 @@ const hasContent = computed(
 const selectedDatasourceName = computed(() => {
   return datasourceList.value.find((item) => item.id === datasourceId.value)?.name || ''
 })
-const quickExamples = computed(() => [
-  t('deep_analysis.example_sales'),
-  t('deep_analysis.example_users'),
-  t('deep_analysis.example_quality'),
-])
+const recommendedQuestions = ref<string[]>([])
+const recommendLoading = ref(false)
+const quickExamples = computed(() => recommendedQuestions.value)
 
 function renderedContent(raw: string): string {
   if (!raw || typeof raw !== 'string') return ''
@@ -505,6 +509,7 @@ function renderedContent(raw: string): string {
   }
 }
 
+const DEEP_ANALYSIS_SESSION_KEY = 'deep_analysis_current_session'
 async function loadSessions() {
   sessionLoading.value = true
   try {
@@ -515,6 +520,13 @@ async function loadSessions() {
     sessionList.value = []
   } finally {
     sessionLoading.value = false
+  }
+}
+function persistCurrentSession() {
+  if (currentSessionId.value != null) {
+    sessionStorage.setItem(DEEP_ANALYSIS_SESSION_KEY, String(currentSessionId.value))
+  } else {
+    sessionStorage.removeItem(DEEP_ANALYSIS_SESSION_KEY)
   }
 }
 
@@ -529,6 +541,7 @@ function closeSessionPopover() {
 }
 function goNewAnalysis() {
   currentSessionId.value = undefined
+  persistCurrentSession()
   errorMsg.value = ''
   planMarkdown.value = ''
   planHtml.value = ''
@@ -540,10 +553,81 @@ function goNewAnalysis() {
   question.value = ''
 }
 
+async function loadRecommendedQuestions(dsId: number | undefined) {
+  if (!dsId) {
+    recommendedQuestions.value = []
+    recommendLoading.value = false
+    return
+  }
+  recommendLoading.value = true
+  recommendedQuestions.value = []
+  try {
+    const llmRes = await deepAnalysisApi.recommendQuestions(dsId)
+    if (llmRes?.questions?.length) {
+      recommendedQuestions.value = llmRes.questions
+      return
+    }
+  } catch {
+    // 忽略 LLM 推荐失败，走数据源配置
+  }
+  try {
+    const res = await recommendedApi.get_datasource_recommended_base(dsId)
+    if (res?.recommended_config === 2 && res?.questions) {
+      const raw = res.questions
+      const arr = typeof raw === 'string' ? (() => { try { return JSON.parse(raw) } catch { return [] } })() : raw
+      recommendedQuestions.value = Array.isArray(arr) ? arr.filter((q: any) => typeof q === 'string') : []
+    }
+  } catch {
+    // 保持为空
+  } finally {
+    recommendLoading.value = false
+  }
+}
+
+async function loadSessionDetail(chatId: number) {
+  try {
+    const res = await chatApi.get(chatId)
+    const info = chatApi.toChatInfo(res)
+    const records = info?.records || []
+    const withAnalysis = records.filter((r: any) => r?.analysis && String(r.analysis).trim().startsWith('{'))
+    const last = withAnalysis.length ? withAnalysis[withAnalysis.length - 1] : records[records.length - 1]
+    if (last?.analysis) {
+      try {
+        const data = JSON.parse(last.analysis)
+        planMarkdown.value = data.plan || ''
+        planHtml.value = data.plan ? renderedContent(data.plan) : ''
+        reportMarkdown.value = data.report || ''
+        reportHtml.value = data.report ? renderedContent(data.report) : ''
+        processChunks.value = Array.isArray(data.process) ? data.process : []
+      } catch {
+        planMarkdown.value = ''
+        planHtml.value = ''
+        reportMarkdown.value = ''
+        reportHtml.value = ''
+        processChunks.value = []
+      }
+    } else {
+      planMarkdown.value = ''
+      planHtml.value = ''
+      reportMarkdown.value = ''
+      reportHtml.value = ''
+      processChunks.value = []
+    }
+  } catch {
+    planMarkdown.value = ''
+    planHtml.value = ''
+    reportMarkdown.value = ''
+    reportHtml.value = ''
+    processChunks.value = []
+  }
+}
+
 function selectSession(item: ChatInfo) {
   currentSessionId.value = item.id
   datasourceId.value = item.datasource
   question.value = item.brief || ''
+  persistCurrentSession()
+  if (item.id != null) loadSessionDetail(item.id)
 }
 
 function openRename(item: ChatInfo) {
@@ -668,6 +752,7 @@ async function startAnalysis() {
             }
             if (data.chat_id) {
               currentSessionId.value = data.chat_id
+              persistCurrentSession()
               await loadSessions()
             }
             break
@@ -760,9 +845,21 @@ async function loadDatasources() {
   }
 }
 
-onMounted(() => {
-  loadDatasources()
-  loadSessions()
+watch(datasourceId, (id) => {
+  loadRecommendedQuestions(id)
+}, { immediate: true })
+
+onMounted(async () => {
+  await loadDatasources()
+  await loadSessions()
+  const saved = sessionStorage.getItem(DEEP_ANALYSIS_SESSION_KEY)
+  if (saved) {
+    const id = Number(saved)
+    const item = sessionList.value.find((s) => s.id === id)
+    if (item) {
+      selectSession(item)
+    }
+  }
 })
 </script>
 
@@ -934,11 +1031,14 @@ onMounted(() => {
   display: block;
 }
 
-/* ========== 中间：选表 + 新建分析（无 padding，与智能问数同） ========== */
+/* ========== 中间：选表 + 新建分析（固定宽度，不留空白，把空间留给右侧） ========== */
 .da-center-main {
+  flex: 0 0 auto;
+  width: 420px;
+  max-width: 420px;
   padding: 0;
+  min-height: 0;
   overflow: hidden;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -952,13 +1052,14 @@ onMounted(() => {
   position: relative;
 }
 .da-center-inner {
-  max-width: 560px;
-  margin: 0 auto;
   width: 100%;
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 .da-datasource-section,
 .da-composer-section {
@@ -1073,6 +1174,10 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 8px;
 }
+.da-example-loading {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
 .da-example-chip {
   border: 1px solid #d9dcdf;
   background: #fff;
@@ -1104,11 +1209,10 @@ onMounted(() => {
   gap: 8px;
 }
 
-/* ========== 右侧分析窗口 ========== */
+/* ========== 右侧分析窗口（占满剩余空间） ========== */
 .da-result-aside {
-  width: 480px;
-  min-width: 400px;
-  flex-shrink: 0;
+  flex: 1 1 0;
+  min-width: 460px;
   display: flex;
   flex-direction: column;
   background: #fafbfc;
@@ -1315,8 +1419,7 @@ onMounted(() => {
 
 @media (max-width: 1200px) {
   .da-result-aside {
-    width: 400px;
-    min-width: 360px;
+    min-width: 400px;
   }
   .da-summary-grid {
     grid-template-columns: 1fr;

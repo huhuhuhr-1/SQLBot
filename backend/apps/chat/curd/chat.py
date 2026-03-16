@@ -794,6 +794,41 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
     return chat_info
 
 
+def save_deep_analysis_result(
+    session: SessionDep,
+    chat_id: int,
+    create_by: int,
+    question: str,
+    plan_md: Optional[str],
+    report_md: Optional[str],
+    process_list: Optional[List[Dict[str, Any]]],
+) -> Optional[ChatRecord]:
+    """保存深度分析结果到 ChatRecord.analysis（JSON: plan, report, process），用于刷新/切回后恢复。"""
+    chat = session.get(Chat, chat_id)
+    if not chat:
+        return None
+    payload = {
+        "plan": plan_md or "",
+        "report": report_md or "",
+        "process": process_list or [],
+    }
+    record = ChatRecord()
+    record.chat_id = chat_id
+    record.create_by = create_by
+    record.question = question or ""
+    record.datasource = chat.datasource
+    record.engine_type = chat.engine_type or ""
+    record.analysis = orjson.dumps(payload).decode()
+    record.finish = True
+    record.first_chat = False
+    record.create_time = datetime.datetime.now()
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+    session.commit()
+    return record
+
+
 def save_question(session: SessionDep, current_user: CurrentUser, question: ChatQuestion) -> ChatRecord:
     if not question.chat_id:
         raise Exception("ChatId cannot be None")

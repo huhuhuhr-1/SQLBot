@@ -38,6 +38,7 @@
     "capability_trace": "조회 및 추론 과정을 전체 보존하여 검토 가능",
     "capability_report": "내보내고 재사용할 수 있는 종합 보고서 생성",
     "examples": "이런 분석 목표를 시도해 보세요",
+    "recommend_loading": "추천 로딩 중…",
     "example_sales": "최근 12개월 지역별 매출 추세를 분석하고 이상 변동 원인을 설명",
     "example_users": "신규 사용자와 기존 사용자의 최근 90일 유지율 및 재구매를 비교",
     "example_quality": "이번 달 주문 이행 이상 징후를 점검하고 고위험 구간을 찾기",

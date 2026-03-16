@@ -9,14 +9,15 @@ import uuid
 from typing import Optional, List
 
 import orjson
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
 from starlette.responses import StreamingResponse
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from apps.ai_model.model_factory import create_llm
 from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat, list_deep_analysis_chats
 from apps.chat.models.chat_model import CreateChat, Chat
 from apps.datasource.crud.datasource import get_datasource_list_for_openapi, get_datasource_list_for_openapi_excels, \
-    create_ds
+    create_ds, get_table_schema
 from apps.datasource.models.datasource import CoreDatasource, CreateDatasource, CoreTable, DatasourceConf
 from apps.datasource.utils.utils import aes_encrypt
 from apps.db.db import exec_sql
@@ -35,6 +36,8 @@ from apps.system.crud.user import authenticate
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.config import settings
 from common.core.db import get_session
+from apps.template.template import get_base_template
+from apps.openapi.service.openapi_llm import get_lang_name
 from common.core.deps import SessionDep, CurrentUser, CurrentAssistant, Trans
 from common.error import ParseSQLResultError, SQLBotDBError
 from common.utils.utils import SQLBotLogUtil
@@ -393,6 +396,61 @@ async def deep_analysis_sessions(session: SessionDep, current_user: CurrentUser)
     return list_deep_analysis_chats(session, current_user)
 
 
+@router.get("/deep-analysis/recommend-questions", summary="深度分析推荐问题（LLM+库表）",
+            description="根据所选数据源的表结构，用 LLM 生成 3～5 个适合深度分析的分析目标，用于「试试这些分析目标」",
+            dependencies=[Depends(common_headers)])
+async def deep_analysis_recommend_questions(
+        session: SessionDep,
+        current_user: CurrentUser,
+        current_assistant: CurrentAssistant,
+        datasource_id: int = Query(..., description="数据源 ID"),
+):
+    """结合库表 schema 用 LLM 推荐深度分析目标，返回 questions 数组。"""
+    try:
+        oid = current_user.oid if current_user.oid is not None else 1
+        ds = session.get(CoreDatasource, datasource_id)
+        if not ds or ds.oid != oid:
+            raise HTTPException(status_code=404, detail="Datasource not found or no permission")
+        schema = get_table_schema(
+            session=session,
+            current_user=current_user,
+            ds=ds,
+            question="",
+            embedding=False,
+        )
+        if not (schema and schema.strip()):
+            return {"questions": []}
+        lang = get_lang_name(getattr(current_user, "language", None) or "")
+        tpl = get_base_template()["template"]["deep_analysis_guess"]
+        system = tpl["system"].format(lang=lang)
+        user = tpl["user"].format(schema=schema)
+        messages = [SystemMessage(content=system), HumanMessage(content=user)]
+        llm = await create_llm()
+
+        def _invoke():
+            return llm.invoke(messages)
+
+        response = await asyncio.to_thread(_invoke)
+        content = (response.content or "").strip()
+        questions = []
+        if content:
+            try:
+                raw = json.loads(content)
+                if isinstance(raw, list):
+                    questions = [str(x).strip() for x in raw if x]
+                else:
+                    questions = []
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return {"questions": questions[:10]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        SQLBotLogUtil.error(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/deep-analysis", summary="深度分析",
             description="独立菜单「深度分析」：Agent 自主规划、多次查数、意图驱动分析，流式返回过程与结果",
             dependencies=[Depends(common_headers)])
@@ -455,16 +513,52 @@ async def deep_analysis(
                     'reasoning_content': '',
                 }).decode() + '\n\n'
 
+        class DeepAnalysisAccumulator:
+            """包装 queue，在流式输出时累积 plan/report/process，在 finish 时写入 DB 以便刷新/切回后恢复。"""
+            __slots__ = ('_q', '_sess', '_uid', '_cid', '_qtext', 'plan', 'report', 'process')
+
+            def __init__(self, q, sess, uid, cid, qtext):
+                self._q = q
+                self._sess = sess
+                self._uid = uid
+                self._cid = cid
+                self._qtext = qtext or ''
+                self.plan = None
+                self.report = None
+                self.process = []
+
+            async def put(self, msg):
+                if isinstance(msg, dict):
+                    t = msg.get('type')
+                    c = msg.get('content')
+                    r = msg.get('reasoning_content')
+                    if t == 'plan':
+                        self.plan = c
+                    elif t == 'report':
+                        self.report = c
+                    elif t in ('process', 'analysis-result') or (c or r):
+                        self.process.append({'content': c, 'reasoning_content': r, 'type': t})
+                    if t == 'finish':
+                        from apps.chat.curd.chat import save_deep_analysis_result
+                        save_deep_analysis_result(
+                            self._sess, self._cid, self._uid, self._qtext,
+                            self.plan, self.report, self.process,
+                        )
+                await self._q.put(msg)
+
         def run_plan(context, user, question, assistant, q):
             from common.core.db import get_db_session
             with get_db_session() as thread_session:
+                acc = DeepAnalysisAccumulator(
+                    q, thread_session, user.id, question.chat_id, question.question,
+                )
                 context.run(lambda: asyncio.run(
                     PlanAgent(
                         session=thread_session,
                         current_user=user,
                         chat_question=question,
                         current_assistant=assistant,
-                        queue=q,
+                        queue=acc,
                         llm=llm,
                     ).execute_plan()))
 
