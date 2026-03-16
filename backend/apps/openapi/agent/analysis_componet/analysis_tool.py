@@ -27,11 +27,12 @@ class GetDataTool(BaseTool):
     description: str = (
         "取数智能体：自然语言描述需求，返回 pd.DataFrame 的 JSON。"
         "**同一表同一时间窗尽量一次取全多维度**；常态下全任务调用本工具约 2～4 次即可，避免同表重复查。"
+        "先判断当前问题属于聚合分析还是快照/详情查询：聚合问题返回聚合结果，快照/详情问题允许返回受控的记录级结果。"
     )
 
     class GetDataInput(BaseModel):
         query: str = Field(
-            description="当前需要获取的数据，是人类的的自然语言描述。\n\n            ## 要求  \n\n            1. **一次性取全维度**：取数描述**必须一次性包含所有需要的相关维度**数据，禁止分多次请求\n                - 无明确要求下，**优先使用离散维度**；连续数据不利于分析\n                - **维度必须是 表Schema 中的维度**  \n            2. **一次取整个时间段**：**仅仅在明确取数时间的情况下**，取数描述必须一次性包含所有需要的时间段数据，禁止分多次请求，效率低下\n                - 时间段要表述清楚，如：近一年、昨天、上个月、2023年5月1日-2023年8月13日等\n                - **时间段跨度超过半年（6个月）的取月度数据**\n                - 没有给定的时间段则不需要带上时间段\n            3. **简洁描述**：描述需精炼，仅包含必要的筛选条件、时间段、维度和指标信息，剔除所有无关说明  \n            4. **单指标原则**：每次请求仅限获取 1 个指标数据  \n                - 只支持获取聚合指标（如：销售额、订单量、用户数、访问次数、点击率、退货量、库存量、离职率等）  \n            5. **筛选条件规则**  \n                - **禁止漏掉任务明确要求的筛选条件**，将其添加到筛选条件中，**使用原始词，禁止解释、转译、引申、改写、扩展等**  \n                - 筛选条件分为两种模式：\n                    - 表达式模式：例如 筛选城市为北京、品牌为Apple，筛选天气为雨天 等  \n                    - 关键词模式：例如 筛选北京，筛选CFO、算法工程师 等\n                - **筛选条件选择与分析任务中的模式一致**（分析任务中只提供关键词的用关键词模式，用表达式模式的用表达式），**禁止将关键词模式转换成表达式模式**  \n            6. 分析任务中有**分析我们部门/我们团队/我们小组/我部门/我团队/我小组等相关表达，则**表示限定取数范围**，**必须作为取数的筛选条件**  \n                - 此条件直接将原文放在筛选中，**禁止翻译成 维度=值 这种条件表达式**\n                - 仅有此条规则不用考虑维度必须是表 Schema 中的维度这条要求  \n            7. **筛选条件无法确定是哪个维度上的条件时，直接使用值来表达筛选条件**  \n\n            ## 返回格式  \n\n            筛选[条件1]、[条件2]、...、、[条件N] ，根据[维度1]、[维度2]、...、[维度N] 进行分组，统计[时间段]的[聚合指标]\n\n            注：筛选条件是可选项，如无必要不添加筛选条件，保证获取全的维度的数据；**[时间段] 是可选项，只在用户表达了时间的情况下存在**\n\n            ## 示例 (严格遵守上述格式与要求)\n\n            ### 无筛选条件例子  \n            例子一（没有给定时间段）：\n            根据商品类目、店铺进行分组，统计销售额\n            例子二：\n            根据大区、省份、城市、商品类别进行分组，统计最近一周的订单量\n            例子三：\n            根据新老客类型、注册渠道、用户性别进行分组，统计上月的购买用户数\n            例子四：\n            根据小时进行分组，统计过去24小时的网站访问次数\n            例子五：\n            根据销售渠道、商品品牌进行分组，统计本季度的退货量\n            例子六（没有给定时间段）：\n            根据仓库、SKU进行分组，统计库存量\n            例子七（时间跨度超过一年）：\n            根据商品类目、店铺、供应商进行分组，统计2024全年各月的退货率\n            例子八：\n            根据商家进行分组，统计最近30天的退款金额\n            例子九：\n            根据促销活动、商品类目、渠道进行分组，统计活动期间的曝光次数\n            例子十（时间跨度超过一年）：\n            根据商品类型、商家、店铺等级、SKU进行分组，统计2024年6月至2025年5月各月的销售量\n\n            ### 有筛选条件例子  \n            例子一：\n            筛选在线支付、未退货，根据商品类目、省份进行分组，统计2023年Q4的订单总额\n            例子二（要求 6）：\n            筛选我团队、日志级别为ERROR，根据应用服务名、服务器节点进行分组，统计今日00:00至今的错误日志数量\n            例子三（没有给定时间段）：\n            筛选iOS、访问频次大于等于3，根据用户年龄段、用户性别、注册渠道、页面类别进行分组，统计平均停留时长\n            例子四（要求 6）：\n            筛选我们部门、审批流程为报销、状态为未完成，根据报销类别、报销项目、报销金额区间进行分组，统计上个月的平均审批耗时\n            例子五（时间跨度超过一年）：\n            筛选原料批次为AX-2024、检测标准为ISO9001，根据生产线、班组长、时间段进行分组，统计本年度各月的次品率\n            例子六（要求 6）：\n            筛选我们小组，根据咨询产品类别进行分组，统计每周的平均会话响应时长\n            例子七（条件 7）：\n            筛选CFO，根据咨询产品类别进行分组，统计每周的平均会话响应时长\n\n            ---  \n            再次强调**禁止取明细数据**，必须明确说明聚合指标名  \n            不要漏掉筛选条件，避免获取错误的数据，并保证获取数据比较全面、完整")
+            description="当前需要获取的数据，是人类的自然语言描述。\n\n            ## 第一步：先判断取数模式  \n\n            1. **聚合模式（aggregate）**：当问题在问次数、数量、总量、均值、占比、趋势、排名、对比时，优先获取聚合结果  \n            2. **快照模式（snapshot/detail）**：当问题在问最新、最后一次、最近一次、当前状态、详情、明细记录时，允许获取**受控的记录级结果**，直接返回回答问题所需字段，禁止先改写成次数或趋势  \n\n            ## 通用要求  \n\n            1. **一次性取全必要字段**：取数描述必须一次性包含回答当前子问题所需的相关字段，禁止分多次请求同一事实  \n                - 字段必须来自表 Schema  \n                - 仅保留直接回答问题所需的最小字段集合  \n            2. **一次取整个时间段**：仅在问题明确给定时间范围时，取数描述必须一次性覆盖所需时间段  \n                - 时间段要表述清楚，如：近一年、昨天、上个月、2023年5月1日-2023年8月13日等\n                - **仅对趋势/聚合分析**，时间跨度超过半年（6个月）时优先考虑月度粒度\n                - **对快照模式不要因为时间跨度较长就自动改成月度汇总**\n            3. **简洁描述**：仅包含必要的筛选条件、时间段、字段/维度和指标信息，剔除无关说明  \n            4. **筛选条件规则**  \n                - **禁止漏掉任务明确要求的筛选条件**，使用原始词，禁止解释、转译、引申、改写、扩展等  \n                - 筛选条件分为两种模式：\n                    - 表达式模式：例如 筛选城市为北京、品牌为Apple，筛选天气为雨天 等  \n                    - 关键词模式：例如 筛选北京，筛选CFO、算法工程师 等\n                - **筛选条件选择与分析任务中的模式一致**，禁止将关键词模式转换成表达式模式  \n            5. 分析任务中有**分析我们部门/我们团队/我们小组/我部门/我团队/我小组等相关表达**时，表示限定取数范围，必须作为筛选条件  \n                - 此条件直接将原文放在筛选中，禁止翻译成 `维度=值` 这种条件表达式\n            6. **筛选条件无法确定属于哪个维度时，直接使用值表达筛选条件**  \n\n            ## 返回格式  \n\n            - 聚合模式：`筛选[条件1]、[条件2]...，根据[维度1]、[维度2]...进行分组，统计[时间段]的[聚合指标]`\n            - 快照模式：`筛选[条件1]、[条件2]...，获取[时间段]内每个[实体]最近一次/当前有效的[字段1]、[字段2]、[字段3]...记录`\n\n            ## 关键约束  \n\n            - 聚合模式下，每次请求只围绕 **1 个核心指标** 组织结果  \n            - 快照模式下，允许返回记录级字段，但必须能**直接回答主问题**，且字段数量受控  \n            - **禁止把快照/详情问题改写成聚合统计问题**  \n            - 避免获取错误或无关数据，保证结果完整、可直接用于回答问题")
 
     args_schema: Type[BaseModel] = GetDataInput
     context: AnalysisContext = None
@@ -49,6 +50,8 @@ class GetDataTool(BaseTool):
     async def _arun(self, query: str) -> str:
         try:
             SQLBotLogUtil.info("开始调用智能取数工具")
+            await self.context.queue.put(
+                self.context.create_result(content="当前阶段：智能取数", message_type="stage"))
             await self.context.queue.put(
                 self.context.create_result(content=f"\n### 智能取数  \n"))
 
@@ -154,6 +157,8 @@ class InsightTool(BaseTool):
         Dict[str, Any]]:
         try:
             SQLBotLogUtil.info("开始调用数据分析工具")
+            self.context.queue.put_nowait(
+                self.context.create_result(content="当前阶段：分析洞察", message_type="stage"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n### 数据分析  \n"))
             try:
                 df = pd.read_json(df)
@@ -232,6 +237,8 @@ class SaveInsightTool(BaseTool):
     def _run(self, df: str, insight: str, analysis_process: str) -> str:
         try:
             SQLBotLogUtil.info("开始调用分析结论保存工具")
+            self.context.queue.put_nowait(
+                self.context.create_result(content="当前阶段：沉淀结论", message_type="stage"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n### 分析结果保存  \n"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n#### 分析过程  \n"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n  {analysis_process}  \n"))
@@ -240,7 +247,7 @@ class SaveInsightTool(BaseTool):
             self.context.queue.put_nowait(self.context.create_result(content=f"\n#### 分析结果  \n"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n  {insights_result}  \n"))
 
-            return self.context.save_insight(df="None", insight=insights, analysis_process=analysis_process)
+            return self.context.save_insight(df=df, insight=insights, analysis_process=analysis_process)
 
         except Exception as e:
             SQLBotLogUtil.error(e)
@@ -251,7 +258,11 @@ class SaveInsightTool(BaseTool):
 
 class DataTransTool(BaseTool):
     name: str = "data_trans"
-    description: str = "这是一个数据变换工具。可以使用此工具对数据的某一列计算占比、计算排名、计算和整体均值差以及计算增长，返回 pd.DataFrame 的json格式的数据"
+    description: str = (
+        "这是一个数据变换工具。可以对数值型指标做占比、排名、与整体均值差、序列增长等变换，"
+        "返回 pd.DataFrame 的 json 格式数据。"
+        "适用于数值指标分析，不适用于把时间戳/日期字段当作指标做聚合或转换。"
+    )
 
     class DataTransInput(BaseModel):
         df: str = Field(description="分析的数据，必须是 pd.DataFrame 的json类型")
@@ -272,9 +283,35 @@ class DataTransTool(BaseTool):
         self.context = context
         self.session = session
 
+    @staticmethod
+    def _validate_columns(df: pd.DataFrame, column: str, measure: str) -> str | None:
+        missing_columns = [name for name in [column, measure] if name not in df.columns]
+        if missing_columns:
+            return f"数据变换失败，缺少字段: {', '.join(missing_columns)}"
+        return None
+
+    @staticmethod
+    def _validate_measure_dtype(df: pd.DataFrame, measure: str, trans_type: str) -> str | None:
+        measure_series = df[measure]
+        if pd.api.types.is_datetime64_any_dtype(measure_series):
+            return (
+                f"数据变换失败，字段 `{measure}` 是时间/时间戳类型。"
+                f"`data_trans` 仅支持对数值型指标做 `{trans_type}` 变换，"
+                "不要把时间字段当作 measure；如果需要处理最近一次/最新时间，请直接在 SQL 中完成排序、取最新记录，"
+                "或把时间字段作为 column 使用。"
+            )
+        if not pd.api.types.is_numeric_dtype(measure_series):
+            return (
+                f"数据变换失败，字段 `{measure}` 不是数值类型。"
+                f"`data_trans` 仅支持对数值型指标做 `{trans_type}` 变换，请更换为数值指标列。"
+            )
+        return None
+
     def _run(self, df: str, column: str, measure: str, measure_type: str, trans_type: str) -> str:
         try:
             SQLBotLogUtil.info("开始调用数据变换工具")
+            self.context.queue.put_nowait(
+                self.context.create_result(content="当前阶段：数据变换", message_type="stage"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n### 数据变换  \n"))
 
             assert trans_type in ["rate", "rank", "increase", "sub_avg"]
@@ -287,6 +324,16 @@ class DataTransTool(BaseTool):
                 self.context.queue.put_nowait(self.context.create_result(
                     content=f"\n  传入的分析数据df数据格式有误，无法转换成pd.DataFrame格式  \n"))
                 return "传入的分析数据df数据格式有误，无法转换成pd.DataFrame格式"
+
+            column_error = self._validate_columns(df, column, measure)
+            if column_error:
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {column_error}  \n"))
+                return column_error
+
+            dtype_error = self._validate_measure_dtype(df, measure, trans_type)
+            if dtype_error:
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {dtype_error}  \n"))
+                return dtype_error
 
             if trans_type == "rate":
                 df = df.groupby(column).agg({measure: agg}).reset_index()
@@ -347,6 +394,8 @@ class FinalAnswerTool(BaseTool):
     def _run(self, answer: str) -> str:
         try:
             SQLBotLogUtil.info("开始调用最终结论工具")
+            self.context.queue.put_nowait(
+                self.context.create_result(content="当前阶段：汇总报告", message_type="stage"))
             result = {
                 "insights": self.context.insights or [],
                 "summary": answer,

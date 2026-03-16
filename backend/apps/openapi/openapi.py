@@ -426,7 +426,7 @@ async def deep_analysis(
             task_type="chat",
             chat_mode="plan",
             no_reasoning=body.no_reasoning or False,
-            history_open=True,
+            history_open=False,
             max_data_length=body.max_data_length or 1000,
             is_chart_output=body.is_chart_output is not False,
         )

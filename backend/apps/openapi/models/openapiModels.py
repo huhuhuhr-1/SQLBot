@@ -130,6 +130,9 @@ class OpenChatQuestion(AiModelQuestion):
 
     # 是否输出sqlbot的图表（对于plan模式而言）
     is_chart_output: bool = Body(default=True, description='是否输出sqlbot的图表, 时间会更长')
+    analysis_complexity: str = Body(default="medium", description='深度分析复杂度：simple/medium/deep')
+    analysis_main_question: Optional[str] = Body(default=None, description='深度分析原始主问题')
+    analysis_plan: Optional[Dict[str, Any]] = Body(default=None, description='深度分析显式计划')
 
     @field_validator('my_promote', 'my_schema', 'my_sql', mode='before')
     @classmethod
@@ -141,14 +144,54 @@ class OpenChatQuestion(AiModelQuestion):
 
     # 在原sql生成的prompt里面加入think_result
     def sql_user_question(self, current_time: str, change_title: bool):
-        return get_sql_template()['user'].format(engine=self.engine,
-                                                 schema=self.db_schema,
-                                                 question=self.question,
-                                                 rule=self.rule,
-                                                 current_time=current_time,
-                                                 error_msg=self.error_msg,
-                                                 change_title=change_title,
-                                                 thinking_result=(self.enhanced_think_result or ''))
+        analysis_context = self.sql_analysis_context()
+        question_prompt = get_sql_template()['user'].format(engine=self.engine,
+                                                            schema=self.db_schema,
+                                                            question=self.question,
+                                                            rule=self.rule,
+                                                            current_time=current_time,
+                                                            error_msg=self.error_msg,
+                                                            change_title=change_title,
+                                                            thinking_result=(self.enhanced_think_result or ''))
+        if analysis_context:
+            question_prompt += f"\n{analysis_context}"
+        return question_prompt
+
+    def sql_analysis_context(self) -> str:
+        if not self.analysis_plan:
+            return ""
+
+        required_fields = self.analysis_plan.get("required_fields") or []
+        forbidden_shapes = self.analysis_plan.get("forbidden_query_shapes") or []
+        subquestions = self.analysis_plan.get("subquestions") or []
+
+        required_fields_text = "\n".join(f"- {item}" for item in required_fields) or "- 无"
+        forbidden_shapes_text = "\n".join(f"- {item}" for item in forbidden_shapes) or "- 无"
+        subquestions_text = "\n".join(f"- {item}" for item in subquestions) or "- 无"
+
+        return (
+            "<analysis-execution-context>\n"
+            f"<main-question>{self.analysis_main_question or self.question}</main-question>\n"
+            f"<task-type>{self.analysis_plan.get('task_type', 'aggregate')}</task-type>\n"
+            f"<query-mode>{self.analysis_plan.get('query_mode', 'aggregate')}</query-mode>\n"
+            f"<answer-granularity>{self.analysis_plan.get('answer_granularity', 'direct_evidence')}</answer-granularity>\n"
+            f"<required-result-shape>{self.analysis_plan.get('required_result_shape', '')}</required-result-shape>\n"
+            "<required-fields>\n"
+            f"{required_fields_text}\n"
+            "</required-fields>\n"
+            "<forbidden-query-shapes>\n"
+            f"{forbidden_shapes_text}\n"
+            "</forbidden-query-shapes>\n"
+            "<subquestions>\n"
+            f"{subquestions_text}\n"
+            "</subquestions>\n"
+            "<instruction>\n"
+            "先判断当前取数请求属于聚合、排序、对比、趋势还是快照/详情问题，再选择对应的 SQL 形态。"
+            "如果 task-type 为 snapshot/detail，则优先返回能直接回答问题的记录级结果，"
+            "不要先改写成次数、总量、趋势等聚合问题。"
+            "</instruction>\n"
+            "</analysis-execution-context>"
+        )
 
     # 获取增强思考的prompt
     def enhanced_think_question(self, current_time: str):
@@ -160,10 +203,38 @@ class OpenChatQuestion(AiModelQuestion):
 
     # 获取plan模式的prompt
     def plan_prompt(self, current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')):
-        return get_myself_template()['plan_prompt'].format(schema=self.db_schema,
-                                                           terminologies=self.terminologies,
-                                                           max_length=self.max_data_length,
-                                                           current_date=current_time)
+        base_prompt = get_myself_template()['plan_prompt'].format(schema=self.db_schema,
+                                                                  terminologies=self.terminologies,
+                                                                  max_length=self.max_data_length,
+                                                                  current_date=current_time)
+        complexity = (self.analysis_complexity or "medium").lower()
+        plan_json = json.dumps(self.analysis_plan or {}, ensure_ascii=False, indent=2)
+        escaped_plan_json = plan_json.replace("{", "{{").replace("}", "}}")
+        complexity_rules = {
+            "simple": (
+                "本次任务复杂度为 simple。优先用最短路径回答问题：通常 1 次取数、最多 2 次取数。"
+                "禁止为了凑分析方法而扩展问题；若 1 次取数已足够回答，就直接整理证据并调用 final_answer。"
+            ),
+            "medium": (
+                "本次任务复杂度为 medium。围绕 2～3 个子问题推进，通常 2～4 次取数。"
+                "只保留真正能支撑主问题的分析动作，避免重复查同一指标与时间窗。"
+            ),
+            "deep": (
+                "本次任务复杂度为 deep。围绕结构化子问题逐步推进，但依然必须收敛，"
+                "每一步都要明确当前正在解决哪个子问题以及该步产出什么证据。"
+            ),
+        }
+        return (
+            base_prompt
+            + "\n\n## 本次任务执行约束（高优先级）\n"
+            + f"- 本次分析不使用历史对话，必须仅基于当前问题独立完成。\n"
+            + f"- {complexity_rules.get(complexity, complexity_rules['medium'])}\n"
+            + "- 开始执行前，必须先按下方结构化计划理解任务；后续每一步都要围绕计划推进，禁止无关扩展。\n"
+            + "- 如果某个子问题已被当前证据充分回答，不要继续为了凑步骤而新增查询。\n"
+            + "- 最终报告中的每条核心结论都必须能追溯到已完成的子问题与已获取的数据证据。\n"
+            + "\n## 结构化计划（只作为执行约束，不要原样输出给用户）\n"
+            + escaped_plan_json
+        )
 
 
 class OpenToken(BaseModel):

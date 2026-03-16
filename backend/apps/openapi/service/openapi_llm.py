@@ -1338,6 +1338,58 @@ class LLMService:
         self.init_record(_session)
         return last_sql_messages
 
+    @staticmethod
+    def _contains_field_marker(fields: list[str], markers: list[str]) -> bool:
+        return any(any(marker in field for marker in markers) for field in fields)
+
+    def validate_plan_result_alignment(self, fields: list[str]) -> Optional[str]:
+        plan = self.chat_question.analysis_plan or {}
+        task_type = (plan.get("task_type") or "").lower()
+        if not task_type:
+            return None
+
+        normalized_fields = [field.lower() for field in fields if isinstance(field, str)]
+        if not normalized_fields:
+            return "查询结果为空列，无法判断是否与当前子问题对齐"
+
+        time_markers = ["time", "date", "created", "updated", "start", "end", "dt"]
+        entity_markers = ["id", "name", "code", "task", "job", "order", "user", "item", "record"]
+        detail_markers = ["status", "state", "result", "message", "reason", "elapsed", "duration", "cost"]
+        aggregate_markers = ["count", "sum", "avg", "mean", "total", "ratio", "rate", "percent", "cnt"]
+
+        has_time_field = self._contains_field_marker(normalized_fields, time_markers)
+        has_entity_field = self._contains_field_marker(normalized_fields, entity_markers)
+        has_detail_field = self._contains_field_marker(normalized_fields, detail_markers)
+        aggregate_field_count = sum(
+            1 for field in normalized_fields
+            if any(marker in field for marker in aggregate_markers)
+        )
+
+        if task_type == "snapshot":
+            if aggregate_field_count > 0 and not (has_time_field or has_detail_field):
+                return (
+                    "当前结果更像聚合统计而不是快照/详情结果。"
+                    "请直接返回能回答“最新/最后一次/当前状态/详情”的记录级字段，"
+                    "例如实体标识、判定最近一次的时间字段、状态或结果字段，不要先统计次数/总量。"
+                )
+            if not has_entity_field or not (has_time_field or has_detail_field):
+                return (
+                    "当前结果缺少快照类问题所需的关键字段。"
+                    "请返回实体标识字段，以及用于判定最近一次的时间字段或状态/结果字段，"
+                    "不要只返回汇总指标。"
+                )
+
+        if task_type == "trend" and not has_time_field:
+            return "当前结果缺少时间字段，无法支撑趋势类问题，请改为按时间粒度返回指标结果。"
+
+        if task_type == "compare" and len(normalized_fields) < 2:
+            return "当前结果无法形成对比口径，请至少返回对比维度和对应指标。"
+
+        if task_type == "ranking" and aggregate_field_count == 0:
+            return "当前结果缺少可排序的核心指标，无法回答排名类问题，请返回排序指标及对象字段。"
+
+        return None
+
     async def get_data_for_plan(self, _session: Session, query, is_chart_output=False):
         self.chat_question.question = query
 
@@ -1486,6 +1538,13 @@ class LLMService:
                         "type": "error"
                     }
                 else:
+                    alignment_error = self.validate_plan_result_alignment(_fields_list)
+                    if alignment_error:
+                        yield {
+                            "data": alignment_error,
+                            "type": "error"
+                        }
+                        return
                     yield {
                         "data": "sql执行成功",
                         "type": "sql_execute_result"
