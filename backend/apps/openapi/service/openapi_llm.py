@@ -1342,9 +1342,12 @@ class LLMService:
     def _contains_field_marker(fields: list[str], markers: list[str]) -> bool:
         return any(any(marker in field for marker in markers) for field in fields)
 
-    def validate_plan_result_alignment(self, fields: list[str]) -> Optional[str]:
+    def validate_plan_result_alignment(
+        self, fields: list[str], row_count: Optional[int] = None
+    ) -> Optional[str]:
         plan = self.chat_question.analysis_plan or {}
         task_type = (plan.get("task_type") or "").lower()
+        answer_granularity = (plan.get("answer_granularity") or "").strip()
         if not task_type:
             return None
 
@@ -1366,6 +1369,16 @@ class LLMService:
         )
 
         if task_type == "snapshot":
+            if answer_granularity == "single_latest_record" and row_count is not None and row_count > 1:
+                return (
+                    "当前为单条最新记录问题，结果应只有 1 行。"
+                    "请改为按判定最近一次的时间字段排序后 LIMIT 1，只返回最近一条记录。"
+                )
+            if answer_granularity == "latest_record_per_entity" and not has_entity_field:
+                return (
+                    "当前为每实体最近一条问题，结果必须包含实体标识字段（如 task_id、order_id 等）。"
+                    "请用窗口函数或子查询按实体分组、按时间取最新一条，再对最终结果施加上限。"
+                )
             if aggregate_field_count > 0 and not (has_time_field or has_detail_field):
                 return (
                     "当前结果更像聚合统计而不是快照/详情结果。"
@@ -1538,7 +1551,9 @@ class LLMService:
                         "type": "error"
                     }
                 else:
-                    alignment_error = self.validate_plan_result_alignment(_fields_list)
+                    alignment_error = self.validate_plan_result_alignment(
+                        _fields_list, row_count=len(data)
+                    )
                     if alignment_error:
                         yield {
                             "data": alignment_error,

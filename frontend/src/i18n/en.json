@@ -15,7 +15,7 @@
     "select_datasource": "Select data source",
     "question": "Analysis goal / question",
     "question_placeholder": "Describe the analysis, e.g. regional sales trend for the past year.",
-    "max_rows": "Max rows per query",
+    "max_rows": "Max result rows",
     "start": "Start",
     "analyzing": "Analyzing…",
     "stop": "Stop",
@@ -42,9 +42,14 @@
     "example_users": "Compare 90-day retention and repurchase behavior between new and existing users",
     "example_quality": "Investigate fulfillment anomalies this month and identify high-risk stages",
     "selected_datasource": "Current data source",
-    "rows_hint": "Balance response speed and analysis completeness by limiting each query",
+    "rows_hint": "Cap on returned rows; for \"latest per entity\" questions this only limits result size, not query semantics",
     "composer_hint": "Press Enter to start analysis, or Ctrl + Enter for a new line",
-    "session_count": "{count} analysis sessions"
+    "session_count": "{count} analysis sessions",
+    "session_search_placeholder": "Search sessions",
+    "result_panel_title": "Analysis Result",
+    "result_empty_tip": "Analysis result will appear here",
+    "select_datasource_title": "Select datasource",
+    "datasource_search_placeholder": "Search datasource"
   },
   "variables": {
     "built_in": "Built-in",

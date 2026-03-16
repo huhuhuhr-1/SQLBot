@@ -15,7 +15,7 @@
     "select_datasource": "데이터 소스 선택",
     "question": "분석 의도 / 질문",
     "question_placeholder": "분석 내용을 입력하세요.",
-    "max_rows": "쿼리당 최대 행 수",
+    "max_rows": "최대 결과 행 수",
     "start": "분석 시작",
     "analyzing": "분석 중…",
     "stop": "중지",
@@ -42,9 +42,14 @@
     "example_users": "신규 사용자와 기존 사용자의 최근 90일 유지율 및 재구매를 비교",
     "example_quality": "이번 달 주문 이행 이상 징후를 점검하고 고위험 구간을 찾기",
     "selected_datasource": "현재 데이터 소스",
-    "rows_hint": "쿼리당 데이터량을 조절해 속도와 완성도를 균형 있게 유지",
+    "rows_hint": "반환 결과 상한; \"최근 1건/개체별 최신\" 질의에는 최종 행 수만 제한하며, 쿼리 의미는 유지",
     "composer_hint": "Enter로 바로 분석 시작, Ctrl + Enter로 줄바꿈",
-    "session_count": "{count}개의 분석 기록"
+    "session_count": "{count}개의 분석 기록",
+    "session_search_placeholder": "분석 기록 검색",
+    "result_panel_title": "분석 결과",
+    "result_empty_tip": "분석 결과가 여기에 표시됩니다",
+    "select_datasource_title": "데이터 소스 선택",
+    "datasource_search_placeholder": "데이터 소스 검색"
   },
   "sync": {
     "integration": "플랫폼 통합을 활성화해야 합니다.",

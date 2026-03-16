@@ -159,15 +159,27 @@ class PlanAgent:
             }
 
         if re.search(r"(最后一次|最近一次|最新一条|最后一条|最近一条|最新|当前状态|详情|明细|执行情况|记录)", question):
+            # 区分单实体最新一条 vs 每实体最近一条
+            if re.search(r"(每个|每任务|每[个只]?[实体任务订单用户]|按\s*\S+\s*取\s*最近|各\s*\S+\s*的\s*最近)", question):
+                return {
+                    "task_type": "snapshot",
+                    "query_mode": "detail",
+                    "answer_granularity": "latest_record_per_entity",
+                    "allow_detail_rows": True,
+                    "required_result_shape": "按实体分组，每组返回最近一条或当前有效的记录，最终结果行数受上限约束",
+                    "required_fields": ["实体标识字段", "判定最近一次的时间字段", "状态/结果字段"],
+                    "forbidden_query_shapes": ["先统计次数再猜测最新状态", "只返回聚合指标不返回记录字段", "未按实体去重导致多行同实体"],
+                    "reason": "问题在询问每个实体的最新/最后一次，应按实体取最近一条",
+                }
             return {
                 "task_type": "snapshot",
                 "query_mode": "detail",
-                "answer_granularity": "latest_record_per_entity",
+                "answer_granularity": "single_latest_record",
                 "allow_detail_rows": True,
-                "required_result_shape": "按实体返回最近一条或当前有效的记录",
-                "required_fields": ["实体标识字段", "判定最近一次的时间字段", "状态/结果字段"],
-                "forbidden_query_shapes": ["先统计次数再猜测最新状态", "只返回聚合指标不返回记录字段"],
-                "reason": "问题在询问最新/最后一次/详情，应该优先返回记录级事实",
+                "required_result_shape": "仅返回最近一条或当前有效的记录，结果应为 1 行",
+                "required_fields": ["判定最近一次的时间字段", "状态/结果字段"],
+                "forbidden_query_shapes": ["先统计次数再猜测最新状态", "只返回聚合指标不返回记录字段", "返回多行而非单条最新"],
+                "reason": "问题在询问单条最新/最后一次/当前状态，应直接返回 1 条记录",
             }
 
         if self._contains_any(question, ["次数", "数量", "总数", "总量", "均值", "平均", "占比", "比例"]):
@@ -350,6 +362,7 @@ class PlanAgent:
                 is_chart_output=self.chat_question.is_chart_output,
                 queue=self.queue,
                 max_data_size=getattr(self.chat_question, 'max_data_length', None) or 1000,
+                answer_granularity=(self.execution_plan or {}).get("answer_granularity"),
             )
 
             # 创建LangChain Agent使用的工具

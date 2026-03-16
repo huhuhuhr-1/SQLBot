@@ -58,7 +58,13 @@ class GetDataTool(BaseTool):
             await self.context.queue.put(
                 self.context.create_result(content=f"\n#### 1. 取数 Query\n{query}  \n"))
 
-            query = f"{query}。取 {self.context.max_data_size} 条"
+            granularity = (self.context.answer_granularity or "").strip()
+            if granularity == "single_latest_record":
+                query = f"{query}。只返回最近一条记录，结果应为 1 条"
+            elif granularity == "latest_record_per_entity":
+                query = f"{query}。每个实体返回最近一条，最终结果最多 {self.context.max_data_size} 行"
+            else:
+                query = f"{query}。取 {self.context.max_data_size} 条"
 
             await self.context.queue.put(
                 self.context.create_result(content=f"\n#### 2. 生成取数 SQL \n"))

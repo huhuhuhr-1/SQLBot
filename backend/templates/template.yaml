@@ -26,15 +26,16 @@ template:
         <title>数据量限制策略（必须严格遵守 - 零容忍）</title>
         <requirements>
           <requirement level="must-zero-tolerance">所有生成的SQL必须包含数据量限制，这是强制要求</requirement>
-          <requirement level="must">默认限制：1000条（除非用户明确指定其他数量，如"查询前10条"）</requirement>
-          <requirement level="must">当用户说"所有数据"或"全部数据"时，视为用户没有指定数量，使用默认的1000条限制</requirement>
+          <requirement level="must">最新/最后一次/当前状态类问题：先满足结果形态再施加上限。若取数描述要求「只返回最近一条」或「结果应为 1 条」，则使用 LIMIT 1；若要求「每个实体最近一条」，则用窗口函数或子查询按实体取最新后再对最终结果 LIMIT N</requirement>
+          <requirement level="must">非上述快照类时：默认结果上限 1000 条（除非用户明确指定其他数量，如「查询前10条」）。max_length 是最终结果最大行数，不是推翻「最近一次」语义的默认目标</requirement>
+          <requirement level="must">当用户说「所有数据」或「全部数据」时，视为用户没有指定数量，使用默认的 1000 条上限</requirement>
           <requirement level="must">忘记添加数据量限制是不可接受的错误</requirement>
         </requirements>
 
         <enforcement>
           <action>如果生成的SQL没有数据量限制，必须重新生成</action>
           <action>在最终返回前必须验证限制是否存在</action>
-          <action>不要因为用户说"所有数据"而拒绝生成SQL，只需自动加上1000条限制即可</action>
+          <action>不要因为用户说「所有数据」而拒绝生成SQL，只需自动加上 1000 条上限即可</action>
         </enforcement>
       </rule>
     no_query_limit: |
@@ -801,6 +802,7 @@ template:
           - 若结构化计划中的 `task_type=query_mode` 表示 **aggregate / compare / ranking / trend / diagnosis**，优先获取聚合类数据，避免无关明细  
           - 若结构化计划中的 `task_type=query_mode` 表示 **snapshot/detail**，允许获取**受控的记录级结果**，前提是这些字段能直接回答“最新 / 最后一次 / 当前状态 / 详情”类问题  
           - **snapshot/detail 问题禁止先改写成次数、总量、趋势、月度汇总等聚合问题**
+          - 若结构化计划中 **answer_granularity** 为 **single_latest_record**，取数结果应为 **1 行**（如 ORDER BY 时间 DESC LIMIT 1）；若为 **latest_record_per_entity**，应先按实体取最近一条，再对最终结果施加上限
           - 不论哪种形态，都必须只取回答主问题所需的最小证据集，避免冗余字段和无关扩展
       6. **禁止分析维度**
           - **禁止分析表 Schema 中 `noAnalysisColumns` 中的列**。不要直接获取这些维度的明细数据，可以使用这些维度的统计数据  
@@ -809,7 +811,8 @@ template:
           - **如果任务类型为 snapshot/detail，则不要因为时间跨度较长而自动改成月度汇总，仍应优先返回最近一次/当前有效的记录**
           - 如果没有明确的时间段，则不要给出时间，`get_data` 会智能的判断取数时间  
       8. **取数数量限制**
-          - `get_data` **最多返回{max_length}条数据**，必须**输出取数返回的数据数量**  
+          - **{max_length}** 表示**最终结果最大行数（返回上限）**，不是默认取数目标。对「最近一次/每实体最新一条」类问题，先满足结果形态（单条或按实体去重），再以此上限截断
+          - `get_data` 最多返回 **{max_length}** 行数据，必须**输出取数返回的数据数量**
           - 如果取数的数据量等于{max_length}，必须**考虑取数是否是明细（去掉明细列）、取数范围是否太大（改变时间粒度或缩小时间段或者从粗到细分层分析）、是否包含 `noAnalysisColumns` 中的列（去掉不支持分析的列）**，并调整取数逻辑，保证数据的完整性后再分析  
       9. 禁止对分析任务中表达的分析范围和分析维度以及指标进行解释、转译、引申、改写、扩展等  
       

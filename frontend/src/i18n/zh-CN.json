@@ -15,7 +15,7 @@
     "select_datasource": "请选择数据源",
     "question": "分析意图 / 问题",
     "question_placeholder": "描述要做的数据分析，例如：分析近一年各区域销售趋势并找出异常。",
-    "max_rows": "单次取数最大行数",
+    "max_rows": "最大结果行数",
     "start": "开始分析",
     "analyzing": "分析中…",
     "stop": "停止",
@@ -42,9 +42,14 @@
     "example_users": "对比新老用户近 90 天留存与复购表现，找出关键差异",
     "example_quality": "排查本月订单履约异常，定位高风险环节与影响范围",
     "selected_datasource": "当前数据源",
-    "rows_hint": "控制单次查询返回的数据量，兼顾速度与分析完整性",
+    "rows_hint": "返回结果的上限；对「最近一次/每任务最新一条」类问题仅限制最终行数，不改变查询语义",
     "composer_hint": "按 Enter 立即开始分析，Ctrl + Enter 换行",
-    "session_count": "{count} 条分析记录"
+    "session_count": "{count} 条分析记录",
+    "session_search_placeholder": "搜索分析记录",
+    "result_panel_title": "分析结果",
+    "result_empty_tip": "分析结果将在此展示",
+    "select_datasource_title": "选择数据源",
+    "datasource_search_placeholder": "搜索数据源"
   },
   "sync": {
     "integration": "需开启平台对接",
