@@ -490,6 +490,8 @@ async def deep_analysis(
         )
 
         queue = asyncio.Queue()
+        # 立即下发 chat_id，前端可马上插表展示，避免“更新了找不到输出”
+        await queue.put({"type": "start", "chat_id": chat_id})
         llm = await create_llm()
 
         async def _stream(q):
@@ -504,6 +506,8 @@ async def deep_analysis(
                         break
                     if isinstance(data, dict) and data.get('type') == 'error':
                         break
+                    if isinstance(data, dict) and data.get('type') == 'start':
+                        continue
             except GeneratorExit:
                 return
             except Exception as e:
@@ -536,7 +540,7 @@ async def deep_analysis(
                         self.plan = c
                     elif t == 'report':
                         self.report = c
-                    elif t in ('process', 'analysis-result') or (c or r):
+                    elif t in ('process', 'analysis-result', 'chart', 'chart-data', 'data-finish') or (c or r):
                         self.process.append({'content': c, 'reasoning_content': r, 'type': t})
                     if t == 'finish':
                         from apps.chat.curd.chat import save_deep_analysis_result

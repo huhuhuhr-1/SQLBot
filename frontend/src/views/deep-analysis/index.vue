@@ -305,50 +305,69 @@
                 <div class="da-status-desc">{{ t('deep_analysis.starter_desc') }}</div>
               </div>
             </div>
-            <div v-if="planHtml" class="plan-block">
-              <div class="card-head">
-                <div class="report-title">{{ t('deep_analysis.task_plan') }}</div>
+            <transition-group name="da-result-chain" tag="div" class="da-result-chain-wrap">
+              <div v-if="planHtml" key="plan" class="plan-block da-result-card">
+                <div class="card-head">
+                  <div class="report-title">{{ t('deep_analysis.task_plan') }}</div>
+                </div>
+                <div class="report-body markdown-body" v-html="planHtml"></div>
               </div>
-              <div class="report-body markdown-body" v-html="planHtml"></div>
-            </div>
-            <div v-if="reportHtml" class="report-block">
-              <div class="card-head">
-                <div class="report-title">{{ t('deep_analysis.report_title') }}</div>
-              </div>
-              <div class="report-body markdown-body" v-html="reportHtml"></div>
-            </div>
-            <div v-if="processChunks.length > 0 || (loading && !reportHtml)" class="process-block">
-              <div class="card-head">
-                <div class="report-title">{{ t('deep_analysis.process') }}</div>
-              </div>
-              <el-collapse v-model="processCollapse">
-                <el-collapse-item :title="t('deep_analysis.process_collapsed')" name="1">
-                  <div v-if="loading && processChunks.length === 0" class="loading-tip">
-                    <el-icon class="is-loading"><Loading /></el-icon>
-                    {{ t('deep_analysis.waiting') }}
-                  </div>
-                  <div class="steps-container">
-                    <div v-for="(step, idx) in processChunks" :key="idx" class="step-item">
-                      <div v-if="step.reasoning_content" class="step-thinking">
-                        <el-collapse>
-                          <el-collapse-item :name="idx">
-                            <template #title>
-                              <span class="thinking-title">{{ t('deep_analysis.thinking') }} {{ idx + 1 }}</span>
-                            </template>
-                            <div class="thinking-content">{{ step.reasoning_content }}</div>
-                          </el-collapse-item>
-                        </el-collapse>
-                      </div>
-                      <div
-                        v-if="step.content"
-                        class="step-content markdown-body"
-                        v-html="renderedContent(step.content)"
-                      ></div>
+              <div
+                v-if="processChunks.length > 0 || (loading && !reportHtml)"
+                key="process"
+                class="process-block da-result-card"
+              >
+                <div class="card-head">
+                  <div class="report-title">{{ t('deep_analysis.thinking_process') }}</div>
+                </div>
+                <el-collapse v-model="processCollapse">
+                  <el-collapse-item :title="t('deep_analysis.process_collapsed')" name="1">
+                    <div v-if="loading && processChunks.length === 0" class="loading-tip">
+                      <el-icon class="is-loading"><Loading /></el-icon>
+                      {{ t('deep_analysis.waiting') }}
                     </div>
-                  </div>
-                </el-collapse-item>
-              </el-collapse>
-            </div>
+                    <div class="steps-container">
+                      <template v-for="(block, idx) in processBlocks" :key="idx">
+                        <div class="step-item">
+                          <div v-if="block.reasoning_content" class="step-thinking">
+                            <el-collapse>
+                              <el-collapse-item :name="'p-' + idx">
+                                <template #title>
+                                  <span class="thinking-title">{{ t('deep_analysis.thinking') }} {{ idx + 1 }}</span>
+                                </template>
+                                <div class="thinking-content">{{ block.reasoning_content }}</div>
+                              </el-collapse-item>
+                            </el-collapse>
+                          </div>
+                          <div
+                            v-if="block.kind === 'text' && block.content"
+                            class="step-content markdown-body"
+                            v-html="renderedContent(block.content)"
+                          ></div>
+                          <div v-else-if="block.kind === 'chart' && block.chartConfig" class="step-chart-wrap">
+                            <ChartComponent
+                              :id="'da-chart-' + currentSessionId + '-' + idx"
+                              :type="(block.chartType || 'table') as string"
+                              :columns="block.chartColumns || []"
+                              :x="block.chartX || []"
+                              :y="block.chartY || []"
+                              :series="block.chartSeries || []"
+                              :data="block.chartData || []"
+                            />
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </el-collapse-item>
+                </el-collapse>
+              </div>
+              <div v-if="reportHtml" key="report" class="report-block da-result-card">
+                <div class="card-head">
+                  <div class="report-title">{{ t('deep_analysis.report_title') }}</div>
+                </div>
+                <div class="report-body markdown-body da-report-body" v-html="reportHtml"></div>
+              </div>
+            </transition-group>
           </template>
         </el-scrollbar>
       </aside>
@@ -405,6 +424,7 @@ import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_rename from '@/assets/svg/icon_rename_outlined.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_database_colorful from '@/assets/svg/icon_database_colorful.svg'
+import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import 'github-markdown-css/github-markdown-light.css'
 
 const { t } = useI18n()
@@ -420,7 +440,9 @@ const planMarkdown = ref('')
 const planHtml = ref('')
 const reportMarkdown = ref('')
 const reportHtml = ref('')
-const processChunks = ref<Array<{ content?: string; reasoning_content?: string; type?: string }>>([])
+const processChunks = ref<
+  Array<{ content?: string; reasoning_content?: string; type?: string; chart?: unknown; data?: unknown }>
+>([])
 const processCollapse = ref<string[]>([])
 const currentStage = ref('')
 let abortController: AbortController | null = null
@@ -499,6 +521,64 @@ const selectedDatasourceName = computed(() => {
 const recommendedQuestions = ref<string[]>([])
 const recommendLoading = ref(false)
 const quickExamples = computed(() => recommendedQuestions.value)
+
+/** 将 processChunks 转为展示块：合并 chart + chart-data，并解析图表配置供 ChartComponent 使用 */
+const processBlocks = computed(() => {
+  const chunks = processChunks.value
+  const blocks: Array<{
+    kind: 'text' | 'chart'
+    content?: string
+    reasoning_content?: string
+    chartConfig?: string
+    chartType?: string
+    chartColumns?: Array<{ name: string; value: string }>
+    chartX?: Array<{ name: string; value: string }>
+    chartY?: Array<{ name: string; value: string }>
+    chartSeries?: Array<{ name: string; value: string }>
+    chartData?: Array<Record<string, unknown>>
+  }> = []
+  for (let i = 0; i < chunks.length; i++) {
+    const step = chunks[i]
+    if (step.type === 'data-finish') continue
+    if (step.type === 'chart-data') {
+      if (blocks.length && blocks[blocks.length - 1].kind === 'chart') {
+        const raw = step.content
+        const arr = typeof raw === 'string' ? (() => { try { return JSON.parse(raw) } catch { return raw } })() : raw
+        const data = Array.isArray(arr) ? arr : (arr && typeof arr === 'object' && Array.isArray((arr as any).data) ? (arr as any).data : [])
+        blocks[blocks.length - 1].chartData = data
+      }
+      continue
+    }
+    if (step.type === 'chart' && step.content) {
+      try {
+        const cfg = typeof step.content === 'string' ? JSON.parse(step.content) : step.content
+        const axis = cfg?.axis || {}
+        const x = axis.x ? [Array.isArray(axis.x) ? axis.x[0] : axis.x] : []
+        const y = axis.y ? (Array.isArray(axis.y) ? axis.y : [axis.y]) : []
+        const series = axis.series ? [axis.series] : []
+        blocks.push({
+          kind: 'chart',
+          chartConfig: typeof step.content === 'string' ? step.content : JSON.stringify(step.content),
+          chartType: cfg?.type || 'table',
+          chartColumns: Array.isArray(cfg?.columns) ? cfg.columns : [],
+          chartX: x,
+          chartY: y,
+          chartSeries: series,
+          chartData: [],
+        })
+      } catch {
+        blocks.push({ kind: 'text', content: step.content, reasoning_content: step.reasoning_content })
+      }
+      continue
+    }
+    blocks.push({
+      kind: 'text',
+      content: step.content,
+      reasoning_content: step.reasoning_content,
+    })
+  }
+  return blocks
+})
 
 function renderedContent(raw: string): string {
   if (!raw || typeof raw !== 'string') return ''
@@ -745,6 +825,12 @@ async function startAnalysis() {
             ElMessage.error(errorMsg.value)
             break
           }
+          if (data.type === 'start' && data.chat_id) {
+            currentSessionId.value = data.chat_id
+            persistCurrentSession()
+            await loadSessions()
+            continue
+          }
           if (data.type === 'finish') {
             loading.value = false
             if (reportMarkdown.value) {
@@ -767,10 +853,22 @@ async function startAnalysis() {
           } else if (data.type === 'report' && c) {
             reportMarkdown.value = c
             reportHtml.value = renderedContent(c)
-          } else if ((data.type === 'process' || data.type === 'analysis-result') && (c || r)) {
-            processChunks.value.push({ content: c, reasoning_content: r, type: data.type })
+          } else if ((data.type === 'process' || data.type === 'analysis-result' || data.type === 'chart' || data.type === 'chart-data' || data.type === 'data-finish') && (c !== undefined || r)) {
+            processChunks.value.push({
+              content: c,
+              reasoning_content: r,
+              type: data.type,
+              chart: data.chart,
+              data: data.data,
+            })
           } else if (c || r) {
-            processChunks.value.push({ content: c, reasoning_content: r, type: data.type })
+            processChunks.value.push({
+              content: c,
+              reasoning_content: r,
+              type: data.type,
+              chart: data.chart,
+              data: data.data,
+            })
           }
         } catch (e) {
           console.warn('Parse SSE chunk failed', e)
@@ -1323,6 +1421,24 @@ onMounted(async () => {
   line-height: 1.6;
   color: #646a73;
 }
+.da-result-chain-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.da-result-chain-enter-active,
+.da-result-chain-move {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.da-result-chain-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.da-result-card.plan-block,
+.da-result-card.report-block,
+.da-result-card.process-block {
+  margin-bottom: 0;
+}
 .plan-block,
 .report-block,
 .process-block {
@@ -1335,6 +1451,21 @@ onMounted(async () => {
 .plan-block {
   border-color: rgba(28, 186, 144, 0.2);
   background: linear-gradient(180deg, rgba(28, 186, 144, 0.06), #fff);
+}
+.da-report-body {
+  line-height: 1.75;
+}
+.da-report-body :deep(h1) { font-size: 1.25rem; margin: 1em 0 0.5em; }
+.da-report-body :deep(h2) { font-size: 1.1rem; margin: 0.9em 0 0.4em; }
+.da-report-body :deep(h3) { font-size: 1rem; margin: 0.8em 0 0.4em; }
+.da-report-body :deep(p) { margin: 0.5em 0; }
+.da-report-body :deep(ul), .da-report-body :deep(ol) { margin: 0.5em 0; padding-left: 1.5em; }
+.step-chart-wrap {
+  margin-top: 12px;
+  min-height: 200px;
+  border-radius: 12px;
+  background: rgba(224, 224, 226, 0.29);
+  padding: 12px;
 }
 .card-head {
   margin-bottom: 14px;

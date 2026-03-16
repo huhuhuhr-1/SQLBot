@@ -20,6 +20,7 @@
     "analyzing": "分析中…",
     "stop": "停止",
     "process": "分析过程",
+    "thinking_process": "思考过程",
     "process_collapsed": "展开取数与推理过程（SQL / 中间步骤）",
     "report_title": "综合分析报告",
     "thinking": "思考",
