@@ -16,18 +16,32 @@ import asyncio
 from typing import Dict, List
 
 
+def _normalize_sql_for_dedup(sql: str) -> str:
+    """规范化 SQL 用于去重：去空白、小写、合并空白。"""
+    if not sql or not isinstance(sql, str):
+        return ""
+    return " ".join(sql.lower().strip().split())
+
+
 class AnalysisContext(object):
     def __init__(self,
                  llm_service,
                  message_type,
                  is_chart_output,
-                 queue: asyncio.Queue = None,**kwargs):
+                 queue: asyncio.Queue = None,
+                 max_data_size: int = 1000,
+                 answer_granularity: Optional[str] = None,
+                 sql_history: Optional[List[str]] = None,
+                 **kwargs):
         self.llm_service = llm_service
         self.message_type = message_type
-        self.max_data_size = 1000
+        self.max_data_size = max(1, int(max_data_size or 1000))
+        self.answer_granularity = answer_granularity or ""
         self.insights = []
         self.queue = queue
         self.is_chart_output = is_chart_output
+        # 深度分析 SQL 去重：可变的 list，由 LangGraph runner 传入并写回 state
+        self.sql_history: List[str] = sql_history if sql_history is not None else []
 
     def create_result(self,
                       reasoning_content="",

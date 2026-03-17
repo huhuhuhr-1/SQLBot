@@ -11,7 +11,7 @@ from sqlalchemy import and_
 from sqlmodel import select
 from starlette.responses import StreamingResponse
 
-from apps.chat.curd.chat import get_chat_chart_data, delete_chat, list_chats
+from apps.chat.curd.chat import get_chat_chart_data, delete_chat, list_chats, list_chats_by_time_range
 from apps.chat.models.chat_model import ChatRecord, Chat
 from apps.openapi.models.openapiModels import IntentPayload, OpenChatQuestion, OpenClean, OpenChat, \
     AnalysisIntentPayload
@@ -369,28 +369,32 @@ def _get_chats_to_clean(
         clean: OpenClean
 ) -> List[Chat]:
     """
-    获取要清理的聊天记录列表
+    获取要清理的聊天记录列表。仅包含智能问数（origin in (0,2)），不包含深度分析（origin=1）。
 
     Args:
         session: 数据库会话依赖
         current_user: 当前认证用户信息
-        clean: 清理对象
+        clean: 清理对象（可含 chat_ids 或 start_time/end_time）
 
     Returns:
-        List[Chat]: 要清理的聊天记录列表
+        List[Chat]: 要清理的智能问数会话列表
     """
-    if clean.chat_ids:
-        # 如果指定了特定的聊天ID，则只清理这些聊天记录
+    ids = clean.get_chat_ids()
+    if ids:
+        # 按 ID 清理时仅清理智能问数，排除深度分析
         stmt = select(Chat).where(
             and_(
-                Chat.id.in_(clean.chat_ids),
-                Chat.create_by == current_user.id
+                Chat.id.in_(ids),
+                Chat.create_by == current_user.id,
+                Chat.origin.in_([0, 2]),
             )
         )
         return list(session.exec(stmt))
-    else:
-        # 否则清理当前用户的所有聊天记录
-        return list_chats(session, current_user)
+    if clean.start_time or clean.end_time:
+        start_dt = datetime.fromisoformat(clean.start_time.replace("Z", "+00:00")) if clean.start_time else None
+        end_dt = datetime.fromisoformat(clean.end_time.replace("Z", "+00:00")) if clean.end_time else None
+        return list_chats_by_time_range(session, current_user, start_time=start_dt, end_time=end_dt)
+    return list_chats(session, current_user)
 
 
 def _execute_cleanup(

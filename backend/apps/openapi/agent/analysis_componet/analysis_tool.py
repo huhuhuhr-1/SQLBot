@@ -14,7 +14,13 @@ import pandas as pd
 from langchain.tools import BaseTool
 from langchain_core.pydantic_v1 import BaseModel, Field
 
-from apps.openapi.agent.analysis_componet.data_model import DataModel, Measure, SiblingGroup, AnalysisContext
+from apps.openapi.agent.analysis_componet.data_model import (
+    DataModel,
+    Measure,
+    SiblingGroup,
+    AnalysisContext,
+    _normalize_sql_for_dedup,
+)
 from apps.openapi.agent.analysis_componet.insights import InsightFactoryDict, InsightType
 from common.utils.utils import SQLBotLogUtil
 from sqlmodel import Session
@@ -24,11 +30,15 @@ pd.set_option("display.max_columns", None)
 
 class GetDataTool(BaseTool):
     name: str = "get_data"
-    description: str = "这是一个取数智能体。可以使用此工具获取需要的数据，非常聪明，能够准确理解你的取数需求，返回 pd.DataFrame 的json格式数据"
+    description: str = (
+        "取数智能体：自然语言描述需求，返回 pd.DataFrame 的 JSON。"
+        "**同一表同一时间窗尽量一次取全多维度**；常态下全任务调用本工具约 2～4 次即可，避免同表重复查。"
+        "先判断当前问题属于聚合分析还是快照/详情查询：聚合问题返回聚合结果，快照/详情问题允许返回受控的记录级结果。"
+    )
 
     class GetDataInput(BaseModel):
         query: str = Field(
-            description="当前需要获取的数据，是人类的的自然语言描述。\n\n            ## 要求  \n\n            1. **一次性取全维度**：取数描述**必须一次性包含所有需要的相关维度**数据，禁止分多次请求\n                - 无明确要求下，**优先使用离散维度**；连续数据不利于分析\n                - **维度必须是 表Schema 中的维度**  \n            2. **一次取整个时间段**：**仅仅在明确取数时间的情况下**，取数描述必须一次性包含所有需要的时间段数据，禁止分多次请求，效率低下\n                - 时间段要表述清楚，如：近一年、昨天、上个月、2023年5月1日-2023年8月13日等\n                - **时间段跨度超过半年（6个月）的取月度数据**\n                - 没有给定的时间段则不需要带上时间段\n            3. **简洁描述**：描述需精炼，仅包含必要的筛选条件、时间段、维度和指标信息，剔除所有无关说明  \n            4. **单指标原则**：每次请求仅限获取 1 个指标数据  \n                - 只支持获取聚合指标（如：销售额、订单量、用户数、访问次数、点击率、退货量、库存量、离职率等）  \n            5. **筛选条件规则**  \n                - **禁止漏掉任务明确要求的筛选条件**，将其添加到筛选条件中，**使用原始词，禁止解释、转译、引申、改写、扩展等**  \n                - 筛选条件分为两种模式：\n                    - 表达式模式：例如 筛选城市为北京、品牌为Apple，筛选天气为雨天 等  \n                    - 关键词模式：例如 筛选北京，筛选CFO、算法工程师 等\n                - **筛选条件选择与分析任务中的模式一致**（分析任务中只提供关键词的用关键词模式，用表达式模式的用表达式），**禁止将关键词模式转换成表达式模式**  \n            6. 分析任务中有**分析我们部门/我们团队/我们小组/我部门/我团队/我小组等相关表达，则**表示限定取数范围**，**必须作为取数的筛选条件**  \n                - 此条件直接将原文放在筛选中，**禁止翻译成 维度=值 这种条件表达式**\n                - 仅有此条规则不用考虑维度必须是表 Schema 中的维度这条要求  \n            7. **筛选条件无法确定是哪个维度上的条件时，直接使用值来表达筛选条件**  \n\n            ## 返回格式  \n\n            筛选[条件1]、[条件2]、...、、[条件N] ，根据[维度1]、[维度2]、...、[维度N] 进行分组，统计[时间段]的[聚合指标]\n\n            注：筛选条件是可选项，如无必要不添加筛选条件，保证获取全的维度的数据；**[时间段] 是可选项，只在用户表达了时间的情况下存在**\n\n            ## 示例 (严格遵守上述格式与要求)\n\n            ### 无筛选条件例子  \n            例子一（没有给定时间段）：\n            根据商品类目、店铺进行分组，统计销售额\n            例子二：\n            根据大区、省份、城市、商品类别进行分组，统计最近一周的订单量\n            例子三：\n            根据新老客类型、注册渠道、用户性别进行分组，统计上月的购买用户数\n            例子四：\n            根据小时进行分组，统计过去24小时的网站访问次数\n            例子五：\n            根据销售渠道、商品品牌进行分组，统计本季度的退货量\n            例子六（没有给定时间段）：\n            根据仓库、SKU进行分组，统计库存量\n            例子七（时间跨度超过一年）：\n            根据商品类目、店铺、供应商进行分组，统计2024全年各月的退货率\n            例子八：\n            根据商家进行分组，统计最近30天的退款金额\n            例子九：\n            根据促销活动、商品类目、渠道进行分组，统计活动期间的曝光次数\n            例子十（时间跨度超过一年）：\n            根据商品类型、商家、店铺等级、SKU进行分组，统计2024年6月至2025年5月各月的销售量\n\n            ### 有筛选条件例子  \n            例子一：\n            筛选在线支付、未退货，根据商品类目、省份进行分组，统计2023年Q4的订单总额\n            例子二（要求 6）：\n            筛选我团队、日志级别为ERROR，根据应用服务名、服务器节点进行分组，统计今日00:00至今的错误日志数量\n            例子三（没有给定时间段）：\n            筛选iOS、访问频次大于等于3，根据用户年龄段、用户性别、注册渠道、页面类别进行分组，统计平均停留时长\n            例子四（要求 6）：\n            筛选我们部门、审批流程为报销、状态为未完成，根据报销类别、报销项目、报销金额区间进行分组，统计上个月的平均审批耗时\n            例子五（时间跨度超过一年）：\n            筛选原料批次为AX-2024、检测标准为ISO9001，根据生产线、班组长、时间段进行分组，统计本年度各月的次品率\n            例子六（要求 6）：\n            筛选我们小组，根据咨询产品类别进行分组，统计每周的平均会话响应时长\n            例子七（条件 7）：\n            筛选CFO，根据咨询产品类别进行分组，统计每周的平均会话响应时长\n\n            ---  \n            再次强调**禁止取明细数据**，必须明确说明聚合指标名  \n            不要漏掉筛选条件，避免获取错误的数据，并保证获取数据比较全面、完整")
+            description="当前需要获取的数据，是人类的自然语言描述。\n\n            ## 第一步：先判断取数模式  \n\n            1. **聚合模式（aggregate）**：当问题在问次数、数量、总量、均值、占比、趋势、排名、对比时，优先获取聚合结果  \n            2. **快照模式（snapshot/detail）**：当问题在问最新、最后一次、最近一次、当前状态、详情、明细记录时，允许获取**受控的记录级结果**，直接返回回答问题所需字段，禁止先改写成次数或趋势  \n\n            ## 通用要求  \n\n            1. **一次性取全必要字段**：取数描述必须一次性包含回答当前子问题所需的相关字段，禁止分多次请求同一事实  \n                - 字段必须来自表 Schema  \n                - 仅保留直接回答问题所需的最小字段集合  \n            2. **一次取整个时间段**：仅在问题明确给定时间范围时，取数描述必须一次性覆盖所需时间段  \n                - 时间段要表述清楚，如：近一年、昨天、上个月、2023年5月1日-2023年8月13日等\n                - **仅对趋势/聚合分析**，时间跨度超过半年（6个月）时优先考虑月度粒度\n                - **对快照模式不要因为时间跨度较长就自动改成月度汇总**\n            3. **简洁描述**：仅包含必要的筛选条件、时间段、字段/维度和指标信息，剔除无关说明  \n            4. **筛选条件规则**  \n                - **禁止漏掉任务明确要求的筛选条件**，使用原始词，禁止解释、转译、引申、改写、扩展等  \n                - 筛选条件分为两种模式：\n                    - 表达式模式：例如 筛选城市为北京、品牌为Apple，筛选天气为雨天 等  \n                    - 关键词模式：例如 筛选北京，筛选CFO、算法工程师 等\n                - **筛选条件选择与分析任务中的模式一致**，禁止将关键词模式转换成表达式模式  \n            5. 分析任务中有**分析我们部门/我们团队/我们小组/我部门/我团队/我小组等相关表达**时，表示限定取数范围，必须作为筛选条件  \n                - 此条件直接将原文放在筛选中，禁止翻译成 `维度=值` 这种条件表达式\n            6. **筛选条件无法确定属于哪个维度时，直接使用值表达筛选条件**  \n\n            ## 返回格式  \n\n            - 聚合模式：`筛选[条件1]、[条件2]...，根据[维度1]、[维度2]...进行分组，统计[时间段]的[聚合指标]`\n            - 快照模式：`筛选[条件1]、[条件2]...，获取[时间段]内每个[实体]最近一次/当前有效的[字段1]、[字段2]、[字段3]...记录`\n\n            ## 关键约束  \n\n            - 聚合模式下，每次请求只围绕 **1 个核心指标** 组织结果  \n            - 快照模式下，允许返回记录级字段，但必须能**直接回答主问题**，且字段数量受控  \n            - **禁止把快照/详情问题改写成聚合统计问题**  \n            - 避免获取错误或无关数据，保证结果完整、可直接用于回答问题")
 
     args_schema: Type[BaseModel] = GetDataInput
     context: AnalysisContext = None
@@ -47,12 +57,20 @@ class GetDataTool(BaseTool):
         try:
             SQLBotLogUtil.info("开始调用智能取数工具")
             await self.context.queue.put(
+                self.context.create_result(content="当前阶段：智能取数", message_type="stage"))
+            await self.context.queue.put(
                 self.context.create_result(content=f"\n### 智能取数  \n"))
 
             await self.context.queue.put(
                 self.context.create_result(content=f"\n#### 1. 取数 Query\n{query}  \n"))
 
-            query = f"{query}。取 {self.context.max_data_size} 条"
+            granularity = (self.context.answer_granularity or "").strip()
+            if granularity == "single_latest_record":
+                query = f"{query}。只返回最近一条记录，结果应为 1 条"
+            elif granularity == "latest_record_per_entity":
+                query = f"{query}。每个实体返回最近一条，最终结果最多 {self.context.max_data_size} 行"
+            else:
+                query = f"{query}。取 {self.context.max_data_size} 条"
 
             await self.context.queue.put(
                 self.context.create_result(content=f"\n#### 2. 生成取数 SQL \n"))
@@ -63,17 +81,37 @@ class GetDataTool(BaseTool):
                     _session=self.session,
                     query=query,
                     is_chart_output=self.context.is_chart_output):
-                result_type = result["type"]
-                result_data = result["data"]
+                result_type = result.get("type")
+                result_data = result.get("data")
+                if result_type is None or result_data is None:
+                    continue
 
                 if result_type == "error":
                     await self.context.queue.put(
                         self.context.create_result(content=f"\n {result_data} \n"))
-                    return "获取数据异常,请重新尝试"
+                    # 将具体错误原因返回给 agent，避免同一错误反复重试（如图表配置解析失败）
+                    return result_data if isinstance(result_data, str) and result_data.strip() else "获取数据异常,请重新尝试"
 
                 elif result_type == "sql_result":
-                    sql = result_data["sql"]
-                    enhanced_think_result = result_data["enhanced_think_result"]
+                    sql = result_data.get("sql") if isinstance(result_data, dict) else None
+                    if not sql:
+                        await self.context.queue.put(
+                            self.context.create_result(content="\n  SQL 结果缺少 sql 字段  \n"))
+                        return "获取数据异常，请重新尝试"
+                    # 深度分析 SQL 去重：若 context 带有 sql_history 且本 SQL 已执行过，则跳过
+                    if getattr(self.context, "sql_history", None) is not None:
+                        sig = _normalize_sql_for_dedup(sql)
+                        if sig and sig in self.context.sql_history:
+                            await self.context.queue.put(
+                                self.context.create_result(
+                                    content="\n**重复查询已跳过**：与已执行 SQL 语义相同，请换一种取数口径或继续分析。\n",
+                                    message_type="process",
+                                )
+                            )
+                            return "重复查询已跳过，请换一种方式取数或继续分析。"
+                        if sig:
+                            self.context.sql_history.append(sig)
+                    enhanced_think_result = result_data.get("enhanced_think_result") or ""
                     if len(enhanced_think_result) != 0:
                         await self.context.queue.put(
                             self.context.create_result(content=f"\n#### 思考过程\n{enhanced_think_result}\n"))
@@ -90,20 +128,29 @@ class GetDataTool(BaseTool):
 
                 elif result_type == "chart_result":
                     if self.context.is_chart_output:
-                        df = pd.DataFrame(
-                            np.array(result_data["pd_data"]["data"]), columns=result_data["pd_data"]["columns"])
-
-                        output_data = result_data["output_data"]
-
-                        if isinstance(output_data, str):
-                            top_k = min(5, len(df))
-                            await self.context.queue.put(self.context.create_result(
-                                content=f"\n共获取到 {len(df)} 条数据，前 {top_k} 条数据如下：\n\n{df[: top_k].to_markdown(index=False)}\n"))
+                        pd_data = result_data.get("pd_data") if isinstance(result_data, dict) else None
+                        if pd_data and isinstance(pd_data, dict) and "data" in pd_data and "columns" in pd_data:
+                            df = pd.DataFrame(
+                                np.array(pd_data["data"]), columns=pd_data["columns"])
                         else:
-                            for chart_result in output_data:
-                                await self.context.queue.put(chart_result)
+                            df = None
+
+                        output_data = result_data.get("output_data") if isinstance(result_data, dict) else None
+                        if df is not None:
+                            if isinstance(output_data, str):
+                                top_k = min(5, len(df))
+                                await self.context.queue.put(self.context.create_result(
+                                    content=f"\n共获取到 {len(df)} 条数据，前 {top_k} 条数据如下：\n\n{df[: top_k].to_markdown(index=False)}\n"))
+                            elif output_data:
+                                for chart_result in output_data:
+                                    await self.context.queue.put(chart_result)
                     else:
-                        df = pd.DataFrame(np.array(result_data["data"]), columns=result_data["columns"])
+                        data_arr = result_data.get("data") if isinstance(result_data, dict) else None
+                        cols = result_data.get("columns") if isinstance(result_data, dict) else None
+                        if data_arr is not None and cols is not None:
+                            df = pd.DataFrame(np.array(data_arr), columns=cols)
+                        else:
+                            df = None
                         top_k = min(5, len(df))
                         self.context.queue.put_nowait(self.context.create_result(
                             content=f"\n共获取到 {len(df)} 条数据，前 {top_k} 条数据如下：\n\n{df[: top_k].to_markdown(index=False)}\n"))
@@ -150,6 +197,8 @@ class InsightTool(BaseTool):
         Dict[str, Any]]:
         try:
             SQLBotLogUtil.info("开始调用数据分析工具")
+            self.context.queue.put_nowait(
+                self.context.create_result(content="当前阶段：分析洞察", message_type="stage"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n### 数据分析  \n"))
             try:
                 df = pd.read_json(df)
@@ -161,9 +210,20 @@ class InsightTool(BaseTool):
 
                 return "传入的分析数据df数据格式有误，无法转换成pd.DataFrame格式"
 
+            if breakdown not in df.columns:
+                available = ", ".join(str(c) for c in df.columns)
+                msg = f"breakdown 维度「{breakdown}」不在数据列中。可用列：{available}。请从可用列中重新指定 breakdown。"
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {msg}  \n"))
+                return msg
+            if measure not in df.columns:
+                available = ", ".join(str(c) for c in df.columns)
+                msg = f"measure 指标「{measure}」不在数据列中。可用列：{available}。请从可用列中重新指定 measure。"
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {msg}  \n"))
+                return msg
+
             if analysis_method in ["Trend", "ChangePoint"]:
                 target_col = df[breakdown].dropna()
-                if not isinstance(target_col, bool) and not target_col.empty():
+                if not isinstance(target_col, bool) and not target_col.empty:
                     val = str(target_col.iloc[0])
                     if len(val) == 4:
                         format = "%Y"
@@ -187,7 +247,18 @@ class InsightTool(BaseTool):
                                 type=measure_type),
             )
 
-            breakdown_col = [c for c in data_model.columns if c.name == breakdown][0]
+            breakdown_candidates = [c for c in data_model.columns if c.name == breakdown]
+            if not breakdown_candidates:
+                available = ", ".join(c.name for c in data_model.columns)
+                msg = f"breakdown 维度「{breakdown}」在 DataModel 中未找到。可用维度：{available}。请从可用维度中重新指定 breakdown。"
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {msg}  \n"))
+                return msg
+            if analysis_method not in InsightFactoryDict:
+                allowed = ", ".join(sorted(InsightFactoryDict.keys()))
+                msg = f"analysis_method「{analysis_method}」不在支持列表中。支持的类型：{allowed}。请从上述类型中重新指定。"
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {msg}  \n"))
+                return msg
+            breakdown_col = breakdown_candidates[0]
             sibling_group = SiblingGroup(data=data_model, breakdown=breakdown_col)
             insight: InsightType = InsightFactoryDict[analysis_method].from_data(sibling_group)
 
@@ -228,6 +299,8 @@ class SaveInsightTool(BaseTool):
     def _run(self, df: str, insight: str, analysis_process: str) -> str:
         try:
             SQLBotLogUtil.info("开始调用分析结论保存工具")
+            self.context.queue.put_nowait(
+                self.context.create_result(content="当前阶段：沉淀结论", message_type="stage"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n### 分析结果保存  \n"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n#### 分析过程  \n"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n  {analysis_process}  \n"))
@@ -236,7 +309,7 @@ class SaveInsightTool(BaseTool):
             self.context.queue.put_nowait(self.context.create_result(content=f"\n#### 分析结果  \n"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n  {insights_result}  \n"))
 
-            return self.context.save_insight(df="None", insight=insights, analysis_process=analysis_process)
+            return self.context.save_insight(df=df, insight=insights, analysis_process=analysis_process)
 
         except Exception as e:
             SQLBotLogUtil.error(e)
@@ -247,7 +320,11 @@ class SaveInsightTool(BaseTool):
 
 class DataTransTool(BaseTool):
     name: str = "data_trans"
-    description: str = "这是一个数据变换工具。可以使用此工具对数据的某一列计算占比、计算排名、计算和整体均值差以及计算增长，返回 pd.DataFrame 的json格式的数据"
+    description: str = (
+        "这是一个数据变换工具。可以对数值型指标做占比、排名、与整体均值差、序列增长等变换，"
+        "返回 pd.DataFrame 的 json 格式数据。"
+        "适用于数值指标分析，不适用于把时间戳/日期字段当作指标做聚合或转换。"
+    )
 
     class DataTransInput(BaseModel):
         df: str = Field(description="分析的数据，必须是 pd.DataFrame 的json类型")
@@ -268,12 +345,41 @@ class DataTransTool(BaseTool):
         self.context = context
         self.session = session
 
+    @staticmethod
+    def _validate_columns(df: pd.DataFrame, column: str, measure: str) -> str | None:
+        missing_columns = [name for name in [column, measure] if name not in df.columns]
+        if missing_columns:
+            return f"数据变换失败，缺少字段: {', '.join(missing_columns)}"
+        return None
+
+    @staticmethod
+    def _validate_measure_dtype(df: pd.DataFrame, measure: str, trans_type: str) -> str | None:
+        measure_series = df[measure]
+        if pd.api.types.is_datetime64_any_dtype(measure_series):
+            return (
+                f"数据变换失败，字段 `{measure}` 是时间/时间戳类型。"
+                f"`data_trans` 仅支持对数值型指标做 `{trans_type}` 变换，"
+                "不要把时间字段当作 measure；如果需要处理最近一次/最新时间，请直接在 SQL 中完成排序、取最新记录，"
+                "或把时间字段作为 column 使用。"
+            )
+        if not pd.api.types.is_numeric_dtype(measure_series):
+            return (
+                f"数据变换失败，字段 `{measure}` 不是数值类型。"
+                f"`data_trans` 仅支持对数值型指标做 `{trans_type}` 变换，请更换为数值指标列。"
+            )
+        return None
+
     def _run(self, df: str, column: str, measure: str, measure_type: str, trans_type: str) -> str:
         try:
             SQLBotLogUtil.info("开始调用数据变换工具")
+            self.context.queue.put_nowait(
+                self.context.create_result(content="当前阶段：数据变换", message_type="stage"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n### 数据变换  \n"))
 
-            assert trans_type in ["rate", "rank", "increase", "sub_avg"]
+            if trans_type not in ["rate", "rank", "increase", "sub_avg"]:
+                msg = f"数据变换类型「{trans_type}」不支持。仅支持：rate、rank、increase、sub_avg。"
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {msg}  \n"))
+                return msg
             agg = "sum" if measure_type == "quantity" else "max"
             try:
                 df = pd.read_json(df)
@@ -284,9 +390,24 @@ class DataTransTool(BaseTool):
                     content=f"\n  传入的分析数据df数据格式有误，无法转换成pd.DataFrame格式  \n"))
                 return "传入的分析数据df数据格式有误，无法转换成pd.DataFrame格式"
 
+            column_error = self._validate_columns(df, column, measure)
+            if column_error:
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {column_error}  \n"))
+                return column_error
+
+            dtype_error = self._validate_measure_dtype(df, measure, trans_type)
+            if dtype_error:
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {dtype_error}  \n"))
+                return dtype_error
+
             if trans_type == "rate":
                 df = df.groupby(column).agg({measure: agg}).reset_index()
-                df[f"Rate({measure})"] = df[measure] / df[measure].sum()
+                total = df[measure].sum()
+                if total == 0 or (isinstance(total, float) and pd.isna(total)):
+                    self.context.queue.put_nowait(self.context.create_result(
+                        content="\n  数据变换失败：指标总和为 0，无法计算占比  \n"))
+                    return "数据变换失败：指标总和为 0，请检查数据或更换 measure。"
+                df[f"Rate({measure})"] = df[measure] / total
             if trans_type == "increase":
                 df = df.groupby(column).agg({measure: agg}) \
                     .sort_values(by=column, ascending=True).reset_index()
@@ -294,7 +415,12 @@ class DataTransTool(BaseTool):
                 df = df.dropna()
             if trans_type == "sub_avg":
                 df = df.groupby(column).agg({measure: agg}).reset_index()
-                avg = df[measure].sum() / df[measure].size
+                size = df[measure].size
+                if size == 0:
+                    self.context.queue.put_nowait(self.context.create_result(
+                        content="\n  数据变换失败：分组后无数据，无法计算与均值的差  \n"))
+                    return "数据变换失败：分组后无数据，请检查 column 与 measure。"
+                avg = df[measure].sum() / size
                 df[f"{measure}-avg"] = df[measure] - avg
             if trans_type == "rank":
                 df = df.groupby(column).agg({measure: agg}).reset_index()
@@ -313,11 +439,23 @@ class DataTransTool(BaseTool):
 
 class FinalAnswerTool(BaseTool):
     name: str = "final_answer"
-    description: str = "为用户的任务提供最终答案"
+    description: str = (
+        "输出唯一面向用户的综合分析报告（Markdown）。必须包含六级标题："
+        "## 1. 问题与口径 / ## 2. 核心结论（3～5 条）/ ## 3. 数据支撑 / ## 4. 风险与异常 / "
+        "## 5. 建议（可执行）/ ## 6. 局限。禁止仅输出几句话。禁止程序代码。"
+    )
 
     class FinalAnswerInput(BaseModel):
         answer: str = Field(
-            description="如果完成分析任务则返回完成分析结论，如果没有完成则给出没有完成的原因\n\n            ## 要求\n            1. 如果完成分析，则返回分析结论\n            2. 如果没有完成分析，则返回没有完成分析的原因\n            3. **必须使用中文回答，禁止给出任何程序代码**\n            4. 使用 **markdown** 格式")
+            description=(
+                "完整 Markdown 报告，必须依次包含："
+                "## 1. 问题与口径（问题、时间范围、主数据源与辅表、指标说明）；"
+                "## 2. 核心结论（3～5 条 bullet）；"
+                "## 3. 数据支撑（表格+简短解释，可选 SQL）；"
+                "## 4. 风险与异常；## 5. 建议；## 6. 局限。"
+                "中文，无代码。"
+            )
+        )
 
     args_schema: Type[BaseModel] = FinalAnswerInput
     context: AnalysisContext = None
@@ -331,13 +469,15 @@ class FinalAnswerTool(BaseTool):
     def _run(self, answer: str) -> str:
         try:
             SQLBotLogUtil.info("开始调用最终结论工具")
+            self.context.queue.put_nowait(
+                self.context.create_result(content="当前阶段：汇总报告", message_type="stage"))
             result = {
                 "insights": self.context.insights or [],
                 "summary": answer,
             }
 
-            self.context.queue.put_nowait(self.context.create_result(content=f"\n### 总结结果  \n"))
-            self.context.queue.put_nowait(self.context.create_result(content=f"\n  {answer}  \n"))
+            self.context.queue.put_nowait(
+                self.context.create_result(content=answer, message_type="report"))
 
             return json.dumps(result, ensure_ascii=False)
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Body
 from pydantic import BaseModel
@@ -237,6 +237,9 @@ class AiModelQuestion(BaseModel):
 
     # 新增用户信息
     user_name: Optional[str] = Body(default=None, description='用户名')
+    analysis_complexity: str = "medium"
+    analysis_main_question: Optional[str] = None
+    analysis_plan: Optional[Dict[str, Any]] = None
 
     # modify by huhuhuhr
     def sql_sys_question_with_schema(self, db_type: Union[str, DB], enable_query_limit: bool = True, mySchema: str = None):
@@ -315,10 +318,51 @@ class AiModelQuestion(BaseModel):
         _question = self.question
         if self.regenerate_record_id:
             _question = get_sql_template()['regenerate_hint'] + self.question
-        return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=_question,
-                                                 rule=self.rule, current_time=current_time, error_msg=self.error_msg,
-                                                 change_title=change_title,
-                                                 thinking_result=(self.enhanced_think_result or ''))
+        analysis_context = self.sql_analysis_context()
+        question_prompt = get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=_question,
+                                                            rule=self.rule, current_time=current_time,
+                                                            error_msg=self.error_msg,
+                                                            change_title=change_title,
+                                                            thinking_result=(self.enhanced_think_result or ''))
+        if analysis_context:
+            question_prompt += f"\n{analysis_context}"
+        return question_prompt
+
+    def sql_analysis_context(self) -> str:
+        if not self.analysis_plan:
+            return ""
+
+        required_fields = self.analysis_plan.get("required_fields") or []
+        forbidden_shapes = self.analysis_plan.get("forbidden_query_shapes") or []
+        subquestions = self.analysis_plan.get("subquestions") or []
+
+        required_fields_text = "\n".join(f"- {item}" for item in required_fields) or "- 无"
+        forbidden_shapes_text = "\n".join(f"- {item}" for item in forbidden_shapes) or "- 无"
+        subquestions_text = "\n".join(f"- {item}" for item in subquestions) or "- 无"
+
+        return (
+            "<analysis-execution-context>\n"
+            f"<main-question>{self.analysis_main_question or self.question}</main-question>\n"
+            f"<task-type>{self.analysis_plan.get('task_type', 'aggregate')}</task-type>\n"
+            f"<query-mode>{self.analysis_plan.get('query_mode', 'aggregate')}</query-mode>\n"
+            f"<answer-granularity>{self.analysis_plan.get('answer_granularity', 'direct_evidence')}</answer-granularity>\n"
+            f"<required-result-shape>{self.analysis_plan.get('required_result_shape', '')}</required-result-shape>\n"
+            "<required-fields>\n"
+            f"{required_fields_text}\n"
+            "</required-fields>\n"
+            "<forbidden-query-shapes>\n"
+            f"{forbidden_shapes_text}\n"
+            "</forbidden-query-shapes>\n"
+            "<subquestions>\n"
+            f"{subquestions_text}\n"
+            "</subquestions>\n"
+            "<instruction>\n"
+            "先判断当前取数请求属于聚合、排序、对比、趋势还是快照/详情问题，再选择对应的 SQL 形态。"
+            "如果 task-type 为 snapshot/detail，则优先返回能直接回答问题的记录级结果，"
+            "不要先改写成次数、总量、趋势等聚合问题。"
+            "</instruction>\n"
+            "</analysis-execution-context>"
+        )
 
     def enhanced_think_question(self, current_time: str):
         return get_myself_template()['think_prompt'].format(user_info=self.user_name,

@@ -108,7 +108,7 @@ class OpenAILLM(BaseLLM):
             )
         else:
             from common.utils.utils import SQLBotLogUtil
-            SQLBotLogUtil.info("使用工具")
+            SQLBotLogUtil.info("创建支持工具调用的 LLM（ChatOpenAI），用于 Agent/深度分析等场景")
             return ChatOpenAI(
                 model=self.config.model_name,
                 api_key=self.config.api_key or 'Empty',

@@ -110,7 +110,7 @@ const allSelected = computed(
     allVisibleIds.value.every((id) => selectedIds.value.includes(id))
 )
 
-const emits = defineEmits(['chatSelected', 'chatRenamed', 'chatDeleted', 'update:loading'])
+const emits = defineEmits(['chatSelected', 'chatRenamed', 'chatDeleted', 'chatListCleared', 'update:loading'])
 
 const _loading = computed({
   get() {
@@ -206,40 +206,21 @@ async function handleBulkDeleteSelected() {
 
 type ClearScope = 'before_today' | 'before_7_days' | 'all'
 
-function getIdsByScope(scope: ClearScope): number[] {
-  const todayStart = dayjs(dayjs().format('YYYY-MM-DD') + ' 00:00:00').toDate()
-  const weekStart = dayjs(dayjs().subtract(7, 'day').format('YYYY-MM-DD') + ' 00:00:00').toDate()
-
-  const ids: number[] = []
-  props.chatList.forEach((chat: Chat) => {
-    if (chat.id === undefined) return
-    const time = getDate(chat.create_time)
-    if (!time) return
-    if (scope === 'all') {
-      ids.push(chat.id)
-      return
-    }
-    if (scope === 'before_today' && time < todayStart) {
-      ids.push(chat.id)
-      return
-    }
-    if (scope === 'before_7_days' && time < weekStart) {
-      ids.push(chat.id)
-    }
-  })
-  return ids
+/** 按范围生成清理请求的时间段（仅智能问数，不包含深度分析） */
+function getCleanParamsByScope(scope: ClearScope): { start_time?: string; end_time?: string } | undefined {
+  if (scope === 'all') return undefined
+  if (scope === 'before_today') {
+    const end = dayjs().format('YYYY-MM-DD') + 'T00:00:00'
+    return { end_time: end }
+  }
+  if (scope === 'before_7_days') {
+    const end = dayjs().subtract(7, 'day').format('YYYY-MM-DD') + 'T00:00:00'
+    return { end_time: end }
+  }
+  return undefined
 }
 
 async function handleClearByScope(scope: ClearScope) {
-  const ids = getIdsByScope(scope)
-  if (!ids.length) {
-    ElMessage({
-      type: 'info',
-      message: t('workspace.historical_dialogue'),
-    })
-    return
-  }
-
   try {
     await ElMessageBox.confirm(t('qa.clear_history_confirm'), t('qa.clear_history'), {
       confirmButtonType: 'danger',
@@ -252,26 +233,19 @@ async function handleClearByScope(scope: ClearScope) {
     return
   }
 
-  const chatMap = new Map<number, Chat>()
-  props.chatList.forEach((c: Chat) => {
-    if (c.id !== undefined) {
-      chatMap.set(c.id, c)
-    }
-  })
-
   _loading.value = true
   try {
-    await Promise.all(
-      ids.map((id) => {
-        const chat = chatMap.get(id)
-        return chatApi.deleteChat(id, chat?.brief)
+    const params = getCleanParamsByScope(scope)
+    const res = await chatApi.cleanChats(params ?? {})
+    if (res.total_count === 0) {
+      ElMessage({ type: 'info', message: t('workspace.historical_dialogue') })
+    } else {
+      ElMessage({
+        type: 'success',
+        message: res.message || t('dashboard.delete_success'),
       })
-    )
-    ids.forEach((id) => emits('chatDeleted', id))
-    ElMessage({
-      type: 'success',
-      message: t('dashboard.delete_success'),
-    })
+      emits('chatListCleared')
+    }
   } catch (err: any) {
     ElMessage({
       type: 'error',

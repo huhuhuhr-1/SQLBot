@@ -1191,12 +1191,26 @@ class LLMService:
                     for v in chart.get('columns'):
                         v['value'] = v.get('value').lower()
                 if chart.get('axis'):
-                    if chart.get('axis').get('x'):
-                        chart.get('axis').get('x')['value'] = chart.get('axis').get('x').get('value').lower()
-                    if chart.get('axis').get('y'):
-                        chart.get('axis').get('y')['value'] = chart.get('axis').get('y').get('value').lower()
-                    if chart.get('axis').get('series'):
-                        chart.get('axis').get('series')['value'] = chart.get('axis').get('series').get('value').lower()
+                    axis = chart['axis']
+                    if axis.get('x') and axis['x'].get('value'):
+                        axis['x']['value'] = axis['x']['value'].lower()
+                    # axis.y 支持单对象或数组（LLM 常返回数组）
+                    if axis.get('y'):
+                        y = axis['y']
+                        if isinstance(y, list):
+                            for item in y:
+                                if item and item.get('value'):
+                                    item['value'] = item['value'].lower()
+                        elif isinstance(y, dict) and y.get('value'):
+                            y['value'] = y['value'].lower()
+                    if axis.get('series'):
+                        s = axis['series']
+                        if isinstance(s, list):
+                            for item in s:
+                                if item and item.get('value'):
+                                    item['value'] = item['value'].lower()
+                        elif isinstance(s, dict) and s.get('value'):
+                            s['value'] = s['value'].lower()
             elif data['type'] == 'error':
                 message = data['reason']
                 error = True
@@ -1324,6 +1338,71 @@ class LLMService:
         self.init_record(_session)
         return last_sql_messages
 
+    @staticmethod
+    def _contains_field_marker(fields: list[str], markers: list[str]) -> bool:
+        return any(any(marker in field for marker in markers) for field in fields)
+
+    def validate_plan_result_alignment(
+        self, fields: list[str], row_count: Optional[int] = None
+    ) -> Optional[str]:
+        plan = self.chat_question.analysis_plan or {}
+        task_type = (plan.get("task_type") or "").lower()
+        answer_granularity = (plan.get("answer_granularity") or "").strip()
+        if not task_type:
+            return None
+
+        normalized_fields = [field.lower() for field in fields if isinstance(field, str)]
+        if not normalized_fields:
+            return "查询结果为空列，无法判断是否与当前子问题对齐"
+
+        time_markers = ["time", "date", "created", "updated", "start", "end", "dt"]
+        entity_markers = ["id", "name", "code", "task", "job", "order", "user", "item", "record"]
+        detail_markers = ["status", "state", "result", "message", "reason", "elapsed", "duration", "cost"]
+        aggregate_markers = ["count", "sum", "avg", "mean", "total", "ratio", "rate", "percent", "cnt"]
+
+        has_time_field = self._contains_field_marker(normalized_fields, time_markers)
+        has_entity_field = self._contains_field_marker(normalized_fields, entity_markers)
+        has_detail_field = self._contains_field_marker(normalized_fields, detail_markers)
+        aggregate_field_count = sum(
+            1 for field in normalized_fields
+            if any(marker in field for marker in aggregate_markers)
+        )
+
+        if task_type == "snapshot":
+            if answer_granularity == "single_latest_record" and row_count is not None and row_count > 1:
+                return (
+                    "当前为单条最新记录问题，结果应只有 1 行。"
+                    "请改为按判定最近一次的时间字段排序后 LIMIT 1，只返回最近一条记录。"
+                )
+            if answer_granularity == "latest_record_per_entity" and not has_entity_field:
+                return (
+                    "当前为每实体最近一条问题，结果必须包含实体标识字段（如 task_id、order_id 等）。"
+                    "请用窗口函数或子查询按实体分组、按时间取最新一条，再对最终结果施加上限。"
+                )
+            if aggregate_field_count > 0 and not (has_time_field or has_detail_field):
+                return (
+                    "当前结果更像聚合统计而不是快照/详情结果。"
+                    "请直接返回能回答“最新/最后一次/当前状态/详情”的记录级字段，"
+                    "例如实体标识、判定最近一次的时间字段、状态或结果字段，不要先统计次数/总量。"
+                )
+            if not has_entity_field or not (has_time_field or has_detail_field):
+                return (
+                    "当前结果缺少快照类问题所需的关键字段。"
+                    "请返回实体标识字段，以及用于判定最近一次的时间字段或状态/结果字段，"
+                    "不要只返回汇总指标。"
+                )
+
+        if task_type == "trend" and not has_time_field:
+            return "当前结果缺少时间字段，无法支撑趋势类问题，请改为按时间粒度返回指标结果。"
+
+        if task_type == "compare" and len(normalized_fields) < 2:
+            return "当前结果无法形成对比口径，请至少返回对比维度和对应指标。"
+
+        if task_type == "ranking" and aggregate_field_count == 0:
+            return "当前结果缺少可排序的核心指标，无法回答排名类问题，请返回排序指标及对象字段。"
+
+        return None
+
     async def get_data_for_plan(self, _session: Session, query, is_chart_output=False):
         self.chat_question.question = query
 
@@ -1339,6 +1418,12 @@ class LLMService:
                     self.chat_question.custom_prompt = find_custom_prompts(_session,
                                                                            CustomPromptTypeEnum.GENERATE_SQL,
                                                                            oid, ds_id)
+
+            _last_sql_err = get_last_execute_sql_error(_session, self.chat_question.chat_id)
+            if _last_sql_err:
+                self.chat_question.error_msg = f'<error-msg>\n{_last_sql_err}\n</error-msg>'
+            else:
+                self.chat_question.error_msg = ''
 
             self.init_messages(_session)
 
@@ -1466,6 +1551,15 @@ class LLMService:
                         "type": "error"
                     }
                 else:
+                    alignment_error = self.validate_plan_result_alignment(
+                        _fields_list, row_count=len(data)
+                    )
+                    if alignment_error:
+                        yield {
+                            "data": alignment_error,
+                            "type": "error"
+                        }
+                        return
                     yield {
                         "data": "sql执行成功",
                         "type": "sql_execute_result"
@@ -1478,9 +1572,20 @@ class LLMService:
             except Exception as e:
                 SQLBotLogUtil.error(f"{e}")
                 SQLBotLogUtil.error("执行sql失败")
+                try:
+                    self.save_error(
+                        session=_session,
+                        message=orjson.dumps({
+                            "message": "Execute SQL Failed",
+                            "traceback": str(e),
+                            "type": "exec-sql-err",
+                        }).decode(),
+                    )
+                except Exception:
+                    pass
                 yield {
-                    "data": "执行sql失败",
-                    "type": "error"
+                    "data": f"执行sql失败: {str(e)}",
+                    "type": "error",
                 }
                 return
 
@@ -1554,8 +1659,16 @@ class LLMService:
         except Exception as e:
             SQLBotLogUtil.error(f"{e}")
             SQLBotLogUtil.error("plan获取数据失败")
+            err_msg = "获取数据失败"
+            if isinstance(e, SingleMessageError):
+                try:
+                    payload = orjson.loads(str(e))
+                    if isinstance(payload, dict) and payload.get("message"):
+                        err_msg = f"获取数据失败：{payload['message']}"
+                except Exception:
+                    pass
             yield {
-                "data": "获取数据失败",
+                "data": err_msg,
                 "type": "error"
             }
             return

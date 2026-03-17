@@ -9,22 +9,24 @@ import uuid
 from typing import Optional, List
 
 import orjson
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
 from starlette.responses import StreamingResponse
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from apps.ai_model.model_factory import create_llm
-from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat
-from apps.chat.models.chat_model import CreateChat
+from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat, list_deep_analysis_chats
+from apps.chat.models.chat_model import CreateChat, Chat
 from apps.datasource.crud.datasource import get_datasource_list_for_openapi, get_datasource_list_for_openapi_excels, \
-    create_ds
+    create_ds, get_table_schema
 from apps.datasource.models.datasource import CoreDatasource, CreateDatasource, CoreTable, DatasourceConf
 from apps.datasource.utils.utils import aes_encrypt
 from apps.db.db import exec_sql
 from apps.openapi.agent.chat_agent import ChatAgent
 from apps.openapi.agent.plan_agent import PlanAgent
+from apps.openapi.agent.deep_analysis_graph import DeepAnalysisGraphRunner
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql
+    OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, DeepAnalysisRequest
 from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.openapi.service.openapi_llm import LLMService
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
@@ -35,6 +37,8 @@ from apps.system.crud.user import authenticate
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.config import settings
 from common.core.db import get_session
+from apps.template.template import get_base_template
+from apps.openapi.service.openapi_llm import get_lang_name
 from common.core.deps import SessionDep, CurrentUser, CurrentAssistant, Trans
 from common.error import ParseSQLResultError, SQLBotDBError
 from common.utils.utils import SQLBotLogUtil
@@ -386,6 +390,231 @@ async def bind_data_source(session: SessionDep, current_user: CurrentUser, db_bi
         )
 
 
+@router.get("/deep-analysis/sessions", response_model=List[Chat], summary="深度分析会话列表",
+            description="仅返回 origin=1 的深度分析会话，供深度分析页左侧列表使用",
+            dependencies=[Depends(common_headers)])
+async def deep_analysis_sessions(session: SessionDep, current_user: CurrentUser):
+    return list_deep_analysis_chats(session, current_user)
+
+
+@router.get("/deep-analysis/recommend-questions", summary="深度分析推荐问题（LLM+库表）",
+            description="根据所选数据源的表结构，用 LLM 生成 3～5 个适合深度分析的分析目标，用于「试试这些分析目标」",
+            dependencies=[Depends(common_headers)])
+async def deep_analysis_recommend_questions(
+        session: SessionDep,
+        current_user: CurrentUser,
+        current_assistant: CurrentAssistant,
+        datasource_id: int = Query(..., description="数据源 ID"),
+):
+    """结合库表 schema 用 LLM 推荐深度分析目标，返回 questions 数组。"""
+    try:
+        oid = current_user.oid if current_user.oid is not None else 1
+        ds = session.get(CoreDatasource, datasource_id)
+        if not ds or ds.oid != oid:
+            raise HTTPException(status_code=404, detail="Datasource not found or no permission")
+        schema = get_table_schema(
+            session=session,
+            current_user=current_user,
+            ds=ds,
+            question="",
+            embedding=False,
+        )
+        if not (schema and schema.strip()):
+            return {"questions": []}
+        lang = get_lang_name(getattr(current_user, "language", None) or "")
+        tpl = get_base_template()["template"]["deep_analysis_guess"]
+        system = tpl["system"].format(lang=lang)
+        user = tpl["user"].format(schema=schema)
+        messages = [SystemMessage(content=system), HumanMessage(content=user)]
+        llm = await create_llm()
+
+        def _invoke():
+            return llm.invoke(messages)
+
+        response = await asyncio.to_thread(_invoke)
+        content = (response.content or "").strip()
+        questions = []
+        if content:
+            try:
+                raw = json.loads(content)
+                if isinstance(raw, list):
+                    questions = [str(x).strip() for x in raw if x]
+                else:
+                    questions = []
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return {"questions": questions[:10]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        SQLBotLogUtil.error(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/deep-analysis", summary="深度分析",
+            description="独立菜单「深度分析」：Agent 自主规划、多次查数、意图驱动分析，流式返回过程与结果",
+            dependencies=[Depends(common_headers)])
+async def deep_analysis(
+        session: SessionDep,
+        current_user: CurrentUser,
+        body: DeepAnalysisRequest,
+        current_assistant: CurrentAssistant
+):
+    """
+    深度分析：根据用户意图自主规划，可多次查数、多次分析，流式返回每步过程与最终结果。
+    前端可展示：规划步骤、取数 SQL、执行结果、分析结论、最终报告等。
+    """
+    try:
+        chat_id = body.chat_id
+        if chat_id is None:
+            create_chat_obj = CreateChat(
+                datasource=body.datasource_id,
+                question=body.question[:50] if len(body.question) > 50 else body.question,
+                origin=1,
+            )
+            chat_info = create_chat(session, current_user, create_chat_obj, require_datasource=True,
+                                    current_assistant=current_assistant)
+            chat_id = chat_info.id
+            if not chat_id:
+                raise HTTPException(status_code=500, detail="创建会话失败")
+
+        chat_question = OpenChatQuestion(
+            chat_id=chat_id,
+            question=body.question,
+            task_type="chat",
+            chat_mode="plan",
+            no_reasoning=body.no_reasoning or False,
+            history_open=False,
+            max_data_length=body.max_data_length or 1000,
+            is_chart_output=body.is_chart_output is not False,
+        )
+
+        queue = asyncio.Queue()
+        # 立即下发 chat_id，前端可马上插表展示，避免“更新了找不到输出”
+        await queue.put({"type": "start", "chat_id": chat_id})
+        llm = await create_llm()
+
+        async def _stream(q):
+            try:
+                while True:
+                    try:
+                        data = await asyncio.wait_for(q.get(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        continue
+                    yield 'data:' + orjson.dumps(data).decode() + '\n\n'
+                    if isinstance(data, dict) and data.get('type') == 'finish':
+                        break
+                    if isinstance(data, dict) and data.get('type') == 'error':
+                        break
+                    if isinstance(data, dict) and data.get('type') == 'start':
+                        continue
+            except GeneratorExit:
+                return
+            except Exception as e:
+                yield 'data:' + orjson.dumps({
+                    'type': 'error',
+                    'content': str(e),
+                    'reasoning_content': '',
+                }).decode() + '\n\n'
+
+        class DeepAnalysisAccumulator:
+            """包装 queue，在流式输出时累积 plan/report/process，在 finish 时写入 DB 以便刷新/切回后恢复。"""
+            __slots__ = ('_q', '_sess', '_uid', '_cid', '_qtext', '_config', 'plan', 'report', 'process', '_loop')
+
+            def __init__(self, q, sess, uid, cid, qtext, config=None):
+                self._q = q
+                self._sess = sess
+                self._uid = uid
+                self._cid = cid
+                self._qtext = qtext or ''
+                self._config = config or {}
+                self.plan = None
+                self.report = None
+                self.process = []
+                self._loop = None
+
+            async def put(self, msg):
+                if self._loop is None:
+                    self._loop = asyncio.get_running_loop()
+                if isinstance(msg, dict):
+                    t = msg.get('type')
+                    c = msg.get('content')
+                    r = msg.get('reasoning_content')
+                    if t == 'plan':
+                        self.plan = c
+                    elif t == 'report':
+                        self.report = c
+                    elif t in ('process', 'analysis-result', 'chart', 'chart-data', 'data-finish') or (c or r):
+                        self.process.append({'content': c, 'reasoning_content': r, 'type': t})
+                    if t == 'finish':
+                        from apps.chat.curd.chat import save_deep_analysis_result
+                        save_deep_analysis_result(
+                            self._sess, self._cid, self._uid, self._qtext,
+                            self.plan, self.report, self.process,
+                            config=self._config,
+                        )
+                await self._q.put(msg)
+
+            def put_nowait(self, msg):
+                """供同步 Tool 调用：将 put 调度到事件循环并等待完成，与 asyncio.Queue.put_nowait 行为兼容。"""
+                if self._loop is None:
+                    return
+                fut = asyncio.run_coroutine_threadsafe(self.put(msg), self._loop)
+                try:
+                    fut.result(timeout=10)
+                except Exception:
+                    pass
+
+        def run_plan(context, user, question, assistant, q):
+            from common.core.db import get_db_session
+            config = {
+                "max_data_length": getattr(body, "max_data_length", None),
+                "max_steps": getattr(body, "max_steps", None),
+            }
+            with get_db_session() as thread_session:
+                acc = DeepAnalysisAccumulator(
+                    q, thread_session, user.id, question.chat_id, question.question, config=config,
+                )
+                use_langgraph = getattr(settings, "DEEP_ANALYSIS_USE_LANGGRAPH", True)
+                if use_langgraph:
+                    runner = DeepAnalysisGraphRunner(
+                        session=thread_session,
+                        current_user=user,
+                        chat_question=question,
+                        current_assistant=assistant,
+                        queue=acc,
+                        max_steps=body.max_steps,
+                    )
+                    context.run(lambda: asyncio.run(runner.run()))
+                else:
+                    context.run(lambda: asyncio.run(
+                        PlanAgent(
+                            session=thread_session,
+                            current_user=user,
+                            chat_question=question,
+                            current_assistant=assistant,
+                            max_steps=body.max_steps,
+                            queue=acc,
+                            llm=llm,
+                        ).execute_plan()
+                    ))
+
+        thread = threading.Thread(
+            target=run_plan,
+            args=(contextvars.copy_context(), current_user, chat_question, current_assistant, queue),
+            daemon=True,
+        )
+        thread.start()
+
+        return StreamingResponse(_stream(queue), media_type="text/event-stream")
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/getRecommend", dependencies=[Depends(common_headers)])
 async def get_recommend(
         session: SessionDep,
@@ -456,8 +685,8 @@ async def get_recommend(
     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 
 
-@router.post("/deleteChats", summary="清理",
-             description="清理当前用户的所有聊天记录",
+@router.post("/deleteChats", summary="清理智能问数",
+             description="仅清理智能问数会话（不包含深度分析）。支持：按会话ID、按时间段、清空全部。",
              dependencies=[Depends(common_headers)])
 async def clean_all_chat_record(
         session: SessionDep,
@@ -465,12 +694,12 @@ async def clean_all_chat_record(
         clean: OpenClean
 ):
     """
-    清理当前用户的聊天记录
+    清理当前用户的智能问数聊天记录（不清理深度分析 origin=1）。
 
     Args:
         session: 数据库会话依赖
         current_user: 当前认证用户信息
-        clean: 清理对象，包含要清理的聊天记录ID列表
+        clean: 清理对象（chat_ids / start_time+end_time / 空为清空全部智能问数）
 
     Returns:
         dict: 操作结果，包含成功和失败的记录数
