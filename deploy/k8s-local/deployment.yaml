@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sqlbot
+  namespace: sqlbot
+  labels:
+    app.kubernetes.io/name: sqlbot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sqlbot
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sqlbot
+    spec:
+      containers:
+        - name: sqlbot
+          image: zf-sqlbot:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: api
+              containerPort: 8000
+              protocol: TCP
+            - name: mcp
+              containerPort: 8001
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: sqlbot-config
+            - secretRef:
+                name: sqlbot-secret
+          volumeMounts:
+            - name: postgresql-data
+              mountPath: /var/lib/postgresql/data
+            - name: data
+              mountPath: /opt/sqlbot/data
+            - name: images
+              mountPath: /opt/sqlbot/images
+            - name: logs
+              mountPath: /opt/sqlbot/app/logs
+          livenessProbe:
+            httpGet:
+              path: /openapi.json
+              port: api
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: api
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+      volumes:
+        - name: postgresql-data
+          persistentVolumeClaim:
+            claimName: sqlbot-postgresql
+        - name: data
+          persistentVolumeClaim:
+            claimName: sqlbot-data
+        - name: images
+          persistentVolumeClaim:
+            claimName: sqlbot-images
+        - name: logs
+          persistentVolumeClaim:
+            claimName: sqlbot-logs
