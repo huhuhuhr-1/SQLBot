@@ -2086,12 +2086,19 @@ onMounted(async () => {
 .da-report-body :deep(h3) { font-size: 1rem; margin: 0.8em 0 0.4em; }
 .da-report-body :deep(p) { margin: 0.5em 0; }
 .da-report-body :deep(ul), .da-report-body :deep(ol) { margin: 0.5em 0; padding-left: 1.5em; }
+/* 取数结果：随表格内容自适应高度，表格小则矮、表格大则设上限并滚动，避免整页被撑得过长 */
 .step-chart-wrap {
   margin-top: 12px;
-  min-height: 200px;
+  min-height: 0;
+  max-height: min(420px, 70vh);
+  overflow: auto;
   border-radius: 12px;
   background: rgba(224, 224, 226, 0.29);
   padding: 12px;
+}
+.step-chart-wrap :deep(.chart-container) {
+  height: auto;
+  min-height: 0;
 }
 .card-head {
   margin-bottom: 14px;
