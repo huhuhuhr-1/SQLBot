@@ -31,7 +31,7 @@
     "empty_tip": "데이터 소스와 질문을 입력한 뒤 시작하세요.",
     "new_analysis": "새 분석",
     "export_report": "보고서 내보내기",
-    "export_success": "보고서가 내보내졌습니다",
+    "export_success": "보고서가 내보내졌습니다 (Markdown)",
     "no_sessions": "분석 기록 없음",
     "task_plan": "작업 분해",
     "current_stage": "현재 단계",

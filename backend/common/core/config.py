@@ -134,12 +134,16 @@ class Settings(BaseSettings):
 
     ORACLE_CLIENT_PATH: str = '/opt/sqlbot/db_client/oracle_instant_client'
 
+    # 深度分析：是否使用 LangGraph 执行引擎（False 时回退到原 PlanAgent）
+    DEEP_ANALYSIS_USE_LANGGRAPH: bool = True
+
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'GENERATE_SQL_QUERY_LIMIT_ENABLED',
                      'PARSE_REASONING_BLOCK_ENABLED',
                      'PG_POOL_PRE_PING',
                      'TABLE_EMBEDDING_ENABLED',
+                     'DEEP_ANALYSIS_USE_LANGGRAPH',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:

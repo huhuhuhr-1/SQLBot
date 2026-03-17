@@ -317,26 +317,24 @@
             </div>
             <transition-group name="da-result-chain" tag="div" class="da-result-chain-wrap">
               <div v-if="planHtml" key="plan" class="plan-block da-result-card">
-                <div class="card-head">
-                  <div class="report-title">{{ t('deep_analysis.task_plan') }}</div>
-                </div>
-                <div class="report-body markdown-body" v-html="planHtml"></div>
+                <el-collapse v-model="planCollapse">
+                  <el-collapse-item :title="t('deep_analysis.task_plan')" name="plan">
+                    <div class="report-body markdown-body" v-html="planHtml"></div>
+                  </el-collapse-item>
+                </el-collapse>
               </div>
               <div
                 v-if="processChunks.length > 0 || (loading && !reportHtml)"
                 key="process"
                 class="process-block da-result-card"
               >
-                <div class="card-head">
-                  <div class="report-title">{{ t('deep_analysis.thinking_process') }}</div>
-                </div>
                 <el-collapse v-model="processCollapse">
-                  <el-collapse-item :title="t('deep_analysis.process_collapsed')" name="1">
+                  <el-collapse-item :title="t('deep_analysis.thinking_process')" name="process">
                     <div v-if="loading && processChunks.length === 0" class="loading-tip">
                       <el-icon class="is-loading"><Loading /></el-icon>
                       {{ t('deep_analysis.waiting') }}
                     </div>
-                    <div class="steps-container">
+                    <div v-else class="steps-container">
                       <template v-for="(block, idx) in processBlocks" :key="idx">
                         <div class="step-item">
                           <div v-if="block.reasoning_content" class="step-thinking">
@@ -372,10 +370,11 @@
                 </el-collapse>
               </div>
               <div v-if="reportHtml" key="report" class="report-block da-result-card">
-                <div class="card-head">
-                  <div class="report-title">{{ t('deep_analysis.report_title') }}</div>
-                </div>
-                <div class="report-body markdown-body da-report-body" v-html="reportHtml"></div>
+                <el-collapse v-model="reportCollapse">
+                  <el-collapse-item :title="t('deep_analysis.report_title')" name="report">
+                    <div class="report-body markdown-body da-report-body" v-html="reportHtml"></div>
+                  </el-collapse-item>
+                </el-collapse>
               </div>
             </transition-group>
           </template>
@@ -500,7 +499,9 @@ const reportHtml = ref('')
 const processChunks = ref<
   Array<{ content?: string; reasoning_content?: string; type?: string; chart?: unknown; data?: unknown }>
 >([])
+const planCollapse = ref<string[]>([])
 const processCollapse = ref<string[]>([])
+const reportCollapse = ref<string[]>([])
 const currentStage = ref('')
 let abortController: AbortController | null = null
 let stopFlag = false
@@ -691,7 +692,9 @@ function goNewAnalysis() {
   reportMarkdown.value = ''
   reportHtml.value = ''
   processChunks.value = []
+  planCollapse.value = []
   processCollapse.value = []
+  reportCollapse.value = []
   currentStage.value = ''
   question.value = ''
   datasourceId.value = undefined
@@ -860,7 +863,9 @@ async function startAnalysis() {
   reportMarkdown.value = ''
   reportHtml.value = ''
   processChunks.value = []
+  planCollapse.value = []
   processCollapse.value = []
+  reportCollapse.value = []
   currentStage.value = ''
   loading.value = true
   stopFlag = false
@@ -983,23 +988,11 @@ function stopAnalysis() {
 
 function exportReport() {
   if (!reportMarkdown.value) return
-  const payload = {
-    question: question.value,
-    plan: planMarkdown.value,
-    current_stage: currentStage.value,
-    report: reportMarkdown.value,
-    process_steps: processChunks.value.map((s) => ({
-      content: s.content,
-      reasoning_content: s.reasoning_content,
-      type: s.type,
-    })),
-    exported_at: dayjs().format('YYYY-MM-DD HH:mm:ss'),
-  }
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const blob = new Blob([reportMarkdown.value], { type: 'text/markdown;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `深度分析报告_${dayjs().format('YYYYMMDD_HHmmss')}.json`
+  a.download = `深度分析报告_${dayjs().format('YYYYMMDD_HHmmss')}.md`
   a.click()
   URL.revokeObjectURL(url)
   ElMessage.success(t('deep_analysis.export_success'))

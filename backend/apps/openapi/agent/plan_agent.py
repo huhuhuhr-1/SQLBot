@@ -248,7 +248,7 @@ class PlanAgent:
             max_steps = 8
         else:
             complexity = "simple"
-            max_steps = 4
+            max_steps = 8  # 8 步以便至少完成 2 个子任务 + 沉淀结论 + 最终报告，避免一步就截断
 
         # 如用户通过 API 传入了 max_steps，则以用户配置为准
         if self._override_max_steps and self._override_max_steps > 0:

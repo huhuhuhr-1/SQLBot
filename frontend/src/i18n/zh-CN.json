@@ -31,7 +31,7 @@
     "empty_tip": "选择数据源并输入分析意图后，点击「开始分析」。",
     "new_analysis": "新建分析",
     "export_report": "导出报告",
-    "export_success": "报告已导出",
+    "export_success": "报告已导出（Markdown 文档）",
     "no_sessions": "暂无分析记录",
     "task_plan": "任务拆解",
     "current_stage": "当前阶段",

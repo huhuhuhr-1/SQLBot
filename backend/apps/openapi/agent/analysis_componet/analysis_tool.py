@@ -14,7 +14,13 @@ import pandas as pd
 from langchain.tools import BaseTool
 from langchain_core.pydantic_v1 import BaseModel, Field
 
-from apps.openapi.agent.analysis_componet.data_model import DataModel, Measure, SiblingGroup, AnalysisContext
+from apps.openapi.agent.analysis_componet.data_model import (
+    DataModel,
+    Measure,
+    SiblingGroup,
+    AnalysisContext,
+    _normalize_sql_for_dedup,
+)
 from apps.openapi.agent.analysis_componet.insights import InsightFactoryDict, InsightType
 from common.utils.utils import SQLBotLogUtil
 from sqlmodel import Session
@@ -75,8 +81,10 @@ class GetDataTool(BaseTool):
                     _session=self.session,
                     query=query,
                     is_chart_output=self.context.is_chart_output):
-                result_type = result["type"]
-                result_data = result["data"]
+                result_type = result.get("type")
+                result_data = result.get("data")
+                if result_type is None or result_data is None:
+                    continue
 
                 if result_type == "error":
                     await self.context.queue.put(
@@ -85,8 +93,25 @@ class GetDataTool(BaseTool):
                     return result_data if isinstance(result_data, str) and result_data.strip() else "获取数据异常,请重新尝试"
 
                 elif result_type == "sql_result":
-                    sql = result_data["sql"]
-                    enhanced_think_result = result_data["enhanced_think_result"]
+                    sql = result_data.get("sql") if isinstance(result_data, dict) else None
+                    if not sql:
+                        await self.context.queue.put(
+                            self.context.create_result(content="\n  SQL 结果缺少 sql 字段  \n"))
+                        return "获取数据异常，请重新尝试"
+                    # 深度分析 SQL 去重：若 context 带有 sql_history 且本 SQL 已执行过，则跳过
+                    if getattr(self.context, "sql_history", None) is not None:
+                        sig = _normalize_sql_for_dedup(sql)
+                        if sig and sig in self.context.sql_history:
+                            await self.context.queue.put(
+                                self.context.create_result(
+                                    content="\n**重复查询已跳过**：与已执行 SQL 语义相同，请换一种取数口径或继续分析。\n",
+                                    message_type="process",
+                                )
+                            )
+                            return "重复查询已跳过，请换一种方式取数或继续分析。"
+                        if sig:
+                            self.context.sql_history.append(sig)
+                    enhanced_think_result = result_data.get("enhanced_think_result") or ""
                     if len(enhanced_think_result) != 0:
                         await self.context.queue.put(
                             self.context.create_result(content=f"\n#### 思考过程\n{enhanced_think_result}\n"))
@@ -103,20 +128,29 @@ class GetDataTool(BaseTool):
 
                 elif result_type == "chart_result":
                     if self.context.is_chart_output:
-                        df = pd.DataFrame(
-                            np.array(result_data["pd_data"]["data"]), columns=result_data["pd_data"]["columns"])
-
-                        output_data = result_data["output_data"]
-
-                        if isinstance(output_data, str):
-                            top_k = min(5, len(df))
-                            await self.context.queue.put(self.context.create_result(
-                                content=f"\n共获取到 {len(df)} 条数据，前 {top_k} 条数据如下：\n\n{df[: top_k].to_markdown(index=False)}\n"))
+                        pd_data = result_data.get("pd_data") if isinstance(result_data, dict) else None
+                        if pd_data and isinstance(pd_data, dict) and "data" in pd_data and "columns" in pd_data:
+                            df = pd.DataFrame(
+                                np.array(pd_data["data"]), columns=pd_data["columns"])
                         else:
-                            for chart_result in output_data:
-                                await self.context.queue.put(chart_result)
+                            df = None
+
+                        output_data = result_data.get("output_data") if isinstance(result_data, dict) else None
+                        if df is not None:
+                            if isinstance(output_data, str):
+                                top_k = min(5, len(df))
+                                await self.context.queue.put(self.context.create_result(
+                                    content=f"\n共获取到 {len(df)} 条数据，前 {top_k} 条数据如下：\n\n{df[: top_k].to_markdown(index=False)}\n"))
+                            elif output_data:
+                                for chart_result in output_data:
+                                    await self.context.queue.put(chart_result)
                     else:
-                        df = pd.DataFrame(np.array(result_data["data"]), columns=result_data["columns"])
+                        data_arr = result_data.get("data") if isinstance(result_data, dict) else None
+                        cols = result_data.get("columns") if isinstance(result_data, dict) else None
+                        if data_arr is not None and cols is not None:
+                            df = pd.DataFrame(np.array(data_arr), columns=cols)
+                        else:
+                            df = None
                         top_k = min(5, len(df))
                         self.context.queue.put_nowait(self.context.create_result(
                             content=f"\n共获取到 {len(df)} 条数据，前 {top_k} 条数据如下：\n\n{df[: top_k].to_markdown(index=False)}\n"))
@@ -176,9 +210,20 @@ class InsightTool(BaseTool):
 
                 return "传入的分析数据df数据格式有误，无法转换成pd.DataFrame格式"
 
+            if breakdown not in df.columns:
+                available = ", ".join(str(c) for c in df.columns)
+                msg = f"breakdown 维度「{breakdown}」不在数据列中。可用列：{available}。请从可用列中重新指定 breakdown。"
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {msg}  \n"))
+                return msg
+            if measure not in df.columns:
+                available = ", ".join(str(c) for c in df.columns)
+                msg = f"measure 指标「{measure}」不在数据列中。可用列：{available}。请从可用列中重新指定 measure。"
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {msg}  \n"))
+                return msg
+
             if analysis_method in ["Trend", "ChangePoint"]:
                 target_col = df[breakdown].dropna()
-                if not isinstance(target_col, bool) and not target_col.empty():
+                if not isinstance(target_col, bool) and not target_col.empty:
                     val = str(target_col.iloc[0])
                     if len(val) == 4:
                         format = "%Y"
@@ -202,7 +247,18 @@ class InsightTool(BaseTool):
                                 type=measure_type),
             )
 
-            breakdown_col = [c for c in data_model.columns if c.name == breakdown][0]
+            breakdown_candidates = [c for c in data_model.columns if c.name == breakdown]
+            if not breakdown_candidates:
+                available = ", ".join(c.name for c in data_model.columns)
+                msg = f"breakdown 维度「{breakdown}」在 DataModel 中未找到。可用维度：{available}。请从可用维度中重新指定 breakdown。"
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {msg}  \n"))
+                return msg
+            if analysis_method not in InsightFactoryDict:
+                allowed = ", ".join(sorted(InsightFactoryDict.keys()))
+                msg = f"analysis_method「{analysis_method}」不在支持列表中。支持的类型：{allowed}。请从上述类型中重新指定。"
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {msg}  \n"))
+                return msg
+            breakdown_col = breakdown_candidates[0]
             sibling_group = SiblingGroup(data=data_model, breakdown=breakdown_col)
             insight: InsightType = InsightFactoryDict[analysis_method].from_data(sibling_group)
 
@@ -320,7 +376,10 @@ class DataTransTool(BaseTool):
                 self.context.create_result(content="当前阶段：数据变换", message_type="stage"))
             self.context.queue.put_nowait(self.context.create_result(content=f"\n### 数据变换  \n"))
 
-            assert trans_type in ["rate", "rank", "increase", "sub_avg"]
+            if trans_type not in ["rate", "rank", "increase", "sub_avg"]:
+                msg = f"数据变换类型「{trans_type}」不支持。仅支持：rate、rank、increase、sub_avg。"
+                self.context.queue.put_nowait(self.context.create_result(content=f"\n  {msg}  \n"))
+                return msg
             agg = "sum" if measure_type == "quantity" else "max"
             try:
                 df = pd.read_json(df)
@@ -343,7 +402,12 @@ class DataTransTool(BaseTool):
 
             if trans_type == "rate":
                 df = df.groupby(column).agg({measure: agg}).reset_index()
-                df[f"Rate({measure})"] = df[measure] / df[measure].sum()
+                total = df[measure].sum()
+                if total == 0 or (isinstance(total, float) and pd.isna(total)):
+                    self.context.queue.put_nowait(self.context.create_result(
+                        content="\n  数据变换失败：指标总和为 0，无法计算占比  \n"))
+                    return "数据变换失败：指标总和为 0，请检查数据或更换 measure。"
+                df[f"Rate({measure})"] = df[measure] / total
             if trans_type == "increase":
                 df = df.groupby(column).agg({measure: agg}) \
                     .sort_values(by=column, ascending=True).reset_index()
@@ -351,7 +415,12 @@ class DataTransTool(BaseTool):
                 df = df.dropna()
             if trans_type == "sub_avg":
                 df = df.groupby(column).agg({measure: agg}).reset_index()
-                avg = df[measure].sum() / df[measure].size
+                size = df[measure].size
+                if size == 0:
+                    self.context.queue.put_nowait(self.context.create_result(
+                        content="\n  数据变换失败：分组后无数据，无法计算与均值的差  \n"))
+                    return "数据变换失败：分组后无数据，请检查 column 与 measure。"
+                avg = df[measure].sum() / size
                 df[f"{measure}-avg"] = df[measure] - avg
             if trans_type == "rank":
                 df = df.groupby(column).agg({measure: agg}).reset_index()

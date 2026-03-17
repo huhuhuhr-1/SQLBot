@@ -31,7 +31,7 @@
     "empty_tip": "Choose a data source, enter your goal, then click Start.",
     "new_analysis": "New analysis",
     "export_report": "Export report",
-    "export_success": "Report exported",
+    "export_success": "Report exported (Markdown)",
     "no_sessions": "No analysis sessions yet",
     "task_plan": "Task breakdown",
     "current_stage": "Current stage",

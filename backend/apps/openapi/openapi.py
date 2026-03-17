@@ -23,6 +23,7 @@ from apps.datasource.utils.utils import aes_encrypt
 from apps.db.db import exec_sql
 from apps.openapi.agent.chat_agent import ChatAgent
 from apps.openapi.agent.plan_agent import PlanAgent
+from apps.openapi.agent.deep_analysis_graph import DeepAnalysisGraphRunner
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
     OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, DeepAnalysisRequest
@@ -569,16 +570,29 @@ async def deep_analysis(
                 acc = DeepAnalysisAccumulator(
                     q, thread_session, user.id, question.chat_id, question.question,
                 )
-                context.run(lambda: asyncio.run(
-                    PlanAgent(
+                use_langgraph = getattr(settings, "DEEP_ANALYSIS_USE_LANGGRAPH", True)
+                if use_langgraph:
+                    runner = DeepAnalysisGraphRunner(
                         session=thread_session,
                         current_user=user,
                         chat_question=question,
                         current_assistant=assistant,
-                        max_steps=body.max_steps,
                         queue=acc,
-                        llm=llm,
-                    ).execute_plan()))
+                        max_steps=body.max_steps,
+                    )
+                    context.run(lambda: asyncio.run(runner.run()))
+                else:
+                    context.run(lambda: asyncio.run(
+                        PlanAgent(
+                            session=thread_session,
+                            current_user=user,
+                            chat_question=question,
+                            current_assistant=assistant,
+                            max_steps=body.max_steps,
+                            queue=acc,
+                            llm=llm,
+                        ).execute_plan()
+                    ))
 
         thread = threading.Thread(
             target=run_plan,
