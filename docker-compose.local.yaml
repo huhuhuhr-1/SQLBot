@@ -1,0 +1,34 @@
+services:
+  sqlbot:
+    image: dataease/sqlbot:local-fixed
+    container_name: sqlbot-local
+    restart: unless-stopped
+    privileged: true
+    networks:
+      - sqlbot-local-network
+    ports:
+      - 18000:8000
+      - 18001:8001
+      - 18002:5432
+    environment:
+      POSTGRES_SERVER: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: sqlbot
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: Password123@pg
+      PROJECT_NAME: "SQLBot"
+      DEFAULT_PWD: "SQLBot@123456"
+      SERVER_IMAGE_HOST: http://localhost:18001/images/
+      SECRET_KEY: y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s
+      BACKEND_CORS_ORIGINS: "http://localhost,http://localhost:5173,https://localhost,https://localhost:5173"
+      LOG_LEVEL: "INFO"
+      SQL_DEBUG: "False"
+    volumes:
+      - ./data-local/sqlbot/excel:/opt/sqlbot/data/excel
+      - ./data-local/sqlbot/file:/opt/sqlbot/data/file
+      - ./data-local/sqlbot/images:/opt/sqlbot/images
+      - ./data-local/sqlbot/logs:/opt/sqlbot/app/logs
+      - ./data-local/postgresql:/var/lib/postgresql/data
+
+networks:
+  sqlbot-local-network:
