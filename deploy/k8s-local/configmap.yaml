@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sqlbot-config
+  namespace: sqlbot
+  labels:
+    app.kubernetes.io/name: sqlbot
+data:
+  PROJECT_NAME: "SQLBot"
+  POSTGRES_SERVER: "localhost"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "sqlbot"
+  POSTGRES_USER: "root"
+  DEFAULT_PWD: "SQLBot@123456"
+  BACKEND_CORS_ORIGINS: "http://localhost,http://localhost:5173,https://localhost,https://localhost:5173"
+  SERVER_IMAGE_HOST: "http://YOUR_SERVE_IP:8001/images/"
+  LOG_LEVEL: "INFO"
+  SQL_DEBUG: "false"
+  CACHE_TYPE: "memory"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "11520"
