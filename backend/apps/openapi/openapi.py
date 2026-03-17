@@ -520,14 +520,15 @@ async def deep_analysis(
 
         class DeepAnalysisAccumulator:
             """包装 queue，在流式输出时累积 plan/report/process，在 finish 时写入 DB 以便刷新/切回后恢复。"""
-            __slots__ = ('_q', '_sess', '_uid', '_cid', '_qtext', 'plan', 'report', 'process', '_loop')
+            __slots__ = ('_q', '_sess', '_uid', '_cid', '_qtext', '_config', 'plan', 'report', 'process', '_loop')
 
-            def __init__(self, q, sess, uid, cid, qtext):
+            def __init__(self, q, sess, uid, cid, qtext, config=None):
                 self._q = q
                 self._sess = sess
                 self._uid = uid
                 self._cid = cid
                 self._qtext = qtext or ''
+                self._config = config or {}
                 self.plan = None
                 self.report = None
                 self.process = []
@@ -551,6 +552,7 @@ async def deep_analysis(
                         save_deep_analysis_result(
                             self._sess, self._cid, self._uid, self._qtext,
                             self.plan, self.report, self.process,
+                            config=self._config,
                         )
                 await self._q.put(msg)
 
@@ -566,9 +568,13 @@ async def deep_analysis(
 
         def run_plan(context, user, question, assistant, q):
             from common.core.db import get_db_session
+            config = {
+                "max_data_length": getattr(body, "max_data_length", None),
+                "max_steps": getattr(body, "max_steps", None),
+            }
             with get_db_session() as thread_session:
                 acc = DeepAnalysisAccumulator(
-                    q, thread_session, user.id, question.chat_id, question.question,
+                    q, thread_session, user.id, question.chat_id, question.question, config=config,
                 )
                 use_langgraph = getattr(settings, "DEEP_ANALYSIS_USE_LANGGRAPH", True)
                 if use_langgraph:
@@ -679,8 +685,8 @@ async def get_recommend(
     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 
 
-@router.post("/deleteChats", summary="清理",
-             description="清理当前用户的所有聊天记录",
+@router.post("/deleteChats", summary="清理智能问数",
+             description="仅清理智能问数会话（不包含深度分析）。支持：按会话ID、按时间段、清空全部。",
              dependencies=[Depends(common_headers)])
 async def clean_all_chat_record(
         session: SessionDep,
@@ -688,12 +694,12 @@ async def clean_all_chat_record(
         clean: OpenClean
 ):
     """
-    清理当前用户的聊天记录
+    清理当前用户的智能问数聊天记录（不清理深度分析 origin=1）。
 
     Args:
         session: 数据库会话依赖
         current_user: 当前认证用户信息
-        clean: 清理对象，包含要清理的聊天记录ID列表
+        clean: 清理对象（chat_ids / start_time+end_time / 空为清空全部智能问数）
 
     Returns:
         dict: 操作结果，包含成功和失败的记录数

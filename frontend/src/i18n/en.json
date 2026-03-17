@@ -56,7 +56,10 @@
     "select_datasource_title": "Select datasource",
     "bind_datasource_title": "Select datasource",
     "bind_datasource_start": "Select datasource to start analysis",
-    "datasource_search_placeholder": "Search datasource"
+    "datasource_search_placeholder": "Search datasource",
+    "analysis_cards": "Analysis records",
+    "config_at_time": "Config at run time",
+    "delete_card_confirm": "Delete this analysis record? This cannot be undone."
   },
   "variables": {
     "built_in": "Built-in",

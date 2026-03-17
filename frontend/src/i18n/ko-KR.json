@@ -56,7 +56,10 @@
     "select_datasource_title": "데이터 소스 선택",
     "bind_datasource_title": "데이터 소스 선택",
     "bind_datasource_start": "데이터 소스를 선택하여 분석 시작",
-    "datasource_search_placeholder": "데이터 소스 검색"
+    "datasource_search_placeholder": "데이터 소스 검색",
+    "analysis_cards": "분석 기록",
+    "config_at_time": "당시 설정",
+    "delete_card_confirm": "이 분석 기록을 삭제하시겠습니까? 되돌릴 수 없습니다."
   },
   "sync": {
     "integration": "플랫폼 통합을 활성화해야 합니다.",

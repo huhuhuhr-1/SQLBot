@@ -26,6 +26,7 @@
         @on-click-history="onClickHistory"
         @on-chat-deleted="onChatDeleted"
         @on-chat-renamed="onChatRenamed"
+        @on-chat-list-cleared="getChatList"
         @on-click-side-bar-btn="hideSideBar"
       />
     </el-aside>
@@ -65,6 +66,7 @@
           @on-click-history="onClickHistory"
           @on-chat-deleted="onChatDeleted"
           @on-chat-renamed="onChatRenamed"
+          @on-chat-list-cleared="getChatList"
           @on-click-side-bar-btn="hideSideBar"
         />
       </el-popover>
@@ -91,6 +93,7 @@
           @on-click-history="onClickHistory"
           @on-chat-deleted="onChatDeleted"
           @on-chat-renamed="onChatRenamed"
+          @on-chat-list-cleared="getChatList"
           @on-click-side-bar-btn="hideSideBar"
         />
       </el-drawer>

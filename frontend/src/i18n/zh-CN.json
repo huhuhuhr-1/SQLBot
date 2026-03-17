@@ -56,7 +56,10 @@
     "select_datasource_title": "选择数据源",
     "bind_datasource_title": "选择数据源",
     "bind_datasource_start": "选择数据源开始分析",
-    "datasource_search_placeholder": "搜索数据源"
+    "datasource_search_placeholder": "搜索数据源",
+    "analysis_cards": "分析记录",
+    "config_at_time": "当时配置",
+    "delete_card_confirm": "确定删除该条分析记录？删除后不可恢复。"
   },
   "sync": {
     "integration": "需开启平台对接",

@@ -478,6 +478,24 @@ export const chatApi = {
   deleteChat: (id: number | undefined, brief: any): Promise<string> => {
     return request.delete(`/chat/${id}/${brief}`)
   },
+  deleteRecord: (recordId: number): Promise<string> => {
+    return request.delete(`/chat/record/${recordId}`)
+  },
+  /**
+   * 批量清理智能问数会话（仅智能问数，不包含深度分析）。
+   * 支持：按会话 ID 列表、按时间段、清空全部。
+   */
+  cleanChats: (params?: {
+    chat_ids?: number[]
+    start_time?: string
+    end_time?: string
+  }): Promise<{ success_count: number; failed_count: number; total_count: number; message: string }> => {
+    return request.post('/openapi/deleteChats', {
+      chat_ids: params?.chat_ids ?? undefined,
+      start_time: params?.start_time,
+      end_time: params?.end_time,
+    })
+  },
   analysis: (record_id: number | undefined, controller?: AbortController) => {
     return request.fetchStream(`/chat/record/${record_id}/analysis`, {}, controller)
   },

@@ -31,6 +31,50 @@
         </div>
         <el-scrollbar v-else class="da-session-list-wrap">
           <div class="da-session-list-inner">
+            <div class="da-session-bulk-bar">
+              <div class="da-session-bulk-left">
+                <el-checkbox
+                  :indeterminate="hasSessionSelection && !allSessionSelected"
+                  :model-value="allSessionSelected"
+                  @change="toggleSessionSelectAll"
+                >
+                  {{ t('datasource.select_all') }}
+                </el-checkbox>
+                <span v-if="hasSessionSelection" class="da-session-bulk-selected">
+                  {{ t('user.selected_2_items', { msg: sessionSelectedIds.length }) }}
+                </span>
+              </div>
+              <div class="da-session-bulk-right">
+                <el-dropdown @command="handleClearSessionsByScope">
+                  <span class="da-session-bulk-clear-link">
+                    {{ t('qa.clear_history') }}
+                  </span>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="before_today">
+                        {{ t('qa.clear_history_before_today') }}
+                      </el-dropdown-item>
+                      <el-dropdown-item command="before_7_days">
+                        {{ t('qa.clear_history_before_7_days') }}
+                      </el-dropdown-item>
+                      <el-dropdown-item command="all">
+                        {{ t('qa.clear_history_all') }}
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <el-button
+                  v-if="hasSessionSelection"
+                  size="small"
+                  type="danger"
+                  text
+                  class="da-session-bulk-delete-btn"
+                  @click="handleBulkDeleteSessions"
+                >
+                  {{ t('dashboard.delete') }}
+                </el-button>
+              </div>
+            </div>
             <div v-for="group in computedSessionGroups" :key="group.key" class="da-session-group">
               <div
                 class="da-session-group-title"
@@ -48,6 +92,12 @@
                   :class="{ active: currentSessionId === item.id }"
                   @click="selectSession(item)"
                 >
+                  <el-checkbox
+                    class="da-session-item-checkbox"
+                    :model-value="isSessionSelected(item.id)"
+                    @click.stop
+                    @change="() => toggleSessionSelect(item)"
+                  />
                   <span class="da-session-brief">{{ item.brief || t('deep_analysis.report_title') }}</span>
                   <el-popover
                     trigger="click"
@@ -117,6 +167,50 @@
             </div>
             <el-scrollbar v-else class="da-session-list-wrap" style="max-height: 400px">
               <div class="da-session-list-inner">
+                <div class="da-session-bulk-bar">
+                  <div class="da-session-bulk-left">
+                    <el-checkbox
+                      :indeterminate="hasSessionSelection && !allSessionSelected"
+                      :model-value="allSessionSelected"
+                      @change="toggleSessionSelectAll"
+                    >
+                      {{ t('datasource.select_all') }}
+                    </el-checkbox>
+                    <span v-if="hasSessionSelection" class="da-session-bulk-selected">
+                      {{ t('user.selected_2_items', { msg: sessionSelectedIds.length }) }}
+                    </span>
+                  </div>
+                  <div class="da-session-bulk-right">
+                    <el-dropdown @command="handleClearSessionsByScope">
+                      <span class="da-session-bulk-clear-link">
+                        {{ t('qa.clear_history') }}
+                      </span>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item command="before_today">
+                            {{ t('qa.clear_history_before_today') }}
+                          </el-dropdown-item>
+                          <el-dropdown-item command="before_7_days">
+                            {{ t('qa.clear_history_before_7_days') }}
+                          </el-dropdown-item>
+                          <el-dropdown-item command="all">
+                            {{ t('qa.clear_history_all') }}
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                    <el-button
+                      v-if="hasSessionSelection"
+                      size="small"
+                      type="danger"
+                      text
+                      class="da-session-bulk-delete-btn"
+                      @click="handleBulkDeleteSessions"
+                    >
+                      {{ t('dashboard.delete') }}
+                    </el-button>
+                  </div>
+                </div>
                 <div v-for="group in computedSessionGroups" :key="group.key" class="da-session-group">
                   <div class="da-session-group-title" @click="toggleGroup(group.key)">
                     <el-icon :class="{ expand: !sessionExpandMap[group.key] }" size="10">
@@ -131,6 +225,12 @@
                       :class="{ active: currentSessionId === item.id }"
                       @click="selectSession(item); closeSessionPopover()"
                     >
+                      <el-checkbox
+                        class="da-session-item-checkbox"
+                        :model-value="isSessionSelected(item.id)"
+                        @click.stop
+                        @change="() => toggleSessionSelect(item)"
+                      />
                       <span class="da-session-brief">{{ item.brief || t('deep_analysis.report_title') }}</span>
                     </div>
                   </template>
@@ -173,6 +273,33 @@
                 <el-icon size="16" class="da-ds-icon"><icon_database_colorful /></el-icon>
                 <span class="da-ds-name">{{ currentSessionDatasourceName || t('deep_analysis.select_datasource') }}</span>
               </div>
+            </section>
+
+            <!-- 分析记录卡片：数据源下、工作台上，横向滑动，默认约 2 张可见 -->
+            <section v-if="currentSessionId != null && analysisCards.length > 0" class="da-cards-section">
+              <div class="da-section-head">
+                <span class="da-section-title">{{ t('deep_analysis.analysis_cards') }}</span>
+              </div>
+              <el-scrollbar class="da-cards-scroll" wrap-style="overflow-x: auto;">
+                <div class="da-cards-inner">
+                  <div
+                    v-for="card in analysisCards"
+                    :key="card.id"
+                    class="da-analysis-card"
+                    :class="{ active: selectedRecordId === card.id }"
+                    @click="selectCard(card)"
+                  >
+                    <el-icon
+                      class="da-card-delete"
+                      @click.stop="confirmDeleteCard(card)"
+                    >
+                      <icon_delete />
+                    </el-icon>
+                    <div class="da-card-question">{{ (card.question || '').slice(0, 36) }}{{ (card.question || '').length > 36 ? '…' : '' }}</div>
+                    <div class="da-card-time">{{ card.create_time ? dayjs(card.create_time).format('YYYY-MM-DD HH:mm') : '' }}</div>
+                  </div>
+                </div>
+              </el-scrollbar>
             </section>
 
             <!-- 新建分析：输入与操作 -->
@@ -283,6 +410,25 @@
             <p class="da-result-empty-text">{{ t('deep_analysis.result_empty_tip') }}</p>
           </div>
           <template v-else>
+            <div v-if="selectedRecordConfig && (selectedRecordConfig.question != null || selectedRecordConfig.max_data_length != null || selectedRecordConfig.max_steps != null)" class="da-config-block">
+              <div class="da-section-head">
+                <span class="da-section-title">{{ t('deep_analysis.config_at_time') }}</span>
+              </div>
+              <div class="da-config-body">
+                <div v-if="selectedRecordConfig.question" class="da-config-row">
+                  <span class="da-config-label">{{ t('deep_analysis.question') }}</span>
+                  <span class="da-config-value">{{ selectedRecordConfig.question }}</span>
+                </div>
+                <div v-if="selectedRecordConfig.max_data_length != null" class="da-config-row">
+                  <span class="da-config-label">{{ t('deep_analysis.max_rows') }}</span>
+                  <span class="da-config-value">{{ selectedRecordConfig.max_data_length }}</span>
+                </div>
+                <div v-if="selectedRecordConfig.max_steps != null" class="da-config-row">
+                  <span class="da-config-label">{{ t('deep_analysis.max_steps') }}</span>
+                  <span class="da-config-value">{{ selectedRecordConfig.max_steps }}</span>
+                </div>
+              </div>
+            </div>
             <div v-if="datasourceId || currentStage || loading || hasContent" class="da-summary-grid">
               <div class="da-summary-card">
                 <div class="summary-label">{{ t('deep_analysis.selected_datasource') }}</div>
@@ -509,6 +655,9 @@ let stopFlag = false
 const sessionList = ref<ChatInfo[]>([])
 const sessionLoading = ref(false)
 const currentSessionId = ref<number | undefined>()
+const sessionRecords = ref<any[]>([])
+const selectedRecordId = ref<number | undefined>()
+const selectedRecordConfig = ref<{ question?: string; max_data_length?: number; max_steps?: number } | null>(null)
 const sessionSearch = ref('')
 const sessionSideBarShow = ref(true)
 const sessionPopoverVisible = ref(false)
@@ -569,11 +718,180 @@ function toggleGroup(key: string) {
   sessionExpandMap.value[key] = !sessionExpandMap.value[key]
 }
 
+// 会话批量删除（与智能问数一致）
+const sessionSelectedIds = ref<number[]>([])
+const allVisibleSessionIds = computed<number[]>(() => {
+  const ids: number[] = []
+  computedSessionGroups.value.forEach((group: { list: ChatInfo[] }) => {
+    group.list?.forEach((item: ChatInfo) => {
+      if (item.id !== undefined) ids.push(item.id)
+    })
+  })
+  return ids
+})
+const allSessionSelected = computed(
+  () =>
+    allVisibleSessionIds.value.length > 0 &&
+    allVisibleSessionIds.value.every((id) => sessionSelectedIds.value.includes(id))
+)
+const hasSessionSelection = computed(() => sessionSelectedIds.value.length > 0)
+
+function isSessionSelected(id?: number) {
+  if (id === undefined) return false
+  return sessionSelectedIds.value.includes(id)
+}
+
+function toggleSessionSelect(item: ChatInfo) {
+  if (item.id === undefined) return
+  if (isSessionSelected(item.id)) {
+    sessionSelectedIds.value = sessionSelectedIds.value.filter((id) => id !== item.id)
+  } else {
+    sessionSelectedIds.value = [...sessionSelectedIds.value, item.id]
+  }
+}
+
+function clearSessionSelection() {
+  sessionSelectedIds.value = []
+}
+
+function toggleSessionSelectAll() {
+  if (allSessionSelected.value) {
+    clearSessionSelection()
+    return
+  }
+  sessionSelectedIds.value = [...allVisibleSessionIds.value]
+}
+
+type ClearScope = 'before_today' | 'before_7_days' | 'all'
+
+function getSessionIdsByScope(scope: ClearScope): number[] {
+  const todayStart = dayjs(dayjs().format('YYYY-MM-DD') + ' 00:00:00').toDate()
+  const weekStart = dayjs(dayjs().subtract(7, 'day').format('YYYY-MM-DD') + ' 00:00:00').toDate()
+  const ids: number[] = []
+  filteredSessionList.value.forEach((item: ChatInfo) => {
+    if (item.id === undefined) return
+    const time = getDate(item.create_time)
+    if (!time) return
+    if (scope === 'all') {
+      ids.push(item.id)
+      return
+    }
+    if (scope === 'before_today' && time < todayStart) {
+      ids.push(item.id)
+      return
+    }
+    if (scope === 'before_7_days' && time < weekStart) {
+      ids.push(item.id)
+    }
+  })
+  return ids
+}
+
+async function handleBulkDeleteSessions() {
+  if (!sessionSelectedIds.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      t('qa.selected_chats_delete_confirm', { msg: sessionSelectedIds.value.length }),
+      t('qa.clear_history'),
+      {
+        confirmButtonType: 'danger',
+        tip: t('common.proceed_with_caution'),
+        confirmButtonText: t('dashboard.delete'),
+        cancelButtonText: t('common.cancel'),
+        customClass: 'confirm-no_icon',
+        autofocus: false,
+      }
+    )
+  } catch {
+    return
+  }
+  const ids = [...sessionSelectedIds.value]
+  const sessionMap = new Map<number, ChatInfo>()
+  sessionList.value.forEach((s) => {
+    if (s.id !== undefined) sessionMap.set(s.id, s)
+  })
+  sessionLoading.value = true
+  try {
+    await Promise.all(
+      ids.map((id) => {
+        const s = sessionMap.get(id)
+        return chatApi.deleteChat(id, s?.brief ?? '')
+      })
+    )
+    ids.forEach((id) => {
+      sessionList.value = sessionList.value.filter((s) => s.id !== id)
+      if (currentSessionId.value === id) goNewAnalysis()
+    })
+    ElMessage.success(t('dashboard.delete_success'))
+  } catch (err: any) {
+    ElMessage.error(err?.message || '删除失败')
+  } finally {
+    sessionLoading.value = false
+    clearSessionSelection()
+  }
+}
+
+async function handleClearSessionsByScope(scope: ClearScope) {
+  const ids = getSessionIdsByScope(scope)
+  if (!ids.length) {
+    ElMessage.info(t('workspace.historical_dialogue'))
+    return
+  }
+  try {
+    await ElMessageBox.confirm(t('qa.clear_history_confirm'), t('qa.clear_history'), {
+      confirmButtonType: 'danger',
+      confirmButtonText: t('dashboard.delete'),
+      cancelButtonText: t('common.cancel'),
+      customClass: 'confirm-no_icon',
+      autofocus: false,
+    })
+  } catch {
+    return
+  }
+  const sessionMap = new Map<number, ChatInfo>()
+  sessionList.value.forEach((s) => {
+    if (s.id !== undefined) sessionMap.set(s.id, s)
+  })
+  sessionLoading.value = true
+  try {
+    await Promise.all(
+      ids.map((id) => {
+        const s = sessionMap.get(id)
+        return chatApi.deleteChat(id, s?.brief ?? '')
+      })
+    )
+    ids.forEach((id) => {
+      sessionList.value = sessionList.value.filter((s) => s.id !== id)
+      if (currentSessionId.value === id) goNewAnalysis()
+    })
+    ElMessage.success(t('dashboard.delete_success'))
+  } catch (err: any) {
+    ElMessage.error(err?.message || '删除失败')
+  } finally {
+    sessionLoading.value = false
+    clearSessionSelection()
+  }
+}
+
 const filteredDatasourceList = computed(() => {
   if (!datasourceSearch.value.trim()) return datasourceList.value
   const q = datasourceSearch.value.toLowerCase()
   return datasourceList.value.filter((d) => d.name?.toLowerCase().includes(q))
 })
+
+function isDeepAnalysisRecord(r: any): boolean {
+  if (!r?.analysis || typeof r.analysis !== 'string') return false
+  const s = r.analysis.trim()
+  if (!s.startsWith('{')) return false
+  try {
+    const data = JSON.parse(r.analysis)
+    return typeof data === 'object' && (data.plan != null || data.report != null)
+  } catch {
+    return false
+  }
+}
+
+const analysisCards = computed(() => sessionRecords.value.filter((r: any) => isDeepAnalysisRecord(r)))
 
 const hasContent = computed(
   () => !!errorMsg.value || !!planHtml.value || !!reportHtml.value || processChunks.value.length > 0
@@ -751,35 +1069,50 @@ async function loadRecommendedQuestions(_dsId: number | undefined) {
   recommendLoading.value = false
 }
 
+function applyRecordToDetail(record: any) {
+  if (!record?.analysis) return
+  try {
+    const data = JSON.parse(record.analysis)
+    planMarkdown.value = data.plan || ''
+    planHtml.value = data.plan ? renderedContent(data.plan) : ''
+    reportMarkdown.value = data.report || ''
+    reportHtml.value = data.report ? renderedContent(data.report) : ''
+    processChunks.value = Array.isArray(data.process) ? data.process : []
+    selectedRecordConfig.value = data.config && typeof data.config === 'object' ? data.config : null
+  } catch {
+    planMarkdown.value = ''
+    planHtml.value = ''
+    reportMarkdown.value = ''
+    reportHtml.value = ''
+    processChunks.value = []
+    selectedRecordConfig.value = null
+  }
+}
+
 async function loadSessionDetail(chatId: number) {
   try {
     const res = await chatApi.get(chatId)
     const info = chatApi.toChatInfo(res)
     currentSessionDatasourceName.value = info?.datasource_name || ''
     const records = info?.records || []
-    const withAnalysis = records.filter((r: any) => r?.analysis && String(r.analysis).trim().startsWith('{'))
-    const last = withAnalysis.length ? withAnalysis[withAnalysis.length - 1] : records[records.length - 1]
-    if (last?.analysis) {
-      try {
-        const data = JSON.parse(last.analysis)
-        planMarkdown.value = data.plan || ''
-        planHtml.value = data.plan ? renderedContent(data.plan) : ''
-        reportMarkdown.value = data.report || ''
-        reportHtml.value = data.report ? renderedContent(data.report) : ''
-        processChunks.value = Array.isArray(data.process) ? data.process : []
-      } catch {
-        planMarkdown.value = ''
-        planHtml.value = ''
-        reportMarkdown.value = ''
-        reportHtml.value = ''
-        processChunks.value = []
-      }
+    sessionRecords.value = records
+    const withAnalysis = records.filter((r: any) => isDeepAnalysisRecord(r))
+    const targetRecord =
+      selectedRecordId.value != null && withAnalysis.some((r: any) => r.id === selectedRecordId.value)
+        ? withAnalysis.find((r: any) => r.id === selectedRecordId.value)
+        : withAnalysis.length
+          ? withAnalysis[withAnalysis.length - 1]
+          : null
+    if (targetRecord) {
+      if (selectedRecordId.value == null && targetRecord.id != null) selectedRecordId.value = targetRecord.id
+      applyRecordToDetail(targetRecord)
     } else {
       planMarkdown.value = ''
       planHtml.value = ''
       reportMarkdown.value = ''
       reportHtml.value = ''
       processChunks.value = []
+      selectedRecordConfig.value = null
     }
   } catch {
     planMarkdown.value = ''
@@ -787,6 +1120,8 @@ async function loadSessionDetail(chatId: number) {
     reportMarkdown.value = ''
     reportHtml.value = ''
     processChunks.value = []
+    sessionRecords.value = []
+    selectedRecordConfig.value = null
   }
 }
 
@@ -795,8 +1130,37 @@ function selectSession(item: ChatInfo) {
   datasourceId.value = item.datasource
   question.value = item.brief || ''
   currentSessionDatasourceName.value = item.datasource_name || ''
+  selectedRecordId.value = undefined
   persistCurrentSession()
   if (item.id != null) loadSessionDetail(item.id)
+}
+
+function selectCard(card: any) {
+  if (card?.id == null) return
+  selectedRecordId.value = card.id
+  applyRecordToDetail(card)
+}
+
+function confirmDeleteCard(card: any) {
+  if (card?.id == null || currentSessionId.value == null) return
+  ElMessageBox.confirm(
+    t('deep_analysis.delete_card_confirm'),
+    t('common.proceed_with_caution'),
+    {
+      confirmButtonText: t('dashboard.delete'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning',
+    }
+  ).then(() => {
+    chatApi.deleteRecord(card.id).then(() => {
+      ElMessage.success(t('dashboard.delete_success'))
+      const wasSelected = selectedRecordId.value === card.id
+      if (wasSelected) selectedRecordId.value = undefined
+      loadSessionDetail(currentSessionId.value!)
+    }).catch((err: any) => {
+      ElMessage.error(err?.message || t('common.error'))
+    })
+  }).catch(() => {})
 }
 
 function openRename(item: ChatInfo) {
@@ -866,6 +1230,8 @@ async function startAnalysis() {
   planCollapse.value = []
   processCollapse.value = []
   reportCollapse.value = []
+  selectedRecordId.value = undefined
+  selectedRecordConfig.value = null
   currentStage.value = ''
   loading.value = true
   stopFlag = false
@@ -932,6 +1298,13 @@ async function startAnalysis() {
               currentSessionId.value = data.chat_id
               persistCurrentSession()
               await loadSessions()
+              await loadSessionDetail(data.chat_id)
+              const cards = sessionRecords.value.filter((r: any) => isDeepAnalysisRecord(r))
+              if (cards.length > 0) {
+                const lastCard = cards[cards.length - 1]
+                selectedRecordId.value = lastCard.id
+                applyRecordToDetail(lastCard)
+              }
             }
             break
           }
@@ -1158,6 +1531,37 @@ onMounted(async () => {
 .da-session-list-inner {
   padding: 0 16px 20px;
 }
+.da-session-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  margin-top: 4px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+}
+.da-session-bulk-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.da-session-bulk-selected {
+  font-size: 12px;
+  color: #646a73;
+}
+.da-session-bulk-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.da-session-bulk-clear-link {
+  font-size: 12px;
+  color: #646a73;
+  cursor: pointer;
+}
+.da-session-bulk-clear-link:hover {
+  color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+}
 .da-session-group {
   margin-bottom: 16px;
 }
@@ -1190,6 +1594,10 @@ onMounted(async () => {
 .da-session-item.active {
   background: #fff;
   font-weight: 500;
+}
+.da-session-item-checkbox {
+  margin-right: 8px;
+  flex-shrink: 0;
 }
 .da-session-brief {
   flex: 1;
@@ -1333,6 +1741,99 @@ onMounted(async () => {
   background: #fafbfc;
   color: rgba(31, 35, 41, 0.88);
   font-size: 14px;
+}
+.da-cards-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.da-cards-scroll {
+  --el-scrollbar-opacity: 0.6;
+}
+.da-cards-scroll :deep(.el-scrollbar__wrap) {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.da-cards-inner {
+  display: flex;
+  gap: 12px;
+  padding: 4px 0;
+  min-width: min-content;
+}
+.da-analysis-card {
+  flex: 0 0 280px;
+  min-width: 280px;
+  padding: 12px 14px;
+  border: 1px solid rgba(222, 224, 227, 1);
+  border-radius: 12px;
+  background: #fafbfc;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+}
+.da-analysis-card:hover {
+  background: #f5f6f7;
+  border-color: rgba(28, 186, 144, 0.4);
+}
+.da-analysis-card.active {
+  border-color: var(--el-color-primary);
+  background: rgba(28, 186, 144, 0.06);
+}
+.da-card-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 14px;
+  color: #646a73;
+  opacity: 0.7;
+}
+.da-card-delete:hover {
+  color: var(--el-color-danger);
+  opacity: 1;
+}
+.da-card-question {
+  font-size: 13px;
+  color: rgba(31, 35, 41, 0.88);
+  line-height: 1.4;
+  padding-right: 20px;
+  margin-bottom: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.da-card-time {
+  font-size: 12px;
+  color: #646a73;
+}
+.da-config-block {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(222, 224, 227, 1);
+  border-radius: 12px;
+  background: #fafbfc;
+}
+.da-config-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.da-config-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 13px;
+}
+.da-config-label {
+  flex: 0 0 120px;
+  color: #646a73;
+}
+.da-config-value {
+  flex: 1;
+  min-width: 0;
+  color: rgba(31, 35, 41, 0.88);
+  word-break: break-word;
 }
 .da-bind-ds-list {
   max-height: 320px;

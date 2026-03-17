@@ -53,6 +53,31 @@ def list_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
     return chart_list
 
 
+def list_chats_by_time_range(
+    session: SessionDep,
+    current_user: CurrentUser,
+    start_time: Optional[datetime.datetime] = None,
+    end_time: Optional[datetime.datetime] = None,
+) -> List[Chat]:
+    """智能问数会话列表（仅 origin in (0,2)），按 create_time 在 [start_time, end_time] 内筛选；不包含深度分析。"""
+    oid = current_user.oid if current_user.oid is not None else 1
+    conditions = [
+        Chat.create_by == current_user.id,
+        Chat.oid == oid,
+        Chat.origin.in_([0, 2]),
+    ]
+    if start_time is not None:
+        conditions.append(Chat.create_time >= start_time)
+    if end_time is not None:
+        conditions.append(Chat.create_time <= end_time)
+    return (
+        session.query(Chat)
+        .filter(and_(*conditions))
+        .order_by(Chat.create_time.desc())
+        .all()
+    )
+
+
 def list_deep_analysis_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
     """深度分析会话列表：仅返回 origin=1"""
     oid = current_user.oid if current_user.oid is not None else 1
@@ -139,10 +164,24 @@ def delete_chat_with_user(session, current_user: CurrentUser, chart_id) -> str:
         return f'Chat with id {chart_id} has been deleted'
     if chat.create_by != current_user.id:
         raise Exception(f"Chat with id {chart_id} not Owned by the current user")
+    if getattr(chat, 'origin', None) == 1:
+        raise Exception("不允许删除深度分析会话，请到深度分析页管理")
     session.delete(chat)
     session.commit()
 
     return f'Chat with id {chart_id} has been deleted'
+
+
+def delete_chat_record_with_user(session: SessionDep, current_user: CurrentUser, record_id: int) -> str:
+    """删除单条聊天记录（仅记录所属用户可删，用于深度分析卡片删除等）。"""
+    record = session.get(ChatRecord, record_id)
+    if not record:
+        raise Exception(f"Chat record with id {record_id} not found")
+    if record.create_by != current_user.id:
+        raise Exception(f"Chat record with id {record_id} not owned by the current user")
+    session.delete(record)
+    session.commit()
+    return f"Chat record with id {record_id} has been deleted"
 
 
 def get_chart_config(session: SessionDep, chart_record_id: int):
@@ -511,8 +550,13 @@ def format_record(record: ChatRecordResult):
     if record.analysis and record.analysis.strip() != '' and record.analysis.strip()[0] == '{' and \
             record.analysis.strip()[-1] == '}':
         _obj = orjson.loads(record.analysis)
-        _dict['analysis_thinking'] = _obj.get('reasoning_content')
-        _dict['analysis'] = _obj.get('content')
+        # 深度分析格式：{ plan, report, process, config }，原样保留给前端用于「分析记录」展示
+        if _obj.get('plan') is not None or _obj.get('report') is not None:
+            _dict['analysis'] = record.analysis
+        else:
+            # 智能问数分析格式：{ content, reasoning_content }
+            _dict['analysis_thinking'] = _obj.get('reasoning_content')
+            _dict['analysis'] = _obj.get('content')
     if record.analysis_reasoning_content and record.analysis_reasoning_content.strip() != '':
         _dict['analysis_thinking'] = record.analysis_reasoning_content
     if record.predict and record.predict.strip() != '' and record.predict.strip()[0] == '{' and record.predict.strip()[
@@ -802,8 +846,9 @@ def save_deep_analysis_result(
     plan_md: Optional[str],
     report_md: Optional[str],
     process_list: Optional[List[Dict[str, Any]]],
+    config: Optional[Dict[str, Any]] = None,
 ) -> Optional[ChatRecord]:
-    """保存深度分析结果到 ChatRecord.analysis（JSON: plan, report, process），用于刷新/切回后恢复。"""
+    """保存深度分析结果到 ChatRecord.analysis（JSON: plan, report, process, config），用于刷新/切回后恢复。"""
     chat = session.get(Chat, chat_id)
     if not chat:
         return None
@@ -821,6 +866,7 @@ def save_deep_analysis_result(
         "plan": plan_md or "",
         "report": report_md or "",
         "process": process_list or [],
+        "config": config or {},
     }
     record = ChatRecord()
     record.chat_id = chat_id

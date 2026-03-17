@@ -42,13 +42,20 @@ class DeepAnalysisRequest(BaseModel):
 
 class OpenClean(BaseModel):
     """
-    聊天记录清理请求模型
-    
-    用于指定要清理的聊天记录ID列表
+    聊天记录清理请求模型（仅清理智能问数，不包含深度分析 origin=1）
+    支持：按会话 ID 列表、按时间段、清空全部智能问数历史。
     """
     chat_ids: Union[int, List[int]] = Body(
         None,
-        description='会话标识或会话标识列表，为空时清理所有记录'
+        description='会话标识或会话标识列表；为空且未指定时间范围时清理当前用户全部智能问数记录'
+    )
+    start_time: Optional[str] = Body(
+        None,
+        description='时间段起点（ISO 格式，如 2025-01-01T00:00:00），与 end_time 一起用于按时间段批量清理'
+    )
+    end_time: Optional[str] = Body(
+        None,
+        description='时间段终点（ISO 格式），与 start_time 一起用于按时间段批量清理'
     )
 
     def get_chat_ids(self) -> List[int]:
