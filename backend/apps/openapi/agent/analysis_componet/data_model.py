@@ -5,7 +5,7 @@
 @FileName: data_model.py
 @Description: 
 """
-from typing import Any, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 import uuid
 import pandas as pd
 import numpy as np
@@ -13,7 +13,6 @@ from pandas.api.types import is_datetime64_any_dtype, is_numeric_dtype, is_float
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 import json
 import asyncio
-from typing import Dict, List
 
 
 def _normalize_sql_for_dedup(sql: str) -> str:
@@ -42,6 +41,9 @@ class AnalysisContext(object):
         self.is_chart_output = is_chart_output
         # 深度分析 SQL 去重：可变的 list，由 LangGraph runner 传入并写回 state
         self.sql_history: List[str] = sql_history if sql_history is not None else []
+        # 工具可观测事件：供 LangGraph reflect 判断“是否空/是否错误/是否重复/是否有新洞察”
+        # 事件结构建议：{ tool: 'get_data', status: 'ok|empty|error|dedup', rows, cols, note }
+        self.tool_events: List[Dict[str, Any]] = []
 
     def create_result(self,
                       reasoning_content="",
@@ -53,6 +55,11 @@ class AnalysisContext(object):
         return {"reasoning_content": reasoning_content,
                 "content": content,
                 "type": message_type}
+
+    def add_tool_event(self, event: Dict[str, Any]) -> None:
+        if not isinstance(event, dict):
+            return
+        self.tool_events.append(event)
 
     def save_insight(self, df: "pd.DataFrame", insight: str, analysis_process: str):  # type: ignore
         self.insights.append({"data": df, "insight": insight, "analysis_process": analysis_process})

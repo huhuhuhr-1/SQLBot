@@ -28,6 +28,102 @@ from sqlmodel import Session
 pd.set_option("display.max_columns", None)
 
 
+def _df_preview_json(df: pd.DataFrame, max_rows: int = 50) -> str:
+    try:
+        if df is None:
+            return ""
+        max_rows = max(1, int(max_rows or 50))
+        return df.head(max_rows).to_json()
+    except Exception:
+        return ""
+
+
+def _auto_insights_from_df(df: pd.DataFrame) -> List[str]:
+    """
+    轻量级自动洞察（无 LLM）：保证至少给出 2～5 条“可追溯、不过度推断”的结论。
+    目标是提升洞察密度与可用性，而不是替代深度归因。
+    """
+    insights: List[str] = []
+    if df is None or df.empty:
+        return insights
+
+    rows, cols = int(len(df)), int(len(df.columns))
+    insights.append(f"本次取数返回 {rows} 行、{cols} 列，可用于后续对比/下钻。")
+
+    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    datetime_cols = [c for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])]
+    # 尝试从字符串列中识别日期（只做保守转换，不强行覆盖原列）
+    if not datetime_cols:
+        for c in df.columns:
+            if c in numeric_cols:
+                continue
+            s = df[c].dropna()
+            if s.empty:
+                continue
+            v = str(s.iloc[0])
+            if len(v) in (7, 8, 10) or ("-" in v and len(v) <= 10):
+                parsed = pd.to_datetime(df[c], errors="coerce")
+                if parsed.notna().sum() >= max(3, rows // 3):
+                    df = df.copy()
+                    df[c] = parsed
+                    datetime_cols = [c]
+                    break
+
+    metric = numeric_cols[0] if numeric_cols else None
+    time_col = datetime_cols[0] if datetime_cols else None
+
+    if metric:
+        try:
+            s = df[metric].dropna()
+            if not s.empty:
+                insights.append(f"指标 `{metric}`：均值 {float(s.mean()):.4g}，最小 {float(s.min()):.4g}，最大 {float(s.max()):.4g}。")
+        except Exception:
+            pass
+
+    # 简单趋势/变化（若有时间列与数值指标）
+    if metric and time_col:
+        try:
+            tmp = df[[time_col, metric]].dropna()
+            if not tmp.empty:
+                tmp = tmp.sort_values(by=time_col)
+                agg = tmp.groupby(time_col)[metric].sum()
+                if len(agg) >= 2:
+                    first, last = float(agg.iloc[0]), float(agg.iloc[-1])
+                    if first == 0:
+                        insights.append(f"按 `{time_col}` 聚合后，`{metric}` 从 {first:.4g} 变化到 {last:.4g}（起点为 0，无法计算百分比变化）。")
+                    else:
+                        pct = (last - first) / abs(first)
+                        insights.append(f"按 `{time_col}` 聚合后，`{metric}` 从 {first:.4g} 变化到 {last:.4g}（约 {pct*100:.2f}%）。")
+        except Exception:
+            pass
+
+    # Top 贡献（若存在非数值维度）
+    if metric:
+        try:
+            dim_candidates = [c for c in df.columns if c != metric and not pd.api.types.is_numeric_dtype(df[c])]
+            if dim_candidates:
+                dim = dim_candidates[0]
+                tmp = df[[dim, metric]].dropna()
+                if not tmp.empty:
+                    g = tmp.groupby(dim)[metric].sum().sort_values(ascending=False)
+                    if len(g) >= 1:
+                        top_key = str(g.index[0])
+                        total = float(g.sum())
+                        top_val = float(g.iloc[0])
+                        if total != 0:
+                            insights.append(f"按 `{dim}` 汇总后，贡献最高的是 `{top_key}`（{top_val:.4g}，占比约 {top_val/total*100:.2f}%）。")
+        except Exception:
+            pass
+
+    # 去重/截断
+    deduped: List[str] = []
+    for x in insights:
+        x = (x or "").strip()
+        if x and x not in deduped:
+            deduped.append(x)
+    return deduped[:5]
+
+
 class GetDataTool(BaseTool):
     name: str = "get_data"
     description: str = (
@@ -76,6 +172,7 @@ class GetDataTool(BaseTool):
                 self.context.create_result(content=f"\n#### 2. 生成取数 SQL \n"))
 
             df = None
+            last_sql = None
 
             async for result in self.context.llm_service.get_data_for_plan(
                     _session=self.session,
@@ -89,6 +186,12 @@ class GetDataTool(BaseTool):
                 if result_type == "error":
                     await self.context.queue.put(
                         self.context.create_result(content=f"\n {result_data} \n"))
+                    try:
+                        self.context.add_tool_event(
+                            {"tool": "get_data", "status": "error", "rows": 0, "cols": 0, "note": str(result_data)[:500]}
+                        )
+                    except Exception:
+                        pass
                     # 将具体错误原因返回给 agent，避免同一错误反复重试（如图表配置解析失败）
                     return result_data if isinstance(result_data, str) and result_data.strip() else "获取数据异常,请重新尝试"
 
@@ -97,7 +200,14 @@ class GetDataTool(BaseTool):
                     if not sql:
                         await self.context.queue.put(
                             self.context.create_result(content="\n  SQL 结果缺少 sql 字段  \n"))
+                        try:
+                            self.context.add_tool_event(
+                                {"tool": "get_data", "status": "error", "rows": 0, "cols": 0, "note": "SQL结果缺少sql字段"}
+                            )
+                        except Exception:
+                            pass
                         return "获取数据异常，请重新尝试"
+                    last_sql = sql
                     # 深度分析 SQL 去重：若 context 带有 sql_history 且本 SQL 已执行过，则跳过
                     if getattr(self.context, "sql_history", None) is not None:
                         sig = _normalize_sql_for_dedup(sql)
@@ -108,6 +218,12 @@ class GetDataTool(BaseTool):
                                     message_type="process",
                                 )
                             )
+                            try:
+                                self.context.add_tool_event(
+                                    {"tool": "get_data", "status": "dedup", "rows": 0, "cols": 0, "note": sig[:500]}
+                                )
+                            except Exception:
+                                pass
                             return "重复查询已跳过，请换一种方式取数或继续分析。"
                         if sig:
                             self.context.sql_history.append(sig)
@@ -155,17 +271,53 @@ class GetDataTool(BaseTool):
                         self.context.queue.put_nowait(self.context.create_result(
                             content=f"\n共获取到 {len(df)} 条数据，前 {top_k} 条数据如下：\n\n{df[: top_k].to_markdown(index=False)}\n"))
             if df is not None:
+                try:
+                    self.context.add_tool_event(
+                        {
+                            "tool": "get_data",
+                            "status": "ok",
+                            "rows": int(len(df)),
+                            "cols": int(len(df.columns)),
+                            "note": (str(last_sql).strip()[:500] if last_sql else ""),
+                        }
+                    )
+                except Exception:
+                    pass
+
+                # 自动洞察：降低对 save_insight 的强依赖，提升洞察密度
+                try:
+                    auto = _auto_insights_from_df(df)
+                    if auto:
+                        self.context.save_insight(
+                            df=_df_preview_json(df, max_rows=min(50, self.context.max_data_size)),
+                            insight=auto,
+                            analysis_process="auto-insight: 基于取数结果的轻量统计与趋势/Top贡献摘要",
+                        )
+                except Exception:
+                    pass
                 final_result = df.to_json()
                 await self.context.queue.put(self.context.create_result(content=f"\n  本次取数结束  \n"))
                 return final_result
             else:
                 await self.context.queue.put(self.context.create_result(content=f"\n  取数结果为空  \n"))
+                try:
+                    self.context.add_tool_event(
+                        {"tool": "get_data", "status": "empty", "rows": 0, "cols": 0, "note": ""}
+                    )
+                except Exception:
+                    pass
                 return "获取数据异常,请重新尝试"
 
         except Exception as e:
             SQLBotLogUtil.error(e)
             SQLBotLogUtil.error("取数工具调用失败")
             self.context.queue.put_nowait(self.context.create_result(content=f"\n  取数工具调用失败  \n"))
+            try:
+                self.context.add_tool_event(
+                    {"tool": "get_data", "status": "error", "rows": 0, "cols": 0, "note": str(e)[:500]}
+                )
+            except Exception:
+                pass
             return "获取数据异常,请重新尝试"
 
 
