@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted, reactive, nextTick } from 'vue'
+import { ref, computed, onMounted, reactive, nextTick, watch } from 'vue'
 import { datasourceApi } from '@/api/datasource'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
@@ -192,26 +192,67 @@ const handleSelectTableList = () => {
   paramsFormRef.value.open(props.info)
 }
 
+const relationshipDrawerVisible = ref(false)
+const relationshipDetailLoading = ref(false)
+
+watch(activeRelationship, (v) => {
+  if (!v) relationshipDrawerVisible.value = false
+})
+
+const applyFieldListResult = (res: any) => {
+  fieldList.value = res
+  pageInfo.total = res.length
+  pageInfo.currentPage = 1
+  fieldName.value = ''
+}
+
 const clickTable = (table: any) => {
-  if (activeRelationship.value) return
-  loading.value = true
   currentTable.value = table
   fieldList.value = []
   pageInfo.total = 0
   previewData.value = []
+
+  if (activeRelationship.value) {
+    relationshipDrawerVisible.value = true
+    relationshipDetailLoading.value = true
+    datasourceApi
+      .fieldList(table.id)
+      .then((res) => applyFieldListResult(res))
+      .finally(() => {
+        relationshipDetailLoading.value = false
+      })
+    return
+  }
+
+  loading.value = true
   datasourceApi
     .fieldList(table.id)
     .then((res) => {
-      fieldList.value = res
-      pageInfo.total = res.length
-      pageInfo.currentPage = 1
-      fieldName.value = ''
-      datasourceApi.previewData(props.info.id, buildData()).then((res) => {
-        previewData.value = res
-      })
+      applyFieldListResult(res)
+      return datasourceApi.previewData(props.info.id, buildData())
+    })
+    .then((res) => {
+      previewData.value = res
     })
     .finally(() => {
       loading.value = false
+    })
+}
+
+const onOpenTableFromCanvas = (payload: { id: string | number }) => {
+  const table = tableList.value.find((x: any) => String(x.id) === String(payload.id))
+  if (!table) {
+    ElMessage.info(t('training.open_table_not_in_list'))
+    return
+  }
+  currentTable.value = table
+  relationshipDrawerVisible.value = true
+  relationshipDetailLoading.value = true
+  datasourceApi
+    .fieldList(table.id)
+    .then((res) => applyFieldListResult(res))
+    .finally(() => {
+      relationshipDetailLoading.value = false
     })
 }
 
@@ -638,7 +679,8 @@ const btnSelectClick = (val: any) => {
             :id="info.id"
             :dragging="isDrag"
             @get-table-name="getTableName"
-          ></TableRelationship>
+            @open-table-detail="onOpenTableFromCanvas"
+          />
         </div>
       </div>
 
@@ -890,10 +932,89 @@ const btnSelectClick = (val: any) => {
       </el-button>
     </template>
   </el-dialog>
+
+  <el-drawer
+    v-model="relationshipDrawerVisible"
+    :title="currentTable.table_name || t('training.relationship_table_detail')"
+    size="520px"
+    append-to-body
+  >
+    <div v-loading="relationshipDetailLoading" class="relationship-drawer-body">
+      <div v-if="currentTable.table_name" class="drawer-table-notes">
+        {{ $t('about.remark') }}:
+        <span :title="currentTable.custom_comment" class="field-notes">{{
+          currentTable.custom_comment || '-'
+        }}</span>
+        <el-tooltip :offset="14" effect="dark" :content="$t('datasource.edit')" placement="top">
+          <el-icon style="margin-left: 8px; cursor: pointer" size="16" @click="editTable">
+            <edit></edit>
+          </el-icon>
+        </el-tooltip>
+      </div>
+      <el-input
+        v-model="fieldName"
+        style="width: 100%; margin-bottom: 12px"
+        :placeholder="t('dashboard.search')"
+        clearable
+        autocomplete="off"
+        @input="fieldNameSearch"
+      />
+      <el-table row-class-name="hover-icon_edit" :data="fieldListComputed" style="width: 100%">
+        <el-table-column prop="field_name" :label="t('datasource.field_name')" width="140" />
+        <el-table-column prop="field_type" :label="t('datasource.field_type')" width="120" />
+        <el-table-column prop="field_comment" :label="t('datasource.field_original_notes')" />
+        <el-table-column :label="t('datasource.field_notes_1')">
+          <template #default="scope">
+            <div class="field-comment">
+              <span :title="scope.row.custom_comment" class="notes-in_table">{{
+                scope.row.custom_comment
+              }}</span>
+              <el-tooltip :offset="14" effect="dark" :content="$t('datasource.edit')" placement="top">
+                <el-icon class="action-btn" size="16" @click="editField(scope.row)">
+                  <edit></edit>
+                </el-icon>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('datasource.enabled_status')" width="100">
+          <template #default="scope">
+            <el-switch
+              v-model="scope.row.checked"
+              size="small"
+              @change="changeStatus(scope.row)"
+            />
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="pageInfo.total" class="pagination-container">
+        <el-pagination
+          v-model:current-page="pageInfo.currentPage"
+          v-model:page-size="pageInfo.pageSize"
+          :page-sizes="[10, 20, 30]"
+          :background="true"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="pageInfo.total"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
+    </div>
+  </el-drawer>
+
   <ParamsForm ref="paramsFormRef" @refresh="refresh"></ParamsForm>
 </template>
 
 <style lang="less" scoped>
+.relationship-drawer-body {
+  min-height: 200px;
+}
+.drawer-table-notes {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #646a73;
+}
+
 .data-table {
   height: 100%;
   .info {
