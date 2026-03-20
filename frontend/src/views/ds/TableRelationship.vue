@@ -187,7 +187,6 @@ const buildNodePayload = (table: any, fields: any[]) => {
   return {
     id: table.id,
     shape: 'er-rect',
-    label: table.table_name,
     data: {
       tableCustomComment: table.custom_comment,
       tableComment: table.table_comment,
@@ -212,6 +211,8 @@ const preprocessLoadedCells = (data: any[]) => {
   })
   return data.map((item) => {
     if (item.shape !== 'er-rect') return item
+    const { label: _removedTopLevelLabel, ...itemSansTopLabel } = item
+    void _removedTopLevelLabel
     const id = String(item.id)
     const fullPorts = item.ports?.items ?? item.ports ?? []
     const arr = Array.isArray(fullPorts) ? fullPorts : []
@@ -231,7 +232,7 @@ const preprocessLoadedCells = (data: any[]) => {
         : { items: filteredItems }
     const h = getNodeHeightForPortCount(filteredItems.length)
     return {
-      ...item,
+      ...itemSansTopLabel,
       ports: portsShape,
       width: NODE_WIDTH,
       height: h,
@@ -241,6 +242,40 @@ const preprocessLoadedCells = (data: any[]) => {
       },
     }
   })
+}
+
+/** 用当前数据源的表列表 + 字段列表刷新画布上的中英文注释（修复旧存档或仅英文的端口数据） */
+const hydrateCanvasCommentsFromApi = async () => {
+  if (!graph || !props.id || !nodeIds.value.length) return
+  try {
+    const tables = (await datasourceApi.tableList(props.id)) as any[]
+    const tableById = new Map(tables.map((t) => [String(t.id), t]))
+    await Promise.all(
+      nodeIds.value.map(async (nid) => {
+        const tid = String(nid)
+        const meta = tableById.get(tid)
+        if (meta) {
+          rememberTableMeta(tid, meta)
+          const node = graph.getCellById(tid)
+          if (node?.isNode?.()) {
+            node.setAttrs(nodeLabelAttrs(meta))
+            const prev = node.getData() || {}
+            node.setData({
+              ...prev,
+              tableCustomComment: meta.custom_comment,
+              tableComment: meta.table_comment,
+            })
+          }
+        }
+        const numId = typeof nid === 'number' ? nid : Number.parseInt(tid, 10)
+        const fields = await datasourceApi.fieldList(numId)
+        fullFieldsCache.set(tid, fields as any[])
+      })
+    )
+    refreshPortsOnGraph()
+  } catch {
+    /* 列表无权限等错误时不阻塞画布 */
+  }
 }
 
 const x6ToLayoutGraph = (x6: any): LayoutGraph<any, any> => {
@@ -671,7 +706,7 @@ const getTableData = () => {
     .then((data: any) => {
       if (!data.length) return
       nodeIds.value = data.filter((ele: any) => ele.shape === 'er-rect').map((ele: any) => ele.id)
-      nextTick(() => {
+      nextTick(async () => {
         fullFieldsCache.clear()
         tableMetaCache.clear()
         cells.value = []
@@ -697,6 +732,7 @@ const getTableData = () => {
         graph.resetCells(cells.value)
         graph.zoomToFit({ padding: 100 })
         emits('getTableName', [...nodeIds.value])
+        await hydrateCanvasCommentsFromApi()
       })
     })
     .finally(() => {
