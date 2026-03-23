@@ -31,7 +31,6 @@ import Platform from '@/views/system/platform/index.vue'
 import Permission from '@/views/system/permission/index.vue'
 import User from '@/views/system/user/User.vue'
 import Workspace from '@/views/system/workspace/index.vue'
-import Statistics from '@/views/system/statistics/index.vue'
 import Page401 from '@/views/error/index.vue'
 import ChatPreview from '@/views/chat/preview.vue'
 
@@ -170,11 +169,11 @@ export const routes = [
         component: Prompt,
         meta: { title: t('prompt.customize_prompt_words') },
       },
+      /** 与一级菜单「统计分析」(/st/index) 兼容：旧链接 /set/statistics 仍可用 */
       {
         path: 'statistics',
-        name: 'statistics',
-        component: Statistics,
-        meta: { title: '统计分析' },
+        name: 'statisticsRedirect',
+        redirect: '/st/index',
       },
     ],
   },

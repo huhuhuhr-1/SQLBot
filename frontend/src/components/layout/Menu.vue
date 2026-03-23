@@ -10,7 +10,7 @@ const userStore = useUserStore()
 const router = useRouter()
 const t = i18n.global.t
 
-/** 「设置」菜单与 getRoutes() 完全解耦：用固定配置生成整节点，避免 xpack/LicenseGenerator 修改路由后子项丢失 */
+/** 「设置」菜单与 getRoutes() 完全解耦；统计分析已提至一级 /st，不在此子菜单 */
 const SET_MENU_SPEC = {
   path: '/set',
   name: 'set',
@@ -26,22 +26,18 @@ const SET_MENU_SPEC = {
     { name: 'training', path: '/set/training', titleKey: 'training.data_training' },
     { name: 'dictionary', path: '/set/dictionary', titleKey: 'dictionary.title' },
     { name: 'prompt', path: '/set/prompt', titleKey: 'prompt.customize_prompt_words' },
-    { name: 'statistics', path: '/set/statistics', titleKey: 'menu.statistics' },
   ],
 }
 
-/** 根据固定配置生成「设置」菜单节点（与 getRoutes 解耦），供侧栏使用；「自定义提示词」「统计分析」仅系统管理员可见 */
+/** 根据固定配置生成「设置」菜单节点；「自定义提示词」仅系统管理员可见 */
 function buildSetMenuNode(
   spec: typeof SET_MENU_SPEC,
   tFn: (key: string) => string,
-  options?: { includePrompt?: boolean; includeStatistics?: boolean }
+  options?: { includePrompt?: boolean }
 ): { path: string; name: string; meta: { title: string; iconActive: string; iconDeActive: string }; children: any[] } {
   let children = spec.children
   if (options?.includePrompt === false) {
     children = children.filter((item: any) => item.name !== 'prompt')
-  }
-  if (options?.includeStatistics === false) {
-    children = children.filter((item: any) => item.name !== 'statistics')
   }
   const setChildren = children.map((item: any) => ({
     name: item.name,
@@ -74,7 +70,7 @@ const activeMenu = computed(() => route.path)
 const showSysmenu = computed(() => {
   return route.path.includes('/system')
 })
-/** 仅系统管理员（uid 为 1）：普通成员不可见「自定义提示词」「统计分析」 */
+/** 仅系统管理员（uid 为 1）：普通成员不可见「自定义提示词」；「统计分析」见一级菜单 /st */
 const isSystemAdmin = computed(() => String(userStore.uid) === '1')
 
 const formatRoute = (arr: any, parentPath = '') => {
@@ -146,10 +142,9 @@ const routerList = computed(() => {
   if (!userStore.isSpaceAdmin) {
     return list
   }
-  // 「设置」完全由固定配置生成，不受 xpack/LicenseGenerator.generateRouters 影响；「自定义提示词」「统计分析」仅系统管理员可见
+  // 「设置」完全由固定配置生成；「自定义提示词」仅系统管理员可见
   const syntheticSet = buildSetMenuNode(SET_MENU_SPEC, t, {
     includePrompt: isSystemAdmin.value,
-    includeStatistics: isSystemAdmin.value,
   })
   // 「设置」放到菜单最后一项
   return [...list, syntheticSet]
