@@ -269,7 +269,9 @@
     "edit_binding": "Edit binding",
     "delete_binding_confirm": "Delete this binding?",
     "delete_dict_confirm": "Delete dictionary \"{msg}\"?",
-    "delete_selected_dict": "Delete selected {msg} dictionaries?"
+    "delete_selected_dict": "Delete selected {msg} dictionaries?",
+    "empty_no_dict": "No dictionaries yet. Click \"New dictionary\" to create one.",
+    "empty_no_binding": "No field bindings yet. Click \"New binding\" to add one."
   },
   "common": {
     "start_time": "Start Time",

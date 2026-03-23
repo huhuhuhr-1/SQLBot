@@ -269,7 +269,9 @@
     "edit_binding": "编辑绑定",
     "delete_binding_confirm": "是否删除该绑定？",
     "delete_dict_confirm": "是否删除字典「{msg}」？",
-    "delete_selected_dict": "是否删除选中的 {msg} 条字典？"
+    "delete_selected_dict": "是否删除选中的 {msg} 条字典？",
+    "empty_no_dict": "暂无字典，可点击「新建字典」创建",
+    "empty_no_binding": "暂无字段绑定，可点击「新建绑定」添加"
   },
   "common": {
     "start_time": "开始时间",

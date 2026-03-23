@@ -269,7 +269,9 @@
     "edit_binding": "바인딩 편집",
     "delete_binding_confirm": "이 바인딩을 삭제하시겠습니까?",
     "delete_dict_confirm": "사전 \"{msg}\"을(를) 삭제하시겠습니까?",
-    "delete_selected_dict": "선택한 {msg}개 사전을 삭제하시겠습니까?"
+    "delete_selected_dict": "선택한 {msg}개 사전을 삭제하시겠습니까?",
+    "empty_no_dict": "사전이 없습니다. \"새 사전\"을 눌러 만드세요.",
+    "empty_no_binding": "필드 바인딩이 없습니다. \"바인딩 추가\"를 눌러 추가하세요."
   },
   "common": {
     "start_time": "시작 시간",
