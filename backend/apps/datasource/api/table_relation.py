@@ -57,10 +57,15 @@ def _infer_edges_by_fk(ds: CoreDatasource, table_id_set: set, key_to_ids: dict) 
             continue
         if src_tid == tgt_tid:
             continue
+        detail = f"{tname}.{col_name} → {ref_tname}.{ref_col}"
         edges.append({
             "shape": "edge",
             "source": {"cell": src_tid, "port": src_fid},
             "target": {"cell": tgt_tid, "port": tgt_fid},
+            "data": {
+                "relationSource": "fk",
+                "relationDetail": detail,
+            },
         })
     return edges
 
@@ -105,10 +110,17 @@ def _infer_edges_by_naming(
             if key in seen_keys:
                 continue
             seen_keys.add(key)
+            rt_name = (ref_table.table_name or "").strip() or str(ref_table.id)
+            rf_name = (ref_id_field.field_name or "").strip() or str(ref_id_field.id)
+            detail = f"{fname} → {rt_name}.{rf_name}"
             edges.append({
                 "shape": "edge",
                 "source": {"cell": t.id, "port": f.id},
                 "target": {"cell": ref_table.id, "port": ref_id_field.id},
+                "data": {
+                    "relationSource": "naming",
+                    "relationDetail": detail,
+                },
             })
     return edges
 
@@ -262,6 +274,10 @@ def _parse_llm_relation_lines(
             "shape": "edge",
             "source": {"cell": src_tid, "port": src_fid},
             "target": {"cell": tgt_tid, "port": tgt_fid},
+            "data": {
+                "relationSource": "llm",
+                "relationDetail": f"{t1.strip()}.{f1.strip()} = {t2.strip()}.{f2.strip()}",
+            },
         })
     return edges
 

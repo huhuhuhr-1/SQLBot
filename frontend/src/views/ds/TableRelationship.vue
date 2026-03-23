@@ -76,6 +76,18 @@ const resetTooltip = () => {
   tooltipContent.value = ''
 }
 
+const formatEdgeRelationTooltip = (edge: any) => {
+  const d = edge?.getData?.() ?? edge?.store?.data?.data ?? {}
+  const src = (d.relationSource || 'manual') as string
+  const detail = String(d.relationDetail ?? '').trim()
+  const key =
+    src === 'fk' || src === 'naming' || src === 'llm' || src === 'manual'
+      ? `training.edge_relation_${src}`
+      : 'training.edge_relation_manual'
+  const title = t(key)
+  return detail ? `${title}\n${detail}` : title
+}
+
 const fieldCommentText = (f: any) => String(f?.custom_comment || f?.field_comment || '').trim()
 
 const fieldsToPortItems = (fields: any[]) =>
@@ -592,15 +604,24 @@ const initGraph = () => {
     },
   })
 
-  graph.on('edge:connected', () => refreshPortsDebounced())
+  graph.on('edge:connected', ({ edge }: any) => {
+    const d = edge.getData?.() || {}
+    if (!d.relationSource) {
+      edge.setData({ ...d, relationSource: 'manual' })
+    }
+    refreshPortsDebounced()
+  })
   graph.on('edge:removed', () => refreshPortsDebounced())
 
-  graph.on('edge:mouseenter', ({ e }: any) => {
+  graph.on('edge:mouseenter', ({ e, edge }: any) => {
     Array.from(document.querySelectorAll('.x6-edge-tool')).forEach((ele: any) => {
       if (ele.dataset.cellId === e.target.parentNode.dataset.cellId) {
         ele.style.display = 'block'
       }
     })
+    tooltipY.value = e.offsetY + 'px'
+    tooltipX.value = e.offsetX + 'px'
+    tooltipContent.value = formatEdgeRelationTooltip(edge)
   })
 
   graph.on('edge:mouseleave', ({ e }: any) => {
@@ -609,6 +630,7 @@ const initGraph = () => {
         ele.style.display = 'none'
       }
     })
+    resetTooltip()
   })
 
   graph.on(
