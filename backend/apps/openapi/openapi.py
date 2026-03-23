@@ -28,7 +28,8 @@ from apps.openapi.agent.plan_agent import PlanAgent
 from apps.openapi.agent.deep_analysis_graph import DeepAnalysisGraphRunner
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, DeepAnalysisRequest
+    OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, DeepAnalysisRequest, \
+    DatasourceResponse
 from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.openapi.service.openapi_llm import LLMService
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
@@ -162,12 +163,13 @@ async def get_data_source_list(session: SessionDep, user: CurrentUser):
 
 @router.post("/getDataSourceByIdOrName", summary="根据ID或名称获取数据源",
              description="根据数据源ID或名称获取特定数据源信息",
-             dependencies=[Depends(common_headers)])
+             dependencies=[Depends(common_headers)],
+             response_model=DatasourceResponse)
 async def get_data_source_by_id_or_name(
         session: SessionDep,
         user: CurrentUser,
         request: DataSourceRequest
-):
+) -> DatasourceResponse:
     """
     根据ID或名称获取数据源
 
@@ -181,7 +183,23 @@ async def get_data_source_by_id_or_name(
     Returns:
         数据源信息
     """
-    return get_datasource_by_name_or_id(session=session, user=user, query=request)
+    ds = get_datasource_by_name_or_id(session=session, user=user, query=request)
+    if not ds:
+        raise HTTPException(status_code=404, detail="数据源未找到")
+    
+    # 获取表结构
+    from apps.datasource.crud.datasource import get_table_schema
+    table_schema = get_table_schema(session=session, current_user=user, ds=ds, question="", embedding=False)
+    
+    # 获取术语
+    from apps.terminology.curd.terminology import get_terminology_template
+    terminologies_str, _ = get_terminology_template(session=session, question="", oid=user.oid, datasource=ds.id)
+    
+    # 构建响应
+    res = DatasourceResponse.model_validate(ds.model_dump())
+    res.table_schema = table_schema
+    res.terminologies = terminologies_str
+    return res
 
 
 @router.post("/chat", summary="聊天",
