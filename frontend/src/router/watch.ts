@@ -23,6 +23,15 @@ function ensureSetExtraRoutes(router: Router) {
   const children = setRoute.children ?? []
   const hasPrompt = children.some((c: any) => c.name === 'prompt')
   const hasStatistics = children.some((c: any) => c.name === 'statistics')
+  const hasDictionary = children.some((c: any) => c.name === 'dictionary')
+  if (!hasDictionary) {
+    router.addRoute('set', {
+      path: 'dictionary',
+      name: 'dictionary',
+      component: () => import('@/views/system/dictionary/index.vue'),
+      meta: { title: i18n.global.t('dictionary.title') },
+    })
+  }
   if (!hasPrompt) {
     router.addRoute('set', {
       path: 'prompt',

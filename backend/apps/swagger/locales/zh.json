@@ -176,6 +176,17 @@
   "excel_template_term": "下载模板",
   "upload_term": "导入术语",
 
+  "dict_api": "数据字典",
+  "get_dict_page": "分页查询数据字典",
+  "get_dict_detail": "字典详情含字典项",
+  "save_dict": "创建或更新字典",
+  "delete_dict": "删除字典",
+  "enable_dict": "启用或禁用字典",
+  "list_dict_options": "字典下拉选项",
+  "get_dict_binding_page": "分页查询字段绑定",
+  "save_dict_binding": "创建或更新字段绑定",
+  "delete_dict_binding": "删除字段绑定",
+
   "custom_prompt_api": "自定义提示词",
   "custom_prompt_page": "分页查询自定义提示词",
   "create_or_update_custom_prompt": "创建/更新自定义提示词",

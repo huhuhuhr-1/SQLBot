@@ -24,6 +24,7 @@ const SET_MENU_SPEC = {
     { name: 'permission', path: '/set/permission', titleKey: 'workspace.permission_configuration' },
     { name: 'professional', path: '/set/professional', titleKey: 'professional.professional_terminology' },
     { name: 'training', path: '/set/training', titleKey: 'training.data_training' },
+    { name: 'dictionary', path: '/set/dictionary', titleKey: 'dictionary.title' },
     { name: 'prompt', path: '/set/prompt', titleKey: 'prompt.customize_prompt_words' },
     { name: 'statistics', path: '/set/statistics', titleKey: 'menu.statistics' },
   ],
@@ -127,6 +128,7 @@ const routerList = computed(() => {
       !route.path.includes('professional') &&
       !route.path.includes('401') &&
       !route.path.includes('training') &&
+      !route.path.includes('dictionary') &&
       !route.path.includes('permission') &&
       !route.path.includes('embeddedCommon') &&
       !route.path.includes('preview') &&

@@ -21,6 +21,7 @@ from apps.system.api import (
     statistics,
 )
 from apps.terminology.api import terminology
+from apps.dict.api.dict_api import router as dict_router
 from apps.settings.api import base
 #from audit.api import audit_api
 
@@ -35,6 +36,7 @@ api_router.include_router(assistant.router)
 api_router.include_router(aimodel.router)
 api_router.include_router(base.router)
 api_router.include_router(terminology.router)
+api_router.include_router(dict_router)
 api_router.include_router(data_training.router)
 api_router.include_router(datasource.router)
 api_router.include_router(chat.router)

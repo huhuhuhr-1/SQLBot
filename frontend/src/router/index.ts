@@ -21,6 +21,7 @@ import EmbeddedCommon from '@/views/embedded/common.vue'
 import Member from '@/views/system/member/index.vue'
 import Professional from '@/views/system/professional/index.vue'
 import Training from '@/views/system/training/index.vue'
+import Dictionary from '@/views/system/dictionary/index.vue'
 import Prompt from '@/views/system/prompt/index.vue'
 import Audit from '@/views/system/audit/index.vue'
 import Appearance from '@/views/system/appearance/index.vue'
@@ -156,6 +157,12 @@ export const routes = [
         name: 'training',
         component: Training,
         meta: { title: t('training.data_training') },
+      },
+      {
+        path: 'dictionary',
+        name: 'dictionary',
+        component: Dictionary,
+        meta: { title: t('dictionary.title') },
       },
       {
         path: 'prompt',
