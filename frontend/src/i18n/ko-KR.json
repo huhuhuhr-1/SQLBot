@@ -24,6 +24,8 @@
     "return_to_view": "화면으로 돌아가기"
   },
   "variables": {
+    "please_select_date": "날짜를 선택하십시오",
+    "number_variable_error": "올바른 숫자 범위를 입력하십시오.",
     "built_in": "내장형",
     "normal_value": "정상값",
     "​​cannot_be_empty": "변수 값은 비어 있을 수 없습니다.",
@@ -389,11 +391,13 @@
       },
       "timeout": "연결 시간 초과(초)",
       "address": "주소",
-      "low_version": "낮은 버전 호환"
+      "low_version": "낮은 버전 호환",
+      "ssl": "SSL 활성화"
     },
     "sync_fields": "동기화된 테이블 구조"
   },
   "datasource": {
+    "recommended_question": "추천 질문",
     "recommended_repetitive_tips": "중복된 문제가 존재합니다",
     "recommended_problem_tips": "사용자 정의 구성으로 최소 한 개의 문제를 생성하세요, 각 문제는 2~200자로 작성",
     "recommended_problem_configuration": "추천 문제 구성",
@@ -572,6 +576,7 @@
     "operate_with_caution": "삭제 후 해당 작업 공간의 사용자가 제거되고 모든 리소스도 삭제됩니다. 신중하게 작업하십시오."
   },
   "permission": {
+    "search_field": "검색 필드",
     "search_rule_group": "규칙 그룹 검색",
     "add_rule_group": "규칙 그룹 추가",
     "permission_rule": "권한 규칙",
@@ -911,6 +916,7 @@
     "kimi": "Kimi",
     "tencent_cloud": "텐센트 클라우드",
     "volcano_engine": "볼케이노 엔진",
+    "minimax": "MiniMax",
     "generic_openai": "범용 OpenAI"
   },
   "modelType": {

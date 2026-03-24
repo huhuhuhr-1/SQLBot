@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 
 from starlette.exceptions import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -10,9 +11,19 @@ from common.utils.utils import SQLBotLogUtil
 
 
 class ResponseMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app):
-        super().__init__(app)
+    instances = []
 
+    def __init__(self, app, allow_origins: Optional[list[str]] = None):
+        super().__init__(app)
+        self.allow_origins = allow_origins or ["'self'"]
+        ResponseMiddleware.instances.append(self)
+
+    def update_allow_origins(self, new_allow_origins: Optional[list[str]] = None):
+        if not new_allow_origins:
+            return
+        self.allow_origins = list(set(self.allow_origins + new_allow_origins))
+        
+        
     async def dispatch(self, request, call_next):
         response = await call_next(request)
 
@@ -76,7 +87,13 @@ class ResponseMiddleware(BaseHTTPMiddleware):
                         if k.lower() not in ("content-length", "content-type")
                     }
                 )
-
+        content_type = response.headers.get("content-type", "")
+        static_content_types = ["text/html", "javascript", "typescript", "css"]
+        if any(ct in content_type for ct in static_content_types):
+            if self.allow_origins:
+                frame_ancestors_value = " ".join(self.allow_origins)
+                response.headers["Content-Security-Policy"] = f"frame-ancestors {frame_ancestors_value};"
+            
         return response
 
 

@@ -24,6 +24,8 @@
     "return_to_view": "返回查看"
   },
   "variables": {
+    "please_select_date": "请选择日期",
+    "number_variable_error": "请输入正确的数值范围",
     "built_in": "已内置",
     "normal_value": "常规值",
     "​​cannot_be_empty": "变量值不能为空",
@@ -389,11 +391,13 @@
       },
       "timeout": "连接超时(秒)",
       "address": "地址",
-      "low_version": "兼容低版本"
+      "low_version": "兼容低版本",
+      "ssl": "启用 SSL"
     },
     "sync_fields": "同步表结构"
   },
   "datasource": {
+    "recommended_question": "推荐问题",
     "recommended_repetitive_tips": "存在重复问题",
     "recommended_problem_tips": "自定义配置至少一个问题，每个问题2-200个字符",
     "recommended_problem_configuration": "推荐问题配置",
@@ -572,6 +576,7 @@
     "operate_with_caution": "删除后，该工作空间下的用户将被移除，所有资源也将被删除，请谨慎操作。"
   },
   "permission": {
+    "search_field": "搜索字段",
     "search_rule_group": "搜索规则组",
     "add_rule_group": "添加规则组",
     "permission_rule": "权限规则",
@@ -911,6 +916,7 @@
     "kimi": "Kimi",
     "tencent_cloud": "腾讯云",
     "volcano_engine": "火山引擎",
+    "minimax": "MiniMax",
     "generic_openai": "通用OpenAI"
   },
   "modelType": {

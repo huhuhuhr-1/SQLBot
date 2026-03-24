@@ -7,6 +7,9 @@ import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { useI18n } from 'vue-i18n'
+import field_text from '@/assets/svg/field_text.svg'
+import field_time from '@/assets/svg/field_time.svg'
+import field_value from '@/assets/svg/field_value.svg'
 import { cloneDeep } from 'lodash-es'
 
 interface Form {
@@ -21,6 +24,11 @@ const multipleSelectionAll = ref<any[]>([])
 const keywords = ref('')
 const oldKeywords = ref('')
 const searchLoading = ref(false)
+const iconMap = {
+  text: field_text,
+  number: field_value,
+  datetime: field_time,
+}
 
 const selectable = (row: any) => {
   return ![1, 2, 3].includes(row.id)
@@ -74,7 +82,7 @@ const deleteBatchUser = () => {
         message: t('dashboard.delete_success'),
       })
       multipleSelectionAll.value = []
-      search()
+      handleCurrentChange(1)
     })
   })
 }
@@ -94,7 +102,7 @@ const deleteHandler = (row: any) => {
         type: 'success',
         message: t('dashboard.delete_success'),
       })
-      search()
+      handleCurrentChange(1)
     })
   })
 }
@@ -181,7 +189,12 @@ const validateValue = (_: any, value: any, callback: any) => {
     }
     return
   }
-  if (value.some((ele: any) => ele === '')) {
+  if (var_type === 'datetime') {
+    if (value === null) {
+      callback(new Error(t('datasource.please_enter') + t('common.empty') + t('variables.date')))
+    }
+  }
+  if (value.some((ele: any) => ele === '' || ele === null)) {
     callback(
       new Error(
         t('datasource.please_enter') +
@@ -197,7 +210,7 @@ const rules = {
   name: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('embedded.application_name'),
+      message: t('datasource.please_enter') + t('common.empty') + t('variables.variable_name'),
     },
   ],
   value: [
@@ -224,12 +237,28 @@ const saveHandler = () => {
       if (obj.id === '' || obj.id === null) {
         delete obj.id
       }
+
+      if (obj.var_type === 'text') {
+        obj.value = [...new Set(obj.value)]
+      }
+
+      if (obj.var_type === 'number') {
+        const [min = 0, max = 0] = obj.value
+        if (min > max) {
+          ElMessage({
+            type: 'error',
+            message: t('variables.number_variable_error'),
+          })
+          return
+        }
+      }
+
       variablesApi.save(obj).then(() => {
         ElMessage({
           type: 'success',
           message: t('common.save_success'),
         })
-        search()
+        handleCurrentChange(1)
         onFormClose()
       })
     }
@@ -244,7 +273,7 @@ const editHandler = (row: any) => {
     pageForm.value.id = id
     pageForm.value.name = name
     pageForm.value.var_type = var_type
-    pageForm.value.value = value
+    pageForm.value.value = cloneDeep(value)
   }
   dialogTitle.value = row?.id ? t('variables.edit_variable') : t('variables.add_variable')
   dialogFormVisible.value = true
@@ -297,7 +326,7 @@ const handleCurrentChange = (val: number) => {
     <div
       v-if="!searchLoading"
       class="table-content"
-      :class="multipleSelectionAll.length && 'show-pagination_height'"
+      :class="multipleSelectionAll.length ? 'show-pagination_height' : ''"
     >
       <template v-if="!oldKeywords && !fieldList.length">
         <EmptyBackground
@@ -317,7 +346,30 @@ const handleCurrentChange = (val: number) => {
           <el-table-column prop="name" :label="$t('variables.variable_name')">
             <template #default="scope">
               <div style="display: flex; align-items: center" :title="scope.row.name">
-                <div class="ellipsis" style="max-width: calc(100% - 60px); width: fit-content">
+                <div
+                  class="ellipsis"
+                  style="
+                    max-width: calc(100% - 60px);
+                    width: fit-content;
+                    position: relative;
+                    padding-left: 20px;
+                  "
+                >
+                  <el-icon
+                    :class="`${scope.row.var_type}-variables`"
+                    size="16"
+                    style="
+                      margin-right: 4px;
+                      position: absolute;
+                      left: 0;
+                      top: 50%;
+                      transform: translateY(-50%);
+                    "
+                  >
+                    <component
+                      :is="iconMap[scope.row.var_type as keyof typeof iconMap]"
+                    ></component>
+                  </el-icon>
                   {{ scope.row.name }}
                 </div>
                 <div v-if="scope.row.type === 'system'" class="system-flag">
@@ -513,20 +565,20 @@ const handleCurrentChange = (val: number) => {
       <el-form-item v-else prop="value" :label="t('variables.variable_value')">
         <div class="value-number_date">
           <template v-if="pageForm.var_type === 'number'">
-            <el-input
+            <el-input-number
               v-model.number="pageForm.value[0]"
               :placeholder="$t('variables.please_enter_value')"
-              autocomplete="off"
-              maxlength="50"
               clearable
+              max="10000000000000000"
+              controls-position="right"
             />
             <span class="ed-range-separator separator"></span>
-            <el-input
+            <el-input-number
               v-model.number="pageForm.value[1]"
               :placeholder="$t('variables.please_enter_value')"
-              autocomplete="off"
-              maxlength="50"
+              max="10000000000000000"
               clearable
+              controls-position="right"
             />
           </template>
           <template v-else>
@@ -626,8 +678,11 @@ const handleCurrentChange = (val: number) => {
         margin-left: 4px;
         color: var(--ed-color-primary-15-d, #189e7a);
       }
-      .ed-icon {
-        color: #646a73;
+
+      &:not(:has(.ellipsis)) {
+        .ed-icon {
+          color: #646a73;
+        }
       }
 
       .field-comment {
@@ -770,6 +825,11 @@ const handleCurrentChange = (val: number) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
+
+    .ed-input-number {
+      width: 100%;
+    }
+
     .ed-range-separator::after {
       content: '';
       height: 1px;

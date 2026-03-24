@@ -208,11 +208,15 @@ const initGraph = () => {
   graph.on(
     'node:port:mouseenter',
     debounce(({ e, node, port }: any) => {
-      tooltipY.value = e.offsetY + 'px'
-      tooltipX.value = e.offsetX + 'px'
       tooltipContent.value = node.port.ports.find(
         (ele: any) => +port === ele.id
       ).attrs.portNameLabel.text
+      if (tooltipContent.value) {
+        tooltipY.value = e.offsetY + 'px'
+        tooltipX.value = e.offsetX + 'px'
+      } else {
+        resetTooltip()
+      }
     }, 100)
   )
 
@@ -406,7 +410,7 @@ const drop = (e: any) => {
   })
 }
 const save = () => {
-  datasourceApi.relationSave(props.id, graph.toJSON().cells).then(() => {
+  datasourceApi.relationSave(props.id, graph ? graph.toJSON().cells : []).then(() => {
     ElMessage({
       type: 'success',
       message: t('common.save_success'),
@@ -447,7 +451,7 @@ const save = () => {
     @drop.prevent.stop="drop"
   ></div>
   <div class="save-btn">
-    <el-button v-if="nodeIds.length" type="primary" @click="save">
+    <el-button type="primary" @click="save">
       {{ t('common.save') }}
     </el-button>
   </div>

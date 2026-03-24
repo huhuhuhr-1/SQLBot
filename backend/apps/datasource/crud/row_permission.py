@@ -2,6 +2,7 @@
 # Date: 2025/6/25
 
 from typing import List, Dict
+
 from apps.datasource.models.datasource import CoreField, CoreDatasource
 from apps.db.constant import DB
 from apps.system.models.system_variable_model import SystemVariable
@@ -69,9 +70,12 @@ def transTreeItem(session: SessionDep, current_user: CurrentUser, item: Dict, ds
             variable_id = item.get('variable_id')
             if variable_id is not None:
                 sys_variable = session.query(SystemVariable).filter(SystemVariable.id == variable_id).first()
+                if sys_variable is None:
+                    return None
+
                 # do inner system variable
                 if sys_variable.type == 'system':
-                    res = whereName + whereTerm + getSysVariableValue(sys_variable, current_user)
+                    res = whereName + whereTerm + getSysVariableValue(sys_variable, current_user, ds, field, item)
                 else:
                     # check user variable
                     user_variables = current_user.system_variables
@@ -212,10 +216,42 @@ def userHaveVariable(user_variables: List, sys_variable: SystemVariable):
     return False
 
 
-def getSysVariableValue(sys_variable: SystemVariable, current_user: CurrentUser):
+def getSysVariableValue(sys_variable: SystemVariable, current_user: CurrentUser, ds: CoreDatasource, field: CoreField,
+                        item: Dict, ):
+    v = None
     if sys_variable.value[0] == 'name':
-        return current_user.name
+        v = current_user.name
     if sys_variable.value[0] == 'account':
-        return current_user.account
+        v = current_user.account
     if sys_variable.value[0] == 'email':
-        return current_user.email
+        v = current_user.email
+
+    whereValue = ''
+    if item['term'] == 'null':
+        whereValue = ''
+    elif item['term'] == 'not_null':
+        whereValue = ''
+    elif item['term'] == 'empty':
+        whereValue = "''"
+    elif item['term'] == 'not_empty':
+        whereValue = "''"
+    elif item['term'] == 'in' or item['term'] == 'not in':
+        if ds.type == 'sqlServer' and (
+                field.field_type == 'nchar' or field.field_type == 'NCHAR' or field.field_type == 'nvarchar' or field.field_type == 'NVARCHAR'):
+            whereValue = f"(N'{v}')"
+        else:
+            whereValue = f"('{v}')"
+    elif item['term'] == 'like' or item['term'] == 'not like':
+        if ds.type == 'sqlServer' and (
+                field.field_type == 'nchar' or field.field_type == 'NCHAR' or field.field_type == 'nvarchar' or field.field_type == 'NVARCHAR'):
+            whereValue = f"N'%{v}%'"
+        else:
+            whereValue = f"'%{v}%'"
+    else:
+        if ds.type == 'sqlServer' and (
+                field.field_type == 'nchar' or field.field_type == 'NCHAR' or field.field_type == 'nvarchar' or field.field_type == 'NVARCHAR'):
+            whereValue = f"N'{v}'"
+        else:
+            whereValue = f"'{v}'"
+
+    return whereValue

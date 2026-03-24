@@ -5,12 +5,10 @@ from typing import Optional
 
 import requests
 from fastapi import FastAPI
-from sqlalchemy import Engine, create_engine
 from sqlmodel import Session, select
 from starlette.middleware.cors import CORSMiddleware
 
-# from apps.datasource.embedding.table_embedding import get_table_embedding
-from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
+from apps.datasource.models.datasource import CoreDatasource
 from apps.datasource.utils.utils import aes_encrypt
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -19,8 +17,9 @@ from common.core.config import settings
 from common.core.db import engine
 from common.core.sqlbot_cache import cache
 from common.utils.aes_crypto import simple_aes_decrypt
-from common.utils.utils import SQLBotLogUtil, equals_ignore_case, get_domain_list, string_to_numeric_hash
+from common.utils.utils import SQLBotLogUtil, get_domain_list, string_to_numeric_hash
 from common.core.deps import Trans
+from common.core.response_middleware import ResponseMiddleware
 
 
 @cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
@@ -87,13 +86,22 @@ def init_dynamic_cors(app: FastAPI):
                             seen.add(domain)
                             unique_domains.append(domain)
             cors_middleware = None
+            response_middleware = None
             for middleware in app.user_middleware:
-                if middleware.cls == CORSMiddleware:
+                if not cors_middleware and middleware.cls == CORSMiddleware:
                     cors_middleware = middleware
+                if not response_middleware and middleware.cls == ResponseMiddleware:
+                    response_middleware = middleware
+                if cors_middleware and response_middleware:
                     break
+                
+            updated_origins = list(set(settings.all_cors_origins + unique_domains))
             if cors_middleware:
-                updated_origins = list(set(settings.all_cors_origins + unique_domains))
                 cors_middleware.kwargs['allow_origins'] = updated_origins
+            if response_middleware:
+                for instance in ResponseMiddleware.instances:
+                    instance.update_allow_origins(updated_origins)
+
     except Exception as e:
         return False, e
 

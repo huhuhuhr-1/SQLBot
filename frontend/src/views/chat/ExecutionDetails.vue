@@ -39,7 +39,8 @@ function getLogList(recordId: any) {
 }
 
 const setDrawerSize = debounce(() => {
-  drawerSize.value = window.innerWidth < 500 ? '460px' : '600px'
+  drawerSize.value =
+    window.innerWidth < 500 ? '460px' : `${Math.max(window.innerWidth * 0.5, 600)}px`
 }, 500)
 
 onMounted(() => {
@@ -152,7 +153,7 @@ defineExpose({
         font-weight: 400;
         font-size: 14px;
         line-height: 22px;
-        width: 64%;
+        width: calc(100% - 55px);
       }
 
       .value {
@@ -173,6 +174,7 @@ defineExpose({
       border: 1px solid #dee0e3;
       padding: 16px;
       margin-bottom: 8px;
+      cursor: pointer;
 
       .header {
         display: flex;
