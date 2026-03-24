@@ -10,7 +10,7 @@ from apps.ai_model.model_factory import create_llm
 from apps.datasource.crud.table import get_tables_by_ds_id
 from apps.datasource.models.datasource import CoreDatasource, CoreField
 from apps.metric.curd import metric as metric_crud
-from apps.metric.models.metric_model import MetricInfo
+from apps.metric.models.metric_model import CoreMetric, MetricInfo
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.deps import SessionDep, CurrentUser, Trans
@@ -21,6 +21,19 @@ router = APIRouter(tags=["Metric"], prefix="/system/metric")
 class MetricSuggestBody(BaseModel):
     description: str = Field(..., min_length=1, max_length=2000)
     datasource_id: Optional[int] = Field(default=None, description="可选，传入则把该库已同步的表名提供给模型参考")
+
+
+class MetricCandidate(BaseModel):
+    id: int
+    code: str
+    name: str
+    metric_kind: str
+
+
+class MetricAdvancedSuggestBody(BaseModel):
+    description: str = Field(..., min_length=1, max_length=2000)
+    datasource_id: Optional[int] = Field(default=None, description="可选，传入则按数据源过滤候选指标")
+    metric_kind: str = Field(..., description="atomic / derived / composite")
 
 
 def _ai_message_text(resp: Any) -> str:
@@ -109,6 +122,45 @@ def _parse_suggest_json(raw: str) -> dict:
     if not isinstance(data, dict):
         raise ValueError("not an object")
     return data
+
+
+def _advanced_candidate_lines(cands: list[CoreMetric], kind_filter: Optional[str] = None) -> str:
+    arr = []
+    for m in cands:
+        if kind_filter and m.metric_kind != kind_filter:
+            continue
+        arr.append(f"- code={m.code}, name={m.name}, kind={m.metric_kind}")
+    return "\n".join(arr[:120])
+
+
+_SUGGEST_DERIVED_SYSTEM = """你是 SQLBot 指标配置助手（派生指标模式）。
+请只输出一个 JSON 对象，不要其它文字。键含义：
+- code: 英文蛇形命名，小写字母数字下划线，最长 64
+- name: 指标名称
+- aliases: 字符串数组（0~5）
+- description: 一行说明（可选）
+- base_metric_code: 必填，必须从「候选基础指标」列表里选择一个 code
+- modifiers: JSON 对象（可选），例如 {"time_grain":"day"} 或 {"filters":[...]}
+- expansion_hint: 字符串或 null，用于补充时间粒度、分组筛选口径
+
+规则：
+1) base_metric_code 只能从候选列表里选，不可臆造。
+2) 用户说“每日/按天”等时，在 modifiers 或 expansion_hint 中体现时间粒度。
+3) 不要输出 measure_sql / expression / components。"""
+
+_SUGGEST_COMPOSITE_SYSTEM = """你是 SQLBot 指标配置助手（复合指标模式）。
+请只输出一个 JSON 对象，不要其它文字。键含义：
+- code: 英文蛇形命名，小写字母数字下划线，最长 64
+- name: 指标名称
+- aliases: 字符串数组（0~5）
+- description: 一行说明（可选）
+- expression: 复合表达式，使用 {{M1}}/{{M2}}... 占位符
+- components: 数组，每项为 {"slot_code":"M1","child_metric_code":"xxx"}；child_metric_code 必须来自候选列表
+
+规则：
+1) child_metric_code 只能从候选列表里选，不可臆造。
+2) expression 中必须只引用 components 里声明过的 slot_code。
+3) 不要输出 measure_sql / base_metric_code / modifiers。"""
 
 
 _SUGGEST_SYSTEM = """你是 SQLBot 指标配置助手。用户多为业务人员，用自然语言描述「想统计什么」。
@@ -304,6 +356,101 @@ async def suggest_metric(body: MetricSuggestBody, session: SessionDep, current_u
         "used_table": used_table,
         "used_field": used_field,
         "expansion_hint": expansion_hint,
+    }
+
+
+@router.post("/suggest/advanced", summary=f"{PLACEHOLDER_PREFIX}metric_suggest_advanced")
+@require_permissions(permission=SqlbotPermission(role=["ws_admin"]))
+async def suggest_metric_advanced(body: MetricAdvancedSuggestBody, session: SessionDep, current_user: CurrentUser):
+    kind = (body.metric_kind or "").strip()
+    if kind not in ("atomic", "derived", "composite"):
+        raise HTTPException(status_code=400, detail="metric_kind must be atomic/derived/composite")
+    if kind == "atomic":
+        return await suggest_metric(
+            MetricSuggestBody(description=body.description, datasource_id=body.datasource_id),
+            session,
+            current_user,
+        )
+
+    try:
+        llm = await create_llm(use_tool=False)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    stmt = select(CoreMetric).where(CoreMetric.oid == current_user.oid, CoreMetric.enabled == True)
+    rows = session.execute(stmt).scalars().all()
+    rows = [m for m in rows if metric_crud._ds_match(m, body.datasource_id)]
+    if not rows:
+        raise HTTPException(status_code=400, detail="当前数据源下没有可用指标，请先创建原子指标")
+
+    if kind == "derived":
+        base_lines = _advanced_candidate_lines(rows, "atomic")
+        if not base_lines:
+            raise HTTPException(status_code=400, detail="派生指标至少需要 1 个原子指标作为基础指标")
+        msg = HumanMessage(
+            content=(
+                f"{_SUGGEST_DERIVED_SYSTEM}\n\n"
+                f"【候选基础指标（只能从中选择 base_metric_code）】\n{base_lines}\n\n"
+                f"用户描述：\n{body.description.strip()}"
+            )
+        )
+        try:
+            resp = await llm.ainvoke([msg])
+            data = _parse_suggest_json(_ai_message_text(resp))
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+        base_code = str(data.get("base_metric_code") or "").strip()
+        code_set = {m.code for m in rows if m.metric_kind == "atomic"}
+        if base_code not in code_set:
+            raise HTTPException(status_code=502, detail="模型返回的 base_metric_code 不在候选列表中")
+        aliases = data.get("aliases") if isinstance(data.get("aliases"), list) else []
+        modifiers = data.get("modifiers") if isinstance(data.get("modifiers"), dict) else None
+        expansion_hint = data.get("expansion_hint")
+        expansion_hint = str(expansion_hint).strip()[:1024] if expansion_hint else None
+        return {
+            "code": str(data.get("code") or "").strip()[:128],
+            "name": str(data.get("name") or "").strip()[:255],
+            "aliases": [str(a).strip() for a in aliases if str(a).strip()][:8],
+            "description": (str(data.get("description") or "").strip()[:2000] or None),
+            "base_metric_code": base_code,
+            "modifiers": modifiers,
+            "expansion_hint": expansion_hint or _infer_time_grain_hint(body.description.strip()),
+        }
+
+    # composite
+    cand_lines = _advanced_candidate_lines(rows, None)
+    msg = HumanMessage(
+        content=(
+            f"{_SUGGEST_COMPOSITE_SYSTEM}\n\n"
+            f"【候选子指标（只能从中选择 child_metric_code）】\n{cand_lines}\n\n"
+            f"用户描述：\n{body.description.strip()}"
+        )
+    )
+    try:
+        resp = await llm.ainvoke([msg])
+        data = _parse_suggest_json(_ai_message_text(resp))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    code_set = {m.code for m in rows}
+    comps_in = data.get("components") if isinstance(data.get("components"), list) else []
+    comps = []
+    for c in comps_in[:8]:
+        if not isinstance(c, dict):
+            continue
+        slot = str(c.get("slot_code") or "").strip()
+        child_code = str(c.get("child_metric_code") or "").strip()
+        if slot and child_code and child_code in code_set:
+            comps.append({"slot_code": slot, "child_metric_code": child_code})
+    if not comps:
+        raise HTTPException(status_code=502, detail="模型未返回有效 components（或 child_metric_code 不在候选内）")
+    aliases = data.get("aliases") if isinstance(data.get("aliases"), list) else []
+    return {
+        "code": str(data.get("code") or "").strip()[:128],
+        "name": str(data.get("name") or "").strip()[:255],
+        "aliases": [str(a).strip() for a in aliases if str(a).strip()][:8],
+        "description": (str(data.get("description") or "").strip()[:2000] or None),
+        "expression": str(data.get("expression") or "").strip()[:2000],
+        "components": comps,
     }
 
 

@@ -6,7 +6,7 @@ import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
-import { metricApi, type MetricSuggestResult } from '@/api/metric'
+import { metricApi, type MetricAdvancedSuggestResult, type MetricSuggestResult } from '@/api/metric'
 import { datasourceApi } from '@/api/datasource'
 import { formatTimestamp } from '@/utils/date'
 const { t } = useI18n()
@@ -74,6 +74,7 @@ const formMode = ref<'simple' | 'full'>('simple')
 const smartDesc = ref('')
 const smartLoading = ref(false)
 const smartSaveLoading = ref(false)
+const smartAdvancedLoading = ref(false)
 
 /** 表字段助手：当前选中的唯一数据源 */
 const primarySchemaDsId = computed(() => form.value.datasource_id ?? null)
@@ -489,6 +490,64 @@ const runSmartSuggestAndSave = async () => {
   }
 }
 
+const applyAdvancedSuggestPayload = (data: MetricAdvancedSuggestResult) => {
+  form.value.code = data.code || form.value.code
+  form.value.name = data.name || form.value.name
+  form.value.aliases = Array.isArray(data.aliases) ? [...data.aliases] : form.value.aliases
+  if (data.description) form.value.description = data.description
+
+  if (form.value.metric_kind === 'derived') {
+    const baseCode = data.base_metric_code?.trim()
+    if (baseCode) {
+      const target = metricOptions.value.find((m) => m.code === baseCode)
+      if (target) form.value.base_metric_id = target.id
+    }
+    if (data.modifiers && typeof data.modifiers === 'object') {
+      form.value.modifiers_json = JSON.stringify(data.modifiers, null, 2)
+    }
+    form.value.expansion_hint = data.expansion_hint?.trim() ?? form.value.expansion_hint
+  } else if (form.value.metric_kind === 'composite') {
+    if (data.expression) form.value.expression = data.expression
+    const comps = Array.isArray(data.components) ? data.components : []
+    if (comps.length > 0) {
+      form.value.components = comps.map((c) => {
+        const target = metricOptions.value.find((m) => m.code === c.child_metric_code)
+        return {
+          slot_code: c.slot_code,
+          child_metric_id: target?.id,
+        }
+      })
+    }
+  } else {
+    if (data.measure_sql) form.value.measure_sql = data.measure_sql
+    form.value.expansion_hint = data.expansion_hint?.trim() ?? form.value.expansion_hint
+  }
+}
+
+const runSmartSuggestAdvanced = async () => {
+  const d = smartDesc.value.trim()
+  if (!d) {
+    ElMessage.warning(t('metric.smart_need_desc'))
+    return
+  }
+  if (form.value.datasource_id == null) {
+    ElMessage.warning(t('metric.smart_need_ds_first'))
+    return
+  }
+  smartAdvancedLoading.value = true
+  try {
+    const res = await metricApi.suggestAdvanced(d, form.value.metric_kind, form.value.datasource_id)
+    applyAdvancedSuggestPayload(res)
+    ElMessage.success(t('metric.smart_advanced_ok'))
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { detail?: string } } }
+    const detail = ax?.response?.data?.detail
+    ElMessage.error(typeof detail === 'string' ? detail : t('metric.smart_fail'))
+  } finally {
+    smartAdvancedLoading.value = false
+  }
+}
+
 const applyLocalTemplate = () => {
   const d = smartDesc.value.trim()
   if (!d) {
@@ -847,7 +906,7 @@ onMounted(() => {
             </el-radio-group>
             <div class="form-hint">{{ t('metric.mode_hint') }}</div>
           </el-form-item>
-          <el-form-item v-if="formMode === 'simple'" :label="t('metric.smart_title')">
+          <el-form-item :label="t('metric.smart_title')">
             <el-input
               v-model="smartDesc"
               type="textarea"
@@ -855,13 +914,20 @@ onMounted(() => {
               :placeholder="t('metric.smart_placeholder')"
             />
             <div class="smart-actions">
-              <el-button type="primary" plain :loading="smartLoading" @click="runSmartSuggest">
-                {{ t('metric.smart_ai') }}
-              </el-button>
-              <el-button type="primary" :loading="smartSaveLoading" @click="runSmartSuggestAndSave">
-                {{ t('metric.smart_ai_save') }}
-              </el-button>
-              <el-button @click="applyLocalTemplate">{{ t('metric.smart_local') }}</el-button>
+              <template v-if="formMode === 'simple'">
+                <el-button type="primary" plain :loading="smartLoading" @click="runSmartSuggest">
+                  {{ t('metric.smart_ai') }}
+                </el-button>
+                <el-button type="primary" :loading="smartSaveLoading" @click="runSmartSuggestAndSave">
+                  {{ t('metric.smart_ai_save') }}
+                </el-button>
+                <el-button @click="applyLocalTemplate">{{ t('metric.smart_local') }}</el-button>
+              </template>
+              <template v-else>
+                <el-button type="primary" :loading="smartAdvancedLoading" @click="runSmartSuggestAdvanced">
+                  {{ t('metric.smart_advanced_ai') }}
+                </el-button>
+              </template>
             </div>
             <div class="form-hint">{{ t('metric.smart_hint') }}</div>
           </el-form-item>

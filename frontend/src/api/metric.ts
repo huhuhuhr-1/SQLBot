@@ -14,6 +14,24 @@ export interface MetricSuggestResult {
   expansion_hint?: string | null
 }
 
+export interface MetricAdvancedSuggestResult {
+  code: string
+  name: string
+  aliases?: string[]
+  description?: string | null
+  // derived
+  base_metric_code?: string
+  modifiers?: Record<string, unknown> | null
+  expansion_hint?: string | null
+  // composite
+  expression?: string
+  components?: { slot_code: string; child_metric_code: string }[]
+  // atomic passthrough
+  measure_sql?: string
+  used_table?: string | null
+  used_field?: string | null
+}
+
 export const metricApi = {
   page: (pageNum: number, pageSize: number, params?: Record<string, unknown>) =>
     request.get(`/system/metric/page/${pageNum}/${pageSize}`, { params }),
@@ -32,6 +50,16 @@ export const metricApi = {
     request.post<MetricSuggestResult>(
       '/system/metric/suggest',
       { description, datasource_id: datasourceId ?? null },
+      { requestOptions: { customError: true } },
+    ),
+  suggestAdvanced: (description: string, metricKind: string, datasourceId?: number | null) =>
+    request.post<MetricAdvancedSuggestResult>(
+      '/system/metric/suggest/advanced',
+      {
+        description,
+        metric_kind: metricKind,
+        datasource_id: datasourceId ?? null,
+      },
       { requestOptions: { customError: true } },
     ),
 }
