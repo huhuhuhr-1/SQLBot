@@ -51,6 +51,7 @@ from apps.openapi.service.openapi_prompt import analysis_question
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
+from apps.metric.curd.metric import get_metric_template
 from common.core.config import settings
 # modify by huuhuhuhr
 from common.core.db import engine, get_session
@@ -307,8 +308,12 @@ class LLMService:
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
-        self.chat_question.terminologies = get_terminology_template(_session, self.chat_question.question,
-                                                                    self.current_user.oid, ds_id)
+        self.chat_question.terminologies, _ = get_terminology_template(
+            _session, self.chat_question.question, self.current_user.oid, ds_id
+        )
+        self.chat_question.metrics, _ = get_metric_template(
+            _session, self.chat_question.question, self.current_user.oid, ds_id
+        )
         if SQLBotLicenseUtil.valid():
             self.chat_question.custom_prompt = find_custom_prompts(_session, CustomPromptTypeEnum.ANALYSIS,
                                                                    self.current_user.oid, ds_id)
@@ -656,14 +661,18 @@ class LLMService:
             oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
             ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
-            self.chat_question.terminologies = get_terminology_template(_session, self.chat_question.question, oid,
-                                                                        ds_id)
+            self.chat_question.terminologies, _ = get_terminology_template(
+                _session, self.chat_question.question, oid, ds_id
+            )
+            self.chat_question.metrics, _ = get_metric_template(_session, self.chat_question.question, oid, ds_id)
             if self.current_assistant and self.current_assistant.type == 1:
-                self.chat_question.data_training = get_training_template(_session, self.chat_question.question,
-                                                                         oid, None, self.current_assistant.id)
+                self.chat_question.data_training, _ = get_training_template(
+                    _session, self.chat_question.question, oid, None, self.current_assistant.id
+                )
             else:
-                self.chat_question.data_training = get_training_template(_session, self.chat_question.question,
-                                                                         oid, ds_id)
+                self.chat_question.data_training, _ = get_training_template(
+                    _session, self.chat_question.question, oid, ds_id
+                )
             if SQLBotLicenseUtil.valid():
                 self.chat_question.custom_prompt = find_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL,
                                                                        oid, ds_id)
@@ -1316,12 +1325,16 @@ class LLMService:
             self.chunk_list.append(chunk)
 
     def init_for_plan(self, _session: Session):
-        if not self.chat_question.terminologies:
-            if self.ds:
-                oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
-                ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
-                self.chat_question.terminologies = get_terminology_template(_session, self.chat_question.question,
-                                                                            oid, ds_id)
+        if self.ds and (
+            not self.chat_question.terminologies
+            or not getattr(self.chat_question, "metrics", "")
+        ):
+            oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
+            ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+            self.chat_question.terminologies, _ = get_terminology_template(
+                _session, self.chat_question.question, oid, ds_id
+            )
+            self.chat_question.metrics, _ = get_metric_template(_session, self.chat_question.question, oid, ds_id)
 
         if not self.chat_question.db_schema:
             self.chat_question.db_schema = self.out_ds_instance.get_db_schema(
@@ -1407,39 +1420,42 @@ class LLMService:
         self.chat_question.question = query
 
         try:
-            if self.ds:
-                oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
-                ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
-                self.chat_question.terminologies = get_terminology_template(_session, self.chat_question.question,
-                                                                            oid, ds_id)
-                self.chat_question.data_training = get_training_template(_session, self.chat_question.question,
-                                                                         ds_id, oid)
-                if SQLBotLicenseUtil.valid():
-                    self.chat_question.custom_prompt = find_custom_prompts(_session,
-                                                                           CustomPromptTypeEnum.GENERATE_SQL,
-                                                                           oid, ds_id)
-
             _last_sql_err = get_last_execute_sql_error(_session, self.chat_question.chat_id)
             if _last_sql_err:
                 self.chat_question.error_msg = f'<error-msg>\n{_last_sql_err}\n</error-msg>'
             else:
                 self.chat_question.error_msg = ''
 
-            self.init_messages(_session)
-
-            # select datasource if datasource is none
             if not self.ds:
                 ds_res = self.select_datasource(_session)
                 for chunk in ds_res:
                     SQLBotLogUtil.info(f"{chunk}")
-
                 self.chat_question.db_schema = self.out_ds_instance.get_db_schema(
-                    ds_id=self.ds.id,question=self.chat_question.question) if self.out_ds_instance else get_table_schema(session=_session,
-                                                                              current_user=self.current_user,
-                                                                              ds=self.ds,
-                                                                              question=self.chat_question.question)
+                    ds_id=self.ds.id, question=self.chat_question.question
+                ) if self.out_ds_instance else get_table_schema(
+                    session=_session,
+                    current_user=self.current_user,
+                    ds=self.ds,
+                    question=self.chat_question.question,
+                )
             else:
-                self.validate_history_ds(_session)
+                oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
+                ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+                self.chat_question.terminologies, _ = get_terminology_template(
+                    _session, self.chat_question.question, oid, ds_id
+                )
+                self.chat_question.metrics, _ = get_metric_template(_session, self.chat_question.question, oid, ds_id)
+                self.chat_question.data_training, _ = get_training_template(
+                    _session, self.chat_question.question, oid, ds_id
+                )
+                if SQLBotLicenseUtil.valid():
+                    self.chat_question.custom_prompt = find_custom_prompts(_session,
+                                                                           CustomPromptTypeEnum.GENERATE_SQL,
+                                                                           oid, ds_id)
+
+                self.init_messages(_session)
+
+            self.validate_history_ds(_session)
 
             # check connection
             connected = check_connection(ds=self.ds, trans=None)
@@ -1682,14 +1698,18 @@ class LLMService:
             if self.ds:
                 oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
                 ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
-                self.chat_question.terminologies = get_terminology_template(_session, self.chat_question.question,
-                                                                            oid, ds_id)
+                self.chat_question.terminologies, _ = get_terminology_template(
+                    _session, self.chat_question.question, oid, ds_id
+                )
+                self.chat_question.metrics, _ = get_metric_template(_session, self.chat_question.question, oid, ds_id)
                 if self.current_assistant and self.current_assistant.type == 1:
-                    self.chat_question.data_training = get_training_template(_session, self.chat_question.question,
-                                                                             oid, None, self.current_assistant.id)
+                    self.chat_question.data_training, _ = get_training_template(
+                        _session, self.chat_question.question, oid, None, self.current_assistant.id
+                    )
                 else:
-                    self.chat_question.data_training = get_training_template(_session, self.chat_question.question,
-                                                                             oid, ds_id)
+                    self.chat_question.data_training, _ = get_training_template(
+                        _session, self.chat_question.question, oid, ds_id
+                    )
                 if SQLBotLicenseUtil.valid():
                     self.chat_question.custom_prompt = find_custom_prompts(_session,
                                                                            CustomPromptTypeEnum.GENERATE_SQL,
@@ -2119,9 +2139,20 @@ class LLMService:
     def get_my_sys_prompt(self, payload, _session: Session):
         # 术语 modify by huhuhuhr
         if self.chat_question is not None and self.chat_question.terminologies is not None and self.chat_question.terminologies != '':
-            self.chat_question.terminologies = get_terminology_template(_session,
-                                                                        self.chat_question.question,
-                                                                        self.current_user.oid)
+            if self.ds:
+                _promote_oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
+                _promote_ds_id = (
+                    self.ds.id if isinstance(self.ds, CoreDatasource) else getattr(self.ds, "id", None)
+                )
+            else:
+                _promote_oid = self.current_user.oid
+                _promote_ds_id = None
+            self.chat_question.terminologies, _ = get_terminology_template(
+                _session, self.chat_question.question, _promote_oid, _promote_ds_id
+            )
+            self.chat_question.metrics, _ = get_metric_template(
+                _session, self.chat_question.question, _promote_oid, _promote_ds_id
+            )
         template_vars = {
             "role": getattr(payload, 'role', '') if payload else '',
             "task": getattr(payload, 'task', '') if payload else '',

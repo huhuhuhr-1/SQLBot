@@ -45,6 +45,7 @@ class OperationEnum(Enum):
     FILTER_TERMS = '9'
     FILTER_SQL_EXAMPLE = '10'
     FILTER_CUSTOM_PROMPT = '11'
+    FILTER_METRICS = '14'
     EXECUTE_SQL = '12'
     GENERATE_PICTURE = '13'
 
@@ -225,6 +226,7 @@ class AiModelQuestion(BaseModel):
     filter: str = []
     sub_query: Optional[list[dict]] = None
     terminologies: str = ""
+    metrics: str = ""
     data_training: str = ""
     custom_prompt: str = ""
     error_msg: str = ""
@@ -264,6 +266,7 @@ class AiModelQuestion(BaseModel):
             'example_answer_3']
         return _base_template['system'].format(engine=self.engine, schema=tmp_schema, question=self.question,
                                                lang=self.lang, terminologies=self.terminologies,
+                                               metrics=self.metrics,
                                                data_training=self.data_training, custom_prompt=self.custom_prompt,
                                                process_check=_process_check,
                                                base_sql_rules=_base_sql_rules,
@@ -303,6 +306,7 @@ class AiModelQuestion(BaseModel):
             question=self.question,
             lang=self.lang,
             terminologies=self.terminologies,
+            metrics=self.metrics,
             data_training=self.data_training,
             custom_prompt=self.custom_prompt or "",
             process_check=_process_check,
