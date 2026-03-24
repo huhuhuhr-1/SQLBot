@@ -197,3 +197,9 @@ test.py
 !/.venv/
 /backend/offline_packages/
 /backend/requirements.txt
+.github
+.jbeval
+.devcontainer
+.claude
+.cursor
+.idea
