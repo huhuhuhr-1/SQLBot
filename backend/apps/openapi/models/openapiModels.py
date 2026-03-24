@@ -437,12 +437,15 @@ class DatasourceResponse(BaseModel):
     description: Optional[str]
     type: str
     type_name: str
-    configuration: str
+    configuration: Optional[str]
     create_time: datetime
     create_by: int
     status: str
     num: str
     oid: int
+    table_schema: Optional[str] = None
+    terminologies: Optional[str] = None
+
 
 
 class SinglePgConfig(BaseModel):

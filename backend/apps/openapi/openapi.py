@@ -1,12 +1,14 @@
 import asyncio
 import contextvars
+import csv
 import hashlib
+import io
 import json
 import os
 import threading
 import traceback
 import uuid
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 import orjson
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
@@ -26,7 +28,8 @@ from apps.openapi.agent.plan_agent import PlanAgent
 from apps.openapi.agent.deep_analysis_graph import DeepAnalysisGraphRunner
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, DeepAnalysisRequest
+    OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, DeepAnalysisRequest, \
+    DatasourceResponse
 from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
 from apps.openapi.service.openapi_llm import LLMService
 from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
@@ -45,6 +48,46 @@ from common.utils.utils import SQLBotLogUtil
 
 router = APIRouter(tags=["openapi"], prefix="/openapi")
 path = settings.EXCEL_PATH
+
+
+def _validate_and_resolve_openapi_sql_query(
+    current_user: CurrentUser, request: DataSourceRequestWithSql
+) -> Tuple[CoreDatasource, str]:
+    if not request.db_id:
+        raise HTTPException(status_code=400, detail="db_id 参数不能为空")
+    if not request.sql:
+        raise HTTPException(status_code=400, detail="sql 参数不能为空")
+    sanitized_sql = request.sql.strip()
+    if not is_safe_sql(sanitized_sql):
+        raise HTTPException(status_code=400, detail="SQL语句包含不安全的操作")
+    datasource = None
+    for session in get_session():
+        try:
+            datasource = get_datasource_by_name_or_id(
+                session=session,
+                user=current_user,
+                query=DataSourceRequest(id=int(request.db_id)),
+            )
+            if datasource is None:
+                raise HTTPException(status_code=500, detail="数据源未找到")
+            break
+        finally:
+            session.close()
+    return datasource, sanitized_sql
+
+
+def _sql_result_to_csv_bytes(fields: List[str], rows: List[dict]) -> bytes:
+    buf = io.StringIO()
+    writer = csv.DictWriter(
+        buf,
+        fieldnames=fields,
+        extrasaction="ignore",
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({k: ("" if row.get(k) is None else row.get(k)) for k in fields})
+    return buf.getvalue().encode("utf-8-sig")
 
 
 @router.post("/getToken", summary="创建认证令牌",
@@ -120,12 +163,13 @@ async def get_data_source_list(session: SessionDep, user: CurrentUser):
 
 @router.post("/getDataSourceByIdOrName", summary="根据ID或名称获取数据源",
              description="根据数据源ID或名称获取特定数据源信息",
-             dependencies=[Depends(common_headers)])
+             dependencies=[Depends(common_headers)],
+             response_model=DatasourceResponse)
 async def get_data_source_by_id_or_name(
         session: SessionDep,
         user: CurrentUser,
         request: DataSourceRequest
-):
+) -> DatasourceResponse:
     """
     根据ID或名称获取数据源
 
@@ -139,7 +183,23 @@ async def get_data_source_by_id_or_name(
     Returns:
         数据源信息
     """
-    return get_datasource_by_name_or_id(session=session, user=user, query=request)
+    ds = get_datasource_by_name_or_id(session=session, user=user, query=request)
+    if not ds:
+        raise HTTPException(status_code=404, detail="数据源未找到")
+    
+    # 获取表结构
+    from apps.datasource.crud.datasource import get_table_schema
+    table_schema = get_table_schema(session=session, current_user=user, ds=ds, question="", embedding=False)
+    
+    # 获取术语
+    from apps.terminology.curd.terminology import get_terminology_template
+    terminologies_str, _ = get_terminology_template(session=session, question="", oid=user.oid, datasource=ds.id)
+    
+    # 构建响应
+    res = DatasourceResponse.model_validate(ds.model_dump())
+    res.table_schema = table_schema
+    res.terminologies = terminologies_str
+    return res
 
 
 @router.post("/chat", summary="聊天",
@@ -307,49 +367,9 @@ async def get_data(session: SessionDep, record_chat: OpenChat):
 
 @router.post("/getDataByDbIdAndSql", dependencies=[Depends(common_headers)])
 def get_data_by_db_id_and_sql(current_user: CurrentUser, request: DataSourceRequestWithSql):
-    # 验证输入参数
-    if not request.db_id:
-        raise HTTPException(
-            status_code=400,
-            detail="db_id 参数不能为空"
-        )
-
-    if not request.sql:
-        raise HTTPException(
-            status_code=400,
-            detail="sql 参数不能为空"
-        )
-
-    # 增加SQL注入防护：检查SQL语句中是否包含危险操作
-    sanitized_sql = request.sql.strip()
-    if not is_safe_sql(sanitized_sql):
-        raise HTTPException(
-            status_code=400,
-            detail="SQL语句包含不安全的操作"
-        )
-
-    datasource = None
-    # 以更标准的方式使用数据库会话
-    for session in get_session():
-        try:
-            datasource = get_datasource_by_name_or_id(
-                session=session,
-                user=current_user,
-                query=DataSourceRequest(id=int(request.db_id))  # 使用 request.db_id 而不是 request.ds.id
-            )
-            if datasource is None:
-                raise HTTPException(
-                    status_code=500,
-                    detail="数据源未找到"
-                )
-            break
-        finally:
-            # 确保会话被正确关闭
-            session.close()
-
+    datasource, sanitized_sql = _validate_and_resolve_openapi_sql_query(current_user, request)
     SQLBotLogUtil.info(f"Executing SQL on ds_id {request.db_id}: {request.sql}")
     try:
-        # 使用 datasource 而不是 request.ds
         return exec_sql(ds=datasource, sql=sanitized_sql, origin_column=False)
     except Exception as e:
         if isinstance(e, ParseSQLResultError):
@@ -357,6 +377,30 @@ def get_data_by_db_id_and_sql(current_user: CurrentUser, request: DataSourceRequ
         else:
             err = traceback.format_exc(limit=1, chain=True)
             raise SQLBotDBError(err)
+
+
+@router.post("/getDataByDbIdAndSqlCsv", dependencies=[Depends(common_headers)])
+def get_data_by_db_id_and_sql_csv(current_user: CurrentUser, request: DataSourceRequestWithSql):
+    datasource, sanitized_sql = _validate_and_resolve_openapi_sql_query(current_user, request)
+    SQLBotLogUtil.info(f"Executing SQL (CSV export) on ds_id {request.db_id}: {request.sql}")
+    try:
+        result = exec_sql(ds=datasource, sql=sanitized_sql, origin_column=False)
+    except Exception as e:
+        if isinstance(e, ParseSQLResultError):
+            raise e
+        else:
+            err = traceback.format_exc(limit=1, chain=True)
+            raise SQLBotDBError(err)
+    fields = result.get("fields") or []
+    data = result.get("data") or []
+    csv_bytes = _sql_result_to_csv_bytes(fields, data)
+    digest = hashlib.sha256(sanitized_sql.encode("utf-8")).hexdigest()[:12]
+    filename = f"sql_export_{request.db_id}_{digest}.csv"
+    return StreamingResponse(
+        iter([csv_bytes]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/createRecordAndBindDb")

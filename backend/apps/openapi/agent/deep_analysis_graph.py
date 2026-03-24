@@ -5,6 +5,8 @@
 再在后续逻辑中只读使用；禁止在未赋值前引用，避免 UnboundLocalError。
 """
 import asyncio
+import json
+import re
 from typing import Any, Dict, List, Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -46,6 +48,16 @@ class DeepAnalysisState(TypedDict, total=False):
     # 反思节点结果（可选）
     reflect_done: bool
     need_more_data: bool
+    # 本轮执行的增量信号（供 reflect 判断）
+    last_insights_len: int
+    last_tool_events_len: int
+    last_new_insights: int
+    last_has_bad_get_data: bool
+    # 子任务重试控制
+    task_retry_counts: Dict[int, int]
+    # 重规划控制（避免死循环）
+    need_replan: bool
+    replan_count: int
 
 
 class DeepAnalysisGraphRunner:
@@ -134,6 +146,42 @@ class DeepAnalysisGraphRunner:
         plan_agent.question = question
         execution_plan = plan_agent.build_execution_plan()
 
+        # 动态修订（V1）：在不推翻基础计划的前提下，结合 schema 对「子问题/取数约束」做一次 LLM 修订
+        # - 目标：减少模板化子问题，让 subquestions/required_fields 更贴近 db_schema
+        # - 失败：解析异常则直接回退基础计划
+        try:
+            schema_text = getattr(self.chat_question, "db_schema", "") or ""
+            llm = await create_llm(use_tool=False)
+            from langchain_core.messages import HumanMessage, SystemMessage
+
+            system_prompt = (
+                "你是资深数据分析师与数据建模专家。你将基于用户问题与数据库 Schema，修订一个深度分析执行计划。\n"
+                "要求：只输出一个 JSON 对象（不要 Markdown），字段仅允许如下键：\n"
+                "- subquestions: string[]（3-5 条，具体可执行，尽量与 schema 字段/表名对齐）\n"
+                "- required_fields: string[]（需要的字段/维度/指标，必须能在 schema 中找到或明确来自哪个表）\n"
+                "- forbidden_query_shapes: string[]（需要避免的取数形态）\n"
+                "- required_result_shape: string（期望结果形态，便于验证）\n"
+                "强约束：不得编造不存在的表/字段；若 schema 信息不足，请在 required_fields 里写明“需要补充的字段/口径信息”。"
+            )
+            human_prompt = (
+                f"用户问题：{question}\n\n"
+                f"数据库 Schema：\n{schema_text}\n\n"
+                f"基础计划（JSON）：\n{json.dumps(execution_plan, ensure_ascii=False, indent=2)}\n\n"
+                "请输出修订后的 JSON。"
+            )
+            resp = await llm.ainvoke([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)])
+            content = getattr(resp, "content", "") if resp is not None else ""
+            m = re.search(r"\{.*\}", content, flags=re.S)
+            if m:
+                patch = json.loads(m.group(0))
+                if isinstance(patch, dict):
+                    for k in ("subquestions", "required_fields", "forbidden_query_shapes", "required_result_shape"):
+                        if k in patch and patch[k]:
+                            execution_plan[k] = patch[k]
+        except Exception:
+            # 动态修订失败不影响主流程
+            pass
+
         # 将规划结果写回 chat_question，保持与旧实现兼容
         complexity = execution_plan.get("complexity") or "medium"
         self.chat_question.analysis_complexity = complexity
@@ -169,6 +217,10 @@ class DeepAnalysisGraphRunner:
         state.setdefault("steps_used", 0)
         state.setdefault("current_task_index", 0)
         state.setdefault("sql_history", [])
+        state.setdefault("task_retry_counts", {})
+        state["need_more_data"] = False
+        state["need_replan"] = False
+        state.setdefault("replan_count", 0)
         state["finished"] = False
         return state
 
@@ -199,6 +251,9 @@ class DeepAnalysisGraphRunner:
         steps_used = int(state.get("steps_used") or 0)
         remaining = max(0, max_steps - steps_used)
         max_iterations_this_turn = max(1, min(remaining, 6))
+        # 执行前抓取可观测长度，用于 reflect 增量判断
+        insights_before = len(getattr(self.context, "insights", []) or []) if self.context is not None else 0
+        events_before = len(getattr(self.context, "tool_events", []) or []) if self.context is not None else 0
 
         llm = await create_llm()
 
@@ -252,10 +307,19 @@ class DeepAnalysisGraphRunner:
 
         try:
             if subtask:
+                retry_note = ""
+                idx = int(state.get("current_task_index") or 0)
+                retry_counts = state.get("task_retry_counts") or {}
+                if retry_counts.get(idx, 0) > 0:
+                    retry_note = (
+                        "\n\n补充要求：上一轮证据不足/结果异常，请换一种取数口径或下钻维度重新获取证据；"
+                        "避免重复查询同语义 SQL；尽量产出可验证洞察并保存。"
+                    )
                 user_input = (
                     f"{self.chat_question.question}\n\n"
                     f"当前子任务：{subtask}\n"
                     f"请只围绕当前子任务进行取数和分析，禁止回答尚未到达的其他子问题。"
+                    f"{retry_note}"
                 )
             else:
                 user_input = self.chat_question.question
@@ -286,6 +350,24 @@ class DeepAnalysisGraphRunner:
             # 写回 sql_history 供下一轮/节点使用
             if self.context is not None:
                 state["sql_history"] = list(getattr(self.context, "sql_history", []) or [])
+                # 写回可观测增量信号给 reflect
+                insights_after = len(getattr(self.context, "insights", []) or [])
+                events_after = len(getattr(self.context, "tool_events", []) or [])
+                new_insights = max(0, insights_after - insights_before)
+                new_events = max(0, events_after - events_before)
+                has_bad = False
+                try:
+                    evs = (getattr(self.context, "tool_events", []) or [])[max(0, events_after - new_events):]
+                    for ev in evs:
+                        if isinstance(ev, dict) and ev.get("tool") == "get_data" and ev.get("status") in ("error", "empty", "dedup"):
+                            has_bad = True
+                            break
+                except Exception:
+                    has_bad = False
+                state["last_insights_len"] = insights_after
+                state["last_tool_events_len"] = events_after
+                state["last_new_insights"] = new_insights
+                state["last_has_bad_get_data"] = has_bad
             return state
         except Exception as e:  # noqa: BLE001
             SQLBotLogUtil.error(e)
@@ -371,10 +453,58 @@ class DeepAnalysisGraphRunner:
                 state["current_task_index"] = idx + 1
             return state
 
-        # 默认：当前子任务执行一轮后视为完成，推进到下一项
-        state["need_more_data"] = False
-        state["reflect_done"] = True
+        # 智能反思：基于“本轮是否新增洞察”与“get_data 是否出现空/错/重复”决定是否重试
+        new_insights = int(state.get("last_new_insights") or 0)
+        has_bad = bool(state.get("last_has_bad_get_data"))
+        retry_counts = state.get("task_retry_counts") or {}
+        cur_retry = int(retry_counts.get(idx, 0) or 0)
+        max_retries = 1
+        replan_count = int(state.get("replan_count") or 0)
+        max_replans = 1
+
         if idx < len(subtasks):
+            # 规则：若本轮没有新增洞察，且出现空/错/重复取数信号，则优先重试当前子任务一次
+            if (new_insights <= 0 and has_bad) and cur_retry < max_retries:
+                retry_counts[idx] = cur_retry + 1
+                state["task_retry_counts"] = retry_counts
+                state["need_more_data"] = True
+                state["reflect_done"] = True
+                if self.context is not None:
+                    await self.queue.put(
+                        self.context.create_result(
+                            content=(
+                                f"\n**子任务 {idx + 1}/{len(subtasks)} 证据不足**："
+                                "检测到空/错误/重复取数且未形成新洞察，触发重试（换口径/下钻维度）。\n"
+                            ),
+                            message_type="process",
+                        )
+                    )
+                return state
+
+            # 若重试仍无洞察且仍出现坏信号，则触发一次 replan（回到 planning，重新生成子任务）
+            if (new_insights <= 0 and has_bad) and cur_retry >= max_retries and replan_count < max_replans:
+                state["need_more_data"] = False
+                state["need_replan"] = True
+                state["reflect_done"] = True
+                state["replan_count"] = replan_count + 1
+                state["current_task_index"] = 0
+                state["task_retry_counts"] = {}
+                if self.context is not None:
+                    await self.queue.put(
+                        self.context.create_result(
+                            content=(
+                                "\n**触发重规划**：当前子任务多次未形成有效洞察且取数存在空/错误/重复信号，"
+                                "将回到规划阶段，基于 schema 与已有线索重新生成子任务。\n"
+                            ),
+                            message_type="process",
+                        )
+                    )
+                return state
+
+            # 否则推进到下一项
+            state["need_more_data"] = False
+            state["need_replan"] = False
+            state["reflect_done"] = True
             state["current_task_index"] = idx + 1
             if self.context is not None:
                 await self.queue.put(
@@ -383,10 +513,17 @@ class DeepAnalysisGraphRunner:
                         message_type="process",
                     )
                 )
-        elif not subtasks and idx == 0:
-            # 无子任务时只执行了一轮整题分析，推进以便 decide 进入 final
-            state["current_task_index"] = 1
+            return state
 
+        if not subtasks and idx == 0:
+            # 无子任务时只执行了一轮整题分析，推进以便 decide 进入 report
+            state["need_more_data"] = False
+            state["reflect_done"] = True
+            state["current_task_index"] = 1
+            return state
+
+        state["need_more_data"] = False
+        state["reflect_done"] = True
         return state
 
     async def _report_node(self, state: DeepAnalysisState) -> DeepAnalysisState:
@@ -501,6 +638,11 @@ class DeepAnalysisGraphRunner:
             max_steps = int(state.get("max_steps") or 0)
             if max_steps > 0 and steps_used >= max_steps:
                 return "report"
+            if state.get("need_replan"):
+                return "planning"
+            # 若 reflect 判断需要补证据/重试当前子任务，则继续 execute_task
+            if state.get("need_more_data"):
+                return "execute_task"
             subtasks: List[str] = state.get("subtasks") or []
             idx = int(state.get("current_task_index") or 0)
             # 无子任务时也执行一次（相当于整题一次 run），之后 idx 被 reflect 设为 1，下一轮会进 report
@@ -514,6 +656,7 @@ class DeepAnalysisGraphRunner:
             "decide_task",
             route_from_decide,
             {
+                "planning": "planning",
                 "execute_task": "execute_task",
                 "report": "report",
             },

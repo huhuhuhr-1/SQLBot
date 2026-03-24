@@ -85,6 +85,13 @@
     "description_cannot_be_empty": "용어 설명은 비울 수 없습니다",
     "datasource_not_found": "데이터 소스를 찾을 수 없음"
   },
+  "i18n_dict": {
+    "code_name_required": "사전 이름과 코드는 필수입니다",
+    "code_exists": "이 작업 공간에 동일한 사전 코드가 있습니다",
+    "not_found": "사전을 찾을 수 없습니다",
+    "table_column_required": "테이블 이름과 열 이름은 필수입니다",
+    "binding_exists": "이 데이터 소스에서 해당 필드는 이미 바인딩되어 있습니다"
+  },
   "i18n_data_training": {
     "datasource_cannot_be_none": "데이터 소스는 비울 수 없습니다",
     "datasource_assistant_cannot_be_none": "데이터 소스와 고급 애플리케이션을 모두 비울 수 없습니다",

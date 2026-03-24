@@ -8,7 +8,8 @@ import type { Router } from 'vue-router'
 const userStore = useUserStore()
 const t = i18n.global.t
 
-const dynamicRouterList = [
+/** 空间管理员：数据源、小助手（顺序即侧栏展示顺序） */
+const workspaceAdminRouters = [
   {
     path: '/ds',
     component: LayoutDsl,
@@ -43,6 +44,41 @@ const dynamicRouterList = [
     meta: { title: t('embedded.assistant_app') },
   },
 ] as any[]
+
+/** 仅系统管理员：与数据源同级，位于小助手与设置之间 */
+const systemAdminStatisticsMenu = {
+  path: '/st',
+  component: LayoutDsl,
+  name: 'st-menu',
+  redirect: '/st/index',
+  children: [
+    {
+      path: 'index',
+      name: 'statistics',
+      component: () => import('@/views/system/statistics/index.vue'),
+      meta: {
+        title: t('menu.statistics'),
+        iconActive: 'log',
+        iconDeActive: 'noLog',
+      },
+    },
+  ],
+} as any
+
+function collectRouteNames(items: any[]): string[] {
+  const names: string[] = []
+  const stack = [...items]
+  while (stack.length) {
+    const item = stack.pop()!
+    if (item.name) {
+      names.push(item.name)
+    }
+    if (item.children?.length) {
+      item.children.forEach((child: any) => stack.push(child))
+    }
+  }
+  return names
+}
 
 const reduceRouters = (router: Router, invalid_router_name_list: string[]) => {
   const tree = router.getRoutes()
@@ -90,8 +126,9 @@ const reduceRouters = (router: Router, invalid_router_name_list: string[]) => {
 }
 
 export const generateDynamicRouters = (router: Router) => {
+  const removableNames = collectRouteNames([...workspaceAdminRouters, systemAdminStatisticsMenu])
   if (userStore.isAdmin || userStore.isSpaceAdmin) {
-    dynamicRouterList.forEach((item: any) => {
+    workspaceAdminRouters.forEach((item: any) => {
       if (!item.parent) {
         router.addRoute(item)
       } else {
@@ -102,20 +139,10 @@ export const generateDynamicRouters = (router: Router) => {
         }
       }
     })
-  } else {
-    const router_name_list = [] as string[]
-    const stack = [...dynamicRouterList]
-    while (stack.length) {
-      const item = stack.pop()
-      if (item.name) {
-        router_name_list.push(item.name)
-      }
-      if (item.children?.length) {
-        item.children.forEach((child: any) => {
-          stack.push(child)
-        })
-      }
+    if (userStore.isAdmin) {
+      router.addRoute(systemAdminStatisticsMenu)
     }
-    reduceRouters(router, router_name_list)
+  } else {
+    reduceRouters(router, removableNames)
   }
 }

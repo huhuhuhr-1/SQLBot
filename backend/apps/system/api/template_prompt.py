@@ -18,6 +18,7 @@ DEFAULT_VARIABLES = {
         {"name": "question", "description": "用户问题"},
         {"name": "lang", "description": "回答语言"},
         {"name": "terminologies", "description": "术语表"},
+        {"name": "metrics", "description": "业务指标（原子/派生/复合）注入块"},
         {"name": "data_training", "description": "数据训练/示例"},
         {"name": "custom_prompt", "description": "自定义提示词（本处注入）"},
         {"name": "process_check", "description": "SQL 生成检查步骤"},

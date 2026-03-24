@@ -45,6 +45,7 @@ from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, ge
 from apps.system.crud.parameter_manage import get_groups
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
+from apps.metric.curd.metric import get_metric_template
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
@@ -293,6 +294,26 @@ class LLMService:
         self.current_logs[OperationEnum.FILTER_TERMS] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.FILTER_TERMS],
                                                                 full_message=term_list)
+
+    def filter_metric_template(self, _session: Session, oid: int = None, ds_id: int = None):
+        calculate_oid = oid
+        calculate_ds_id = ds_id
+        if self.current_assistant:
+            calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.current_user.oid
+        self.current_logs[OperationEnum.FILTER_METRICS] = start_log(
+            session=_session,
+            operate=OperationEnum.FILTER_METRICS,
+            record_id=self.record.id,
+            local_operation=True,
+        )
+        self.chat_question.metrics, metric_list = get_metric_template(
+            _session, self.chat_question.question, calculate_oid, calculate_ds_id
+        )
+        self.current_logs[OperationEnum.FILTER_METRICS] = end_log(
+            session=_session,
+            log=self.current_logs[OperationEnum.FILTER_METRICS],
+            full_message=metric_list,
+        )
 
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, oid: int = None,
                               ds_id: int = None):
@@ -680,6 +701,8 @@ class LLMService:
             ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
             self.filter_terminology_template(_session, oid, ds_id)
+
+            self.filter_metric_template(_session, oid, ds_id)
 
             self.filter_training_template(_session, oid, ds_id)
 
@@ -1218,6 +1241,8 @@ class LLMService:
                 ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
                 self.filter_terminology_template(_session, oid, ds_id)
+
+                self.filter_metric_template(_session, oid, ds_id)
 
                 self.filter_training_template(_session, oid, ds_id)
 

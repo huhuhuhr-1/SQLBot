@@ -8,6 +8,7 @@ from sqlalchemy import and_, text
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
 from sqlmodel import select
 
+from apps.dict.curd.dict_prompt import format_field_line_with_enums, load_enum_map
 from apps.datasource.crud.permission import get_column_permission_fields, get_row_permission_filters, is_normal_user
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt
@@ -596,6 +597,13 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
     table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
     if len(table_objs) == 0:
         return schema_str
+    enum_map = {}
+    try:
+        oid = getattr(current_user, "oid", None)
+        if oid is not None and ds and ds.id:
+            enum_map = load_enum_map(session, int(oid), int(ds.id))
+    except Exception:
+        enum_map = {}
     db_name = table_objs[0].schema
     schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
     tables = []
@@ -621,10 +629,13 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
                 field_comment = ''
                 if field.custom_comment:
                     field_comment = field.custom_comment.strip()
-                if field_comment == '':
-                    field_list.append(f"({field.field_name}:{field.field_type})")
-                else:
-                    field_list.append(f"({field.field_name}:{field.field_type}, {field_comment})")
+                key = (obj.table.table_name, field.field_name)
+                enums = enum_map.get(key, [])
+                field_list.append(
+                    format_field_line_with_enums(
+                        field.field_name, field.field_type or '', field_comment, enums
+                    )
+                )
             schema_table += ",\n".join(field_list)
         schema_table += '\n]\n'
 

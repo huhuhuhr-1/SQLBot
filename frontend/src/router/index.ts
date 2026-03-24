@@ -21,6 +21,8 @@ import EmbeddedCommon from '@/views/embedded/common.vue'
 import Member from '@/views/system/member/index.vue'
 import Professional from '@/views/system/professional/index.vue'
 import Training from '@/views/system/training/index.vue'
+import Dictionary from '@/views/system/dictionary/index.vue'
+import Metric from '@/views/system/metric/index.vue'
 import Prompt from '@/views/system/prompt/index.vue'
 import Audit from '@/views/system/audit/index.vue'
 import Appearance from '@/views/system/appearance/index.vue'
@@ -30,7 +32,6 @@ import Platform from '@/views/system/platform/index.vue'
 import Permission from '@/views/system/permission/index.vue'
 import User from '@/views/system/user/User.vue'
 import Workspace from '@/views/system/workspace/index.vue'
-import Statistics from '@/views/system/statistics/index.vue'
 import Page401 from '@/views/error/index.vue'
 import ChatPreview from '@/views/chat/preview.vue'
 
@@ -158,16 +159,28 @@ export const routes = [
         meta: { title: t('training.data_training') },
       },
       {
+        path: 'dictionary',
+        name: 'dictionary',
+        component: Dictionary,
+        meta: { title: t('dictionary.title') },
+      },
+      {
+        path: 'metric',
+        name: 'metric',
+        component: Metric,
+        meta: { title: t('metric.title') },
+      },
+      {
         path: 'prompt',
         name: 'prompt',
         component: Prompt,
         meta: { title: t('prompt.customize_prompt_words') },
       },
+      /** 与一级菜单「统计分析」(/st/index) 兼容：旧链接 /set/statistics 仍可用 */
       {
         path: 'statistics',
-        name: 'statistics',
-        component: Statistics,
-        meta: { title: '统计分析' },
+        name: 'statisticsRedirect',
+        redirect: '/st/index',
       },
     ],
   },

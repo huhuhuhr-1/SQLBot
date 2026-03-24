@@ -83,6 +83,13 @@
     "description_cannot_be_empty": "Term description cannot be empty",
     "datasource_not_found": "Datasource not found"
   },
+  "i18n_dict": {
+    "code_name_required": "Dictionary name and code are required",
+    "code_exists": "Dictionary code already exists in this workspace",
+    "not_found": "Dictionary not found",
+    "table_column_required": "Table name and column name are required",
+    "binding_exists": "This field is already bound to a dictionary for this datasource"
+  },
   "i18n_data_training": {
     "datasource_list_is_not_found": "Data source list not found",
     "datasource_id_not_found": "Data source ID: {key} not found",
