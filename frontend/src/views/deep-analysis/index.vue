@@ -29,9 +29,9 @@
             </div>
             <div v-for="group in sessionGroups" :key="group.key" class="da-group">
               <div class="da-group-title" @click="groupExpand[group.key] = !groupExpand[group.key]">
-                <el-icon :class="{ collapsed: !groupExpand[group.key] }" size="10"
-                  ><icon_expand_down_filled
-                /></el-icon>
+                <el-icon :class="{ collapsed: !groupExpand[group.key] }" size="10">
+                  <icon_expand_down_filled />
+                </el-icon>
                 {{ group.key }}
               </div>
               <template v-for="item in group.list" :key="item.id">
@@ -51,9 +51,9 @@
                     placement="bottom"
                   >
                     <template #reference>
-                      <el-icon class="da-session-more" size="14" @click.stop
-                        ><icon_more_outlined
-                      /></el-icon>
+                      <el-icon class="da-session-more" size="14" @click.stop>
+                        <icon_more_outlined />
+                      </el-icon>
                     </template>
                     <div class="da-popover-menu">
                       <div class="da-popover-item" @click.stop="openRename(item)">
@@ -91,19 +91,64 @@
             <div class="da-messages">
               <!-- 欢迎态 -->
               <div v-if="!messages.length && !loading" class="da-welcome">
-                <div class="da-welcome-icon">🤖</div>
+                <div class="da-welcome-avatar">
+                  <img src="@/assets/svg/icon_ai.svg" class="da-avatar-img" />
+                </div>
                 <h2 class="da-welcome-title">{{ t('deep_analysis.starter_title') }}</h2>
                 <p class="da-welcome-desc">{{ t('deep_analysis.starter_desc') }}</p>
+                <div class="da-welcome-caps">
+                  <div class="da-cap-item">
+                    <el-icon size="16" color="#1cba90"><icon_mindnote_outlined /></el-icon>
+                    <span>{{ t('deep_analysis.capability_plan') }}</span>
+                  </div>
+                  <div class="da-cap-item">
+                    <el-icon size="16" color="#1cba90"><icon_logs_outlined /></el-icon>
+                    <span>{{ t('deep_analysis.capability_trace') }}</span>
+                  </div>
+                  <div class="da-cap-item">
+                    <el-icon size="16" color="#1cba90"><icon_export_outlined /></el-icon>
+                    <span>{{ t('deep_analysis.capability_report') }}</span>
+                  </div>
+                </div>
               </div>
-              <!-- 消息气泡 -->
+
+              <!-- 消息列表 -->
               <template v-for="(msg, idx) in messages" :key="idx">
                 <!-- 用户消息 -->
                 <div v-if="msg.role === 'user'" class="da-msg da-msg-user">
-                  <div class="da-msg-bubble da-bubble-user">{{ msg.content }}</div>
+                  <div class="da-user-avatar">
+                    <el-icon size="16"><icon_user /></el-icon>
+                  </div>
+                  <div class="da-msg-content">
+                    <div class="da-bubble-user">{{ msg.content }}</div>
+                  </div>
                 </div>
+
                 <!-- Agent 消息 -->
                 <div v-else class="da-msg da-msg-agent">
-                  <div class="da-msg-bubble da-bubble-agent">
+                  <div class="da-agent-avatar">
+                    <img src="@/assets/svg/icon_ai.svg" class="da-avatar-img" />
+                  </div>
+                  <div class="da-msg-content">
+                    <!-- 状态标签 -->
+                    <div class="da-agent-status">
+                      <span v-if="msg.loading" class="da-status-tag da-status-running">
+                        <el-icon class="is-loading" size="12"><Loading /></el-icon>
+                        Agent 正在执行...
+                      </span>
+                      <span v-else class="da-status-tag da-status-done">
+                        <el-icon size="12"><CircleCheckFilled /></el-icon>
+                        {{ msg.thinkingLabel || '思考完成' }}
+                      </span>
+                    </div>
+
+                    <!-- 计划内容直接展示 -->
+                    <div
+                      v-if="msg.planHtml"
+                      class="da-plan-block markdown-body"
+                      v-html="msg.planHtml"
+                    ></div>
+
                     <!-- 步骤时间线 -->
                     <div v-if="msg.steps && msg.steps.length" class="da-steps-timeline">
                       <div
@@ -113,59 +158,80 @@
                         :class="{
                           'da-step-active': step.status === 'running',
                           'da-step-done': step.status === 'done',
+                          'da-step-error': step.status === 'error',
+                          'da-step-selected': isStepSelected(idx, sIdx),
                         }"
+                        @click="selectStep(idx, sIdx, step)"
                       >
                         <div class="da-step-indicator">
                           <el-icon
                             v-if="step.status === 'running'"
                             class="is-loading da-step-icon-loading"
+                            size="16"
                             ><Loading
                           /></el-icon>
-                          <span v-else-if="step.status === 'done'" class="da-step-check">✓</span>
+                          <span v-else-if="step.status === 'done'" class="da-step-check">
+                            <el-icon size="12"><Check /></el-icon>
+                          </span>
+                          <span v-else-if="step.status === 'error'" class="da-step-error-dot">
+                            <el-icon size="12"><CloseBold /></el-icon>
+                          </span>
                           <span v-else class="da-step-dot"></span>
                         </div>
                         <div class="da-step-body">
-                          <div class="da-step-title" @click="step.expanded = !step.expanded">
-                            <span class="da-step-label">{{ step.title }}</span>
-                            <el-icon
-                              v-if="step.details"
-                              class="da-step-toggle"
-                              :class="{ 'da-step-toggle-open': step.expanded }"
-                              size="12"
-                              ><ArrowRight
-                            /></el-icon>
-                          </div>
-                          <transition name="da-step-expand">
-                            <div
-                              v-if="step.expanded && step.details"
-                              class="da-step-details markdown-body"
-                              v-html="step.details"
-                            ></div>
-                          </transition>
+                          <span class="da-step-label">{{ step.title }}</span>
+                          <el-icon
+                            v-if="step.details || step.detailsMd"
+                            class="da-step-arrow"
+                            size="12"
+                            ><ArrowRight
+                          /></el-icon>
                         </div>
                       </div>
                     </div>
-                    <!-- 主文本 -->
+
+                    <!-- 主文本（简短总结） -->
                     <div
                       v-if="msg.contentHtml"
                       class="markdown-body da-agent-text"
                       v-html="msg.contentHtml"
                     ></div>
-                    <div v-else-if="msg.content" class="da-agent-text">{{ msg.content }}</div>
-                    <!-- 报告卡片（可点击） -->
+                    <div
+                      v-else-if="msg.content && !msg.planHtml && !msg.steps?.length"
+                      class="da-agent-text"
+                    >
+                      {{ msg.content }}
+                    </div>
+
+                    <!-- 报告卡片 -->
                     <div v-if="msg.reportHtml" class="da-report-card" @click="openReport(msg)">
-                      <el-icon size="20" class="da-report-icon"><Document /></el-icon>
-                      <span class="da-report-card-text">📊 查看分析报告</span>
-                      <el-icon size="16"><ArrowRight /></el-icon>
+                      <div class="da-report-card-icon">
+                        <el-icon size="20"><Document /></el-icon>
+                      </div>
+                      <div class="da-report-card-body">
+                        <div class="da-report-card-title">
+                          {{ t('deep_analysis.report_title') }}
+                        </div>
+                        <div class="da-report-card-desc">点击查看完整分析报告</div>
+                      </div>
+                      <el-icon size="16" color="#8f959e"><ArrowRight /></el-icon>
                     </div>
                   </div>
                 </div>
               </template>
-              <!-- 加载状态 -->
-              <div v-if="loading" class="da-msg da-msg-agent">
-                <div class="da-msg-bubble da-bubble-agent da-loading-bubble">
-                  <el-icon class="is-loading"><Loading /></el-icon>
-                  <span>{{ currentStage || t('deep_analysis.waiting') }}</span>
+
+              <!-- 加载占位 -->
+              <div v-if="loading && !messages.length" class="da-msg da-msg-agent">
+                <div class="da-agent-avatar">
+                  <img src="@/assets/svg/icon_ai.svg" class="da-avatar-img" />
+                </div>
+                <div class="da-msg-content">
+                  <div class="da-agent-status">
+                    <span class="da-status-tag da-status-running">
+                      <el-icon class="is-loading" size="12"><Loading /></el-icon>
+                      {{ currentStage || t('deep_analysis.waiting') }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -173,53 +239,156 @@
 
           <!-- 输入栏 -->
           <div class="da-input-bar">
-            <el-input
-              v-model="question"
-              :placeholder="t('deep_analysis.question_placeholder')"
-              :disabled="loading"
-              size="large"
-              class="da-input"
-              @keydown.enter.exact.prevent="sendMessage"
-            >
-              <template #append>
-                <el-button
-                  :icon="loading ? undefined : Promotion"
-                  :loading="loading"
-                  type="primary"
-                  class="da-send-btn"
-                  :disabled="!question.trim()"
-                  @click="sendMessage"
-                >
-                </el-button>
-              </template>
-            </el-input>
+            <div class="da-input-wrapper">
+              <el-input
+                v-model="question"
+                :placeholder="t('deep_analysis.question_placeholder')"
+                :disabled="loading"
+                :autosize="{ minRows: 1, maxRows: 4 }"
+                type="textarea"
+                resize="none"
+                class="da-input"
+                @keydown.enter.exact.prevent="sendMessage"
+              />
+              <el-button
+                :icon="loading ? undefined : Promotion"
+                :loading="loading"
+                type="primary"
+                class="da-send-btn"
+                :disabled="!question.trim()"
+                circle
+                @click="sendMessage"
+              />
+            </div>
           </div>
         </div>
       </el-main>
 
-      <!-- 右侧：报告面板 -->
+      <!-- 右侧：执行事件详情面板 -->
       <transition name="da-panel-slide">
-        <aside v-if="reportPanelOpen" class="da-report-panel">
-          <header class="da-report-header">
-            <span class="da-report-title">{{ t('deep_analysis.report_title') }}</span>
-            <div class="da-report-actions">
-              <el-button
-                v-if="activeReportMd"
-                type="primary"
-                plain
-                size="small"
-                @click="exportReport"
-              >
-                {{ t('deep_analysis.export_report') }}
-              </el-button>
-              <el-button link class="da-icon-btn" @click="reportPanelOpen = false">
-                <el-icon><Close /></el-icon>
-              </el-button>
-            </div>
+        <aside v-if="detailPanelOpen" class="da-detail-panel">
+          <header class="da-detail-header">
+            <span class="da-detail-title">执行事件详情</span>
+            <el-button link class="da-icon-btn" @click="detailPanelOpen = false">
+              <el-icon><Close /></el-icon>
+            </el-button>
           </header>
-          <el-scrollbar class="da-report-body-scroll">
-            <div class="markdown-body da-report-body" v-html="activeReportHtml"></div>
-          </el-scrollbar>
+
+          <!-- 报告模式 -->
+          <template v-if="detailMode === 'report'">
+            <div class="da-detail-toolbar">
+              <span class="da-detail-tab active">{{ t('deep_analysis.report_title') }}</span>
+              <div class="da-detail-actions">
+                <el-button
+                  v-if="activeReportMd"
+                  type="primary"
+                  plain
+                  size="small"
+                  @click="exportReport"
+                >
+                  {{ t('deep_analysis.export_report') }}
+                </el-button>
+              </div>
+            </div>
+            <el-scrollbar class="da-detail-body-scroll">
+              <div class="markdown-body da-detail-body" v-html="activeReportHtml"></div>
+            </el-scrollbar>
+          </template>
+
+          <!-- 步骤详情模式 -->
+          <template v-else-if="detailMode === 'step'">
+            <div class="da-detail-toolbar">
+              <span class="da-detail-tab active">{{ activeStepDetail?.title || '查询数据' }}</span>
+              <div class="da-detail-status-badge">
+                <template v-if="activeStepDetail?.status === 'running'">
+                  <el-icon class="is-loading" size="12"><Loading /></el-icon>
+                  <span>Agent 正在执行...</span>
+                </template>
+                <template v-else-if="activeStepDetail?.status === 'done'">
+                  <el-icon size="12" color="#1cba90"><CircleCheckFilled /></el-icon>
+                  <span>已完成</span>
+                </template>
+                <template v-else-if="activeStepDetail?.status === 'error'">
+                  <el-icon size="12" color="#f56c6c"><CircleCloseFilled /></el-icon>
+                  <span>执行失败</span>
+                </template>
+              </div>
+            </div>
+            <el-scrollbar class="da-detail-body-scroll">
+              <div class="da-detail-events">
+                <!-- 事件卡片列表 -->
+                <div
+                  v-for="(evt, eIdx) in activeStepEvents"
+                  :key="eIdx"
+                  class="da-event-card"
+                  :class="{ expanded: evt.expanded }"
+                >
+                  <div class="da-event-card-header" @click="evt.expanded = !evt.expanded">
+                    <div class="da-event-card-icon" :class="'da-evt-' + evt.type">
+                      <el-icon size="14">
+                        <component :is="getEventIcon(evt.type)" />
+                      </el-icon>
+                    </div>
+                    <span class="da-event-card-title">{{ evt.title }}</span>
+                    <span v-if="evt.badge" class="da-event-badge">{{ evt.badge }}</span>
+                    <el-icon class="da-event-toggle" :class="{ open: evt.expanded }" size="12"
+                      ><ArrowRight
+                    /></el-icon>
+                  </div>
+                  <transition name="da-evt-expand">
+                    <div v-if="evt.expanded" class="da-event-card-body">
+                      <!-- SQL 展示 -->
+                      <div v-if="evt.sql" class="da-evt-sql">
+                        <div class="da-evt-section-title">
+                          <el-icon size="12"><icon_sql_outlined /></el-icon> 执行的 SQL
+                        </div>
+                        <pre class="da-sql-code"><code>{{ evt.sql }}</code></pre>
+                        <div v-if="evt.duration" class="da-evt-meta">
+                          执行耗时 {{ evt.duration }}
+                        </div>
+                      </div>
+                      <!-- 数据表信息 -->
+                      <div v-if="evt.tableSchema && evt.tableSchema.length" class="da-evt-schema">
+                        <div class="da-evt-section-title">
+                          <el-icon size="12"><Grid /></el-icon> 字段列表
+                        </div>
+                        <table class="da-schema-table">
+                          <thead>
+                            <tr>
+                              <th>字段名</th>
+                              <th>字段类型</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(col, cIdx) in evt.tableSchema" :key="cIdx">
+                              <td>{{ col.name }}</td>
+                              <td>{{ col.type }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <!-- Markdown 内容 -->
+                      <div
+                        v-if="evt.contentHtml"
+                        class="markdown-body da-evt-content"
+                        v-html="evt.contentHtml"
+                      ></div>
+                      <div v-else-if="evt.content" class="da-evt-content da-evt-text">
+                        {{ evt.content }}
+                      </div>
+                    </div>
+                  </transition>
+                </div>
+
+                <!-- 无事件时展示原始 markdown -->
+                <div
+                  v-if="!activeStepEvents.length && activeStepDetail?.details"
+                  class="markdown-body da-detail-body"
+                  v-html="activeStepDetail.details"
+                ></div>
+              </div>
+            </el-scrollbar>
+          </template>
         </aside>
       </transition>
     </el-container>
@@ -243,10 +412,28 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, shallowRef, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
-import { Search, Loading, Close, Promotion, ArrowRight, Document } from '@element-plus/icons-vue'
+import {
+  Search,
+  Loading,
+  Close,
+  Promotion,
+  ArrowRight,
+  Document,
+  Check,
+  CloseBold,
+  CircleCheckFilled,
+  CircleCloseFilled,
+  Grid,
+  Coin,
+  DataLine,
+  FolderOpened,
+  Monitor,
+  Reading,
+  SetUp,
+} from '@element-plus/icons-vue'
 import { request } from '@/utils/request'
 import { deepAnalysisApi } from '@/api/deepAnalysis'
 import { chatApi } from '@/api/chat'
@@ -261,28 +448,49 @@ import icon_expand_down_filled from '@/assets/svg/icon_expand-down_filled.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_rename from '@/assets/svg/icon_rename_outlined.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
+import icon_mindnote_outlined from '@/assets/svg/icon_mindnote_outlined.svg'
+import icon_logs_outlined from '@/assets/svg/icon_logs_outlined.svg'
+import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
+import icon_user from '@/assets/svg/icon_user.svg'
+import icon_sql_outlined from '@/assets/svg/icon_sql_outlined.svg'
 import 'github-markdown-css/github-markdown-light.css'
 
 const { t } = useI18n()
 
 // ===== Types =====
+interface EventItem {
+  type: 'data' | 'sql' | 'transform' | 'tool' | 'info' | 'error'
+  title: string
+  badge?: string
+  content?: string
+  contentHtml?: string
+  sql?: string
+  duration?: string
+  tableSchema?: { name: string; type: string }[]
+  expanded: boolean
+}
+
 interface StepItem {
   title: string
-  status: 'pending' | 'running' | 'done'
+  status: 'pending' | 'running' | 'done' | 'error'
   details: string
   detailsMd: string
   expanded: boolean
+  stepType: string
+  events: EventItem[]
 }
 
 interface ChatMessage {
   role: 'user' | 'agent'
   content: string
   contentHtml?: string
-  processHtml?: string
+  planHtml?: string
+  planMd?: string
   reportHtml?: string
   reportMd?: string
   stage?: string
   loading?: boolean
+  thinkingLabel?: string
   steps?: StepItem[]
 }
 
@@ -296,9 +504,6 @@ const loading = ref(false)
 const currentStage = ref('')
 const messages = ref<ChatMessage[]>([])
 const chatScrollRef = ref()
-const reportPanelOpen = ref(false)
-const activeReportHtml = ref('')
-const activeReportMd = ref('')
 let abortController: AbortController | null = null
 const groupExpand = ref<Record<string, boolean>>({
   [t('qa.today')]: true,
@@ -306,6 +511,16 @@ const groupExpand = ref<Record<string, boolean>>({
   [t('qa.earlier')]: true,
   [t('qa.no_time')]: true,
 })
+
+// Detail panel state
+const detailPanelOpen = ref(false)
+const detailMode = ref<'report' | 'step'>('step')
+const activeReportHtml = ref('')
+const activeReportMd = ref('')
+const activeStepDetail = shallowRef<StepItem | null>(null)
+const activeStepEvents = ref<EventItem[]>([])
+const selectedMsgIdx = ref(-1)
+const selectedStepIdx = ref(-1)
 
 // Rename
 const renameVisible = ref(false)
@@ -335,7 +550,7 @@ const sessionGroups = computed(() => {
     .map((k) => ({ key: k, list: grouped[k] }))
 })
 
-// ===== Functions =====
+// ===== Helpers =====
 function renderMd(raw: string): string {
   if (!raw) return ''
   try {
@@ -352,6 +567,156 @@ function scrollToBottom() {
   })
 }
 
+function isStepSelected(msgIdx: number, stepIdx: number): boolean {
+  return selectedMsgIdx.value === msgIdx && selectedStepIdx.value === stepIdx
+}
+
+function selectStep(msgIdx: number, stepIdx: number, step: StepItem) {
+  selectedMsgIdx.value = msgIdx
+  selectedStepIdx.value = stepIdx
+  activeStepDetail.value = step
+  activeStepEvents.value = step.events.length ? step.events : buildEventsFromMd(step)
+  detailMode.value = 'step'
+  detailPanelOpen.value = true
+}
+
+function getEventIcon(type: string): Component {
+  const map: Record<string, Component> = {
+    data: Coin,
+    sql: DataLine,
+    transform: SetUp,
+    tool: Monitor,
+    info: Reading,
+    error: CloseBold,
+  }
+  return map[type] || FolderOpened
+}
+
+function buildEventsFromMd(step: StepItem): EventItem[] {
+  if (!step.detailsMd) return []
+  const events: EventItem[] = []
+  const sqlMatches = step.detailsMd.match(/```sql\n([\s\S]*?)```/g)
+  const remaining = step.detailsMd
+
+  if (sqlMatches) {
+    for (const m of sqlMatches) {
+      const sql = m.replace(/```sql\n?/, '').replace(/\n?```/, '')
+      const durationMatch = remaining.match(/执行耗时[：:]\s*(\d+[.\d]*\s*(?:ms|秒|s))/i)
+      events.push({
+        type: 'sql',
+        title: 'SQL 执行',
+        sql: sql.trim(),
+        duration: durationMatch ? durationMatch[1] : undefined,
+        expanded: true,
+      })
+    }
+  }
+
+  const tableMatch = step.detailsMd.match(/表\s*(?:ID|名)[：:]\s*(\d+|[\w_]+)/i)
+  const schemaMatch = step.detailsMd.match(/字段列表[：:]?\s*\n([\s\S]*?)(?=\n\n|\n###|$)/i)
+  if (tableMatch || schemaMatch) {
+    const schema: { name: string; type: string }[] = []
+    if (schemaMatch) {
+      const lines = schemaMatch[1].split('\n').filter((l) => l.includes('|'))
+      for (const line of lines) {
+        const cells = line
+          .split('|')
+          .map((c) => c.trim())
+          .filter(Boolean)
+        if (cells.length >= 2 && !cells[0].startsWith('-')) {
+          schema.push({ name: cells[0], type: cells[1] })
+        }
+      }
+    }
+    events.push({
+      type: 'data',
+      title: '获取数据集信息',
+      badge: tableMatch ? tableMatch[1] : undefined,
+      tableSchema: schema.length ? schema : undefined,
+      contentHtml: renderMd(step.detailsMd),
+      expanded: true,
+    })
+  }
+
+  if (!events.length) {
+    events.push({
+      type: 'info',
+      title: step.title,
+      contentHtml: renderMd(step.detailsMd),
+      expanded: true,
+    })
+  }
+
+  return events
+}
+
+// ===== Parse process content for structured events =====
+function parseProcessContent(content: string, stepType: string): EventItem[] {
+  const events: EventItem[] = []
+
+  const sqlBlocks = content.match(/```sql\n([\s\S]*?)```/g)
+  if (sqlBlocks) {
+    for (const block of sqlBlocks) {
+      const sql = block
+        .replace(/```sql\n?/, '')
+        .replace(/\n?```/, '')
+        .trim()
+      const durationMatch = content.match(/耗时[为：:]\s*(\d+[.\d]*\s*(?:ms|毫秒|秒|s))/i)
+      events.push({
+        type: 'sql',
+        title: 'SQL 执行',
+        sql,
+        duration: durationMatch ? durationMatch[1] : undefined,
+        expanded: false,
+      })
+    }
+  }
+
+  const toolMatch = content.match(/### 调用工具[：:]\s*`?(\w+)`?/i)
+  if (toolMatch) {
+    const toolName = toolMatch[1]
+    const titleMap: Record<string, string> = {
+      execute_one_sql: 'SQL 执行',
+      execute_sql: 'SQL 执行',
+      describe_table: '获取数据集信息',
+      get_table_sample_data: '获取数据样本',
+      get_data: '智能取数',
+      save_data: '沉淀数据',
+      data_transform: '数据变换',
+    }
+    if (!sqlBlocks) {
+      events.push({
+        type: toolName.includes('sql') || toolName.includes('execute') ? 'sql' : 'tool',
+        title: titleMap[toolName] || toolName,
+        contentHtml: renderMd(content),
+        expanded: false,
+      })
+    }
+  }
+
+  const codeBlocks = content.match(/```(?:python|pandas)\n([\s\S]*?)```/g)
+  if (codeBlocks) {
+    events.push({
+      type: 'transform',
+      title: 'Pandas 代码转换',
+      contentHtml: renderMd(content),
+      expanded: false,
+    })
+  }
+
+  if (!events.length && content.trim()) {
+    events.push({
+      type: 'info',
+      title: classifyStageTitle(stepType || '执行过程'),
+      contentHtml: renderMd(content),
+      expanded: false,
+    })
+  }
+
+  return events
+}
+
+// ===== Sessions =====
 async function loadSessions() {
   try {
     sessionList.value = (await deepAnalysisApi.sessions()) || []
@@ -364,7 +729,9 @@ function newChat() {
   currentSessionId.value = undefined
   messages.value = []
   question.value = ''
-  reportPanelOpen.value = false
+  detailPanelOpen.value = false
+  selectedMsgIdx.value = -1
+  selectedStepIdx.value = -1
   sessionStorage.removeItem('da_session')
 }
 
@@ -372,35 +739,73 @@ function selectSession(item: ChatInfo) {
   currentSessionId.value = item.id
   sessionStorage.setItem('da_session', String(item.id))
   messages.value = []
-  reportPanelOpen.value = false
+  detailPanelOpen.value = false
   if (item.id != null) loadHistory(item.id)
 }
 
+function classifyStageTitle(raw: string): string {
+  const s = raw.replace(/^当前阶段：/, '').trim()
+  if (/任务拆解|plan/i.test(s)) return '任务规划'
+  if (/启动|start|agent/i.test(s)) return 'Data Agent 启动'
+  if (/智能取数|query|get_data/i.test(s)) return '智能取数'
+  if (/执行.*命令|execute|bash|command/i.test(s)) return '执行命令'
+  if (/读取文件|read.*file/i.test(s)) return '读取文件'
+  if (/浏览目录|browse|list.*dir/i.test(s)) return '浏览目录'
+  if (/分析洞察|insight/i.test(s)) return '分析洞察'
+  if (/沉淀结论|save/i.test(s)) return '沉淀结论'
+  if (/数据变换|transform/i.test(s)) return '数据变换'
+  if (/汇总报告|report/i.test(s)) return '生成报告'
+  if (/describe|表结构|schema/i.test(s)) return '获取数据集信息'
+  if (/sample|样本/i.test(s)) return '获取数据样本'
+  if (/sql/i.test(s)) return 'SQL 执行'
+  return s || '执行中'
+}
+
+// ===== History =====
 function buildStepsFromHistory(plan?: string, process?: any[], report?: string): StepItem[] {
   const steps: StepItem[] = []
 
   if (plan) {
-    const planStep: StepItem = {
+    steps.push({
       title: '任务规划',
       status: 'done',
       detailsMd: plan,
       details: renderMd(plan),
       expanded: false,
-    }
-    steps.push(planStep)
+      stepType: 'plan',
+      events: [
+        {
+          type: 'info',
+          title: '任务规划',
+          contentHtml: renderMd(plan),
+          expanded: true,
+        },
+      ],
+    })
   }
 
   if (process && Array.isArray(process)) {
     let currentStep: StepItem | null = null
     for (const item of process) {
-      const t = item?.type || 'process'
+      const typ = item?.type || 'process'
       const c = item?.content || ''
       if (!c) continue
 
-      if (t === 'stage') {
-        if (currentStep) currentStep.details = renderMd(currentStep.detailsMd)
+      if (typ === 'stage') {
+        if (currentStep) {
+          currentStep.details = renderMd(currentStep.detailsMd)
+          currentStep.events = parseProcessContent(currentStep.detailsMd, currentStep.stepType)
+        }
         const title = classifyStageTitle(c)
-        currentStep = { title, status: 'done', detailsMd: '', details: '', expanded: false }
+        currentStep = {
+          title,
+          status: 'done',
+          detailsMd: '',
+          details: '',
+          expanded: false,
+          stepType: c,
+          events: [],
+        }
         steps.push(currentStep)
         continue
       }
@@ -414,12 +819,17 @@ function buildStepsFromHistory(plan?: string, process?: any[], report?: string):
           detailsMd: c,
           details: '',
           expanded: false,
+          stepType: 'process',
+          events: [],
         }
         steps.push(currentStep)
       }
     }
-    if (currentStep && !currentStep.details) {
-      currentStep.details = renderMd(currentStep.detailsMd)
+    if (currentStep) {
+      if (!currentStep.details) currentStep.details = renderMd(currentStep.detailsMd)
+      if (!currentStep.events.length) {
+        currentStep.events = parseProcessContent(currentStep.detailsMd, currentStep.stepType)
+      }
     }
   }
 
@@ -430,6 +840,15 @@ function buildStepsFromHistory(plan?: string, process?: any[], report?: string):
       detailsMd: '报告已生成，点击下方卡片查看。',
       details: renderMd('报告已生成，点击下方卡片查看。'),
       expanded: false,
+      stepType: 'report',
+      events: [
+        {
+          type: 'info',
+          title: '生成报告',
+          content: '报告已生成，点击下方卡片查看完整报告。',
+          expanded: true,
+        },
+      ],
     })
   }
 
@@ -450,12 +869,21 @@ async function loadHistory(chatId: number) {
         if (data.config?.question) {
           msgs.push({ role: 'user', content: data.config.question })
         }
-        const agentMsg: ChatMessage = { role: 'agent', content: '' }
+        const agentMsg: ChatMessage = {
+          role: 'agent',
+          content: '',
+          thinkingLabel: '分析完成',
+        }
         agentMsg.steps = buildStepsFromHistory(data.plan, data.process, data.report)
+
+        if (data.plan) {
+          agentMsg.planHtml = renderMd(data.plan)
+          agentMsg.planMd = data.plan
+        }
+
         if (data.report) {
           agentMsg.reportHtml = renderMd(data.report)
           agentMsg.reportMd = data.report
-          agentMsg.content = '分析完成，点击查看报告 👇'
           agentMsg.contentHtml = renderMd('**分析完成** — 点击下方卡片查看完整报告')
         }
         msgs.push(agentMsg)
@@ -470,11 +898,15 @@ async function loadHistory(chatId: number) {
   }
 }
 
+// ===== Report =====
 function openReport(msg: ChatMessage) {
   if (msg.reportHtml) {
     activeReportHtml.value = msg.reportHtml
     activeReportMd.value = msg.reportMd || ''
-    reportPanelOpen.value = true
+    detailMode.value = 'report'
+    detailPanelOpen.value = true
+    selectedMsgIdx.value = -1
+    selectedStepIdx.value = -1
   }
 }
 
@@ -490,14 +922,22 @@ function exportReport() {
   ElMessage.success(t('deep_analysis.export_success'))
 }
 
-function createStep(title: string, status: StepItem['status'] = 'running'): StepItem {
-  return { title, status, details: '', detailsMd: '', expanded: false }
+// ===== Step helpers =====
+function createStep(
+  title: string,
+  status: StepItem['status'] = 'running',
+  stepType = ''
+): StepItem {
+  return { title, status, details: '', detailsMd: '', expanded: false, stepType, events: [] }
 }
 
 function finalizeStep(step: StepItem) {
   step.status = 'done'
   if (step.detailsMd) {
     step.details = renderMd(step.detailsMd)
+    if (!step.events.length) {
+      step.events = parseProcessContent(step.detailsMd, step.stepType)
+    }
   }
 }
 
@@ -506,17 +946,7 @@ function appendToStep(step: StepItem, text: string) {
   step.details = renderMd(step.detailsMd)
 }
 
-function classifyStageTitle(raw: string): string {
-  const s = raw.replace(/^当前阶段：/, '').trim()
-  if (/任务拆解|plan/i.test(s)) return '任务规划'
-  if (/智能取数/i.test(s)) return '智能取数'
-  if (/分析洞察|insight/i.test(s)) return '分析洞察'
-  if (/沉淀结论|save/i.test(s)) return '沉淀结论'
-  if (/数据变换/i.test(s)) return '数据变换'
-  if (/汇总报告|report/i.test(s)) return '生成报告'
-  return s || '执行中'
-}
-
+// ===== Send Message =====
 async function sendMessage() {
   const q = question.value.trim()
   if (!q || loading.value) return
@@ -529,7 +959,12 @@ async function sendMessage() {
   currentStage.value = ''
   abortController = new AbortController()
 
-  const agentMsg: ChatMessage = { role: 'agent', content: '', steps: [] }
+  const agentMsg: ChatMessage = {
+    role: 'agent',
+    content: '',
+    loading: true,
+    steps: [],
+  }
   messages.value.push(agentMsg)
 
   let reportMd = ''
@@ -550,6 +985,7 @@ async function sendMessage() {
 
     if (!response.ok || !response.body) {
       agentMsg.content = response.statusText || '请求失败'
+      agentMsg.loading = false
       loading.value = false
       return
     }
@@ -575,11 +1011,15 @@ async function sendMessage() {
 
           if (data.type === 'error') {
             if (currentStep) finalizeStep(currentStep)
-            const errStep = createStep('错误', 'done')
+            const errStep = createStep('错误', 'error', 'error')
             errStep.detailsMd = c || '未知错误'
             errStep.details = renderMd(errStep.detailsMd)
+            errStep.events = [
+              { type: 'error', title: '执行错误', content: c || '未知错误', expanded: true },
+            ]
             agentMsg.steps!.push(errStep)
-            agentMsg.content = `❌ ${c || '未知错误'}`
+            agentMsg.content = `${c || '未知错误'}`
+            agentMsg.thinkingLabel = '执行失败'
             break
           }
 
@@ -587,6 +1027,15 @@ async function sendMessage() {
             currentSessionId.value = data.chat_id
             sessionStorage.setItem('da_session', String(data.chat_id))
             await loadSessions()
+
+            if (!currentStep) {
+              currentStep = createStep('Data Agent 启动', 'done', 'start')
+              currentStep.events = [
+                { type: 'info', title: 'Data Agent 启动', content: '会话已创建', expanded: true },
+              ]
+              agentMsg.steps!.push(currentStep)
+              currentStep = null
+            }
             continue
           }
 
@@ -601,11 +1050,16 @@ async function sendMessage() {
 
           if (data.type === 'plan' && c) {
             if (currentStep) finalizeStep(currentStep)
-            currentStep = createStep('任务规划')
+            currentStep = createStep('任务规划', 'done', 'plan')
             currentStep.detailsMd = c
             currentStep.details = renderMd(c)
-            currentStep.expanded = false
+            currentStep.events = [
+              { type: 'info', title: '任务规划', contentHtml: renderMd(c), expanded: true },
+            ]
             agentMsg.steps!.push(currentStep)
+            agentMsg.planHtml = renderMd(c)
+            agentMsg.planMd = c
+            currentStep = null
             scrollToBottom()
             continue
           }
@@ -617,7 +1071,7 @@ async function sendMessage() {
             if (currentStep && currentStep.status === 'running') {
               finalizeStep(currentStep)
             }
-            currentStep = createStep(stageTitle)
+            currentStep = createStep(stageTitle, 'running', c)
             agentMsg.steps!.push(currentStep)
             scrollToBottom()
             continue
@@ -632,9 +1086,16 @@ async function sendMessage() {
             if (currentStep) {
               appendToStep(currentStep, c)
             } else {
-              currentStep = createStep('分析中')
+              currentStep = createStep('分析中', 'running', 'process')
               agentMsg.steps!.push(currentStep)
               appendToStep(currentStep, c)
+            }
+
+            if (isStepSelected(messages.value.length - 1, agentMsg.steps!.length - 1)) {
+              activeStepEvents.value = parseProcessContent(
+                currentStep.detailsMd,
+                currentStep.stepType
+              )
             }
             scrollToBottom()
           }
@@ -649,31 +1110,35 @@ async function sendMessage() {
     }
 
     if (reportMd) {
-      const reportStep = createStep('生成报告', 'done')
+      const reportStep = createStep('生成报告', 'done', 'report')
       reportStep.detailsMd = '报告已生成，点击下方卡片查看完整报告。'
       reportStep.details = renderMd(reportStep.detailsMd)
+      reportStep.events = [
+        { type: 'info', title: '生成报告', content: '报告已生成', expanded: true },
+      ]
       agentMsg.steps!.push(reportStep)
 
       agentMsg.reportHtml = renderMd(reportMd)
       agentMsg.reportMd = reportMd
-      agentMsg.content = '分析完成，点击查看报告 👇'
       agentMsg.contentHtml = renderMd('**分析完成** — 点击下方卡片查看完整报告')
+      agentMsg.thinkingLabel = '分析完成'
     } else {
-      agentMsg.content = '分析完成'
-      agentMsg.contentHtml = renderMd('**分析完成**')
+      agentMsg.thinkingLabel = '分析完成'
     }
   } catch (e: any) {
     if (e?.name !== 'AbortError') {
-      agentMsg.content = `❌ ${e?.message || String(e)}`
+      agentMsg.content = `${e?.message || String(e)}`
+      agentMsg.thinkingLabel = '执行异常'
     }
   } finally {
+    agentMsg.loading = false
     loading.value = false
     abortController = null
     scrollToBottom()
   }
 }
 
-// Rename
+// ===== Rename / Delete =====
 function openRename(item: ChatInfo) {
   if (item.id == null) return
   renameId.value = item.id
@@ -728,7 +1193,7 @@ onMounted(async () => {
 <style scoped>
 .da-page {
   height: 100%;
-  background: #f5f6f7;
+  background: #f7f8fa;
 }
 .da-layout {
   height: 100%;
@@ -736,10 +1201,10 @@ onMounted(async () => {
 
 /* ===== Sidebar ===== */
 .da-sidebar {
-  background: #f5f6f7;
+  background: #f7f8fa;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid rgba(31, 35, 41, 0.08);
+  border-right: 1px solid #e8e9eb;
 }
 .da-sidebar-header {
   padding: 16px;
@@ -755,13 +1220,14 @@ onMounted(async () => {
 .da-sidebar-title {
   font-weight: 600;
   font-size: 15px;
+  color: #1f2329;
 }
 .da-icon-btn {
   min-width: unset;
   width: 28px;
   height: 28px;
   font-size: 18px;
-  --ed-button-text-color: #1f2329;
+  --ed-button-text-color: #646a73;
 }
 .da-icon-btn:hover {
   background: rgba(31, 35, 41, 0.08);
@@ -771,9 +1237,7 @@ onMounted(async () => {
   width: 100%;
   height: 38px;
   font-weight: 500;
-  --ed-button-text-color: var(--ed-color-primary);
-  --ed-button-bg-color: rgba(28, 186, 144, 0.1);
-  --ed-button-border-color: rgba(28, 186, 144, 0.3);
+  border-radius: 8px;
 }
 .da-session-scroll {
   flex: 1;
@@ -789,10 +1253,10 @@ onMounted(async () => {
   font-size: 13px;
 }
 .da-group {
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 .da-group-title {
-  padding: 4px 8px;
+  padding: 6px 8px;
   font-size: 12px;
   font-weight: 500;
   color: #8f959e;
@@ -800,12 +1264,13 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 6px;
+  user-select: none;
 }
 .da-group-title .collapsed {
   transform: rotate(-90deg);
 }
 .da-session-item {
-  height: 38px;
+  height: 36px;
   padding: 0 10px;
   border-radius: 8px;
   display: flex;
@@ -813,6 +1278,7 @@ onMounted(async () => {
   cursor: pointer;
   margin-bottom: 2px;
   position: relative;
+  transition: background 0.15s;
 }
 .da-session-item:hover {
   background: rgba(31, 35, 41, 0.06);
@@ -829,6 +1295,7 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: #1f2329;
 }
 .da-session-more {
   color: #8f959e;
@@ -870,11 +1337,11 @@ onMounted(async () => {
 }
 .da-messages {
   padding: 24px 32px;
-  max-width: 900px;
+  max-width: 860px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
   min-height: 100%;
 }
 
@@ -889,9 +1356,19 @@ onMounted(async () => {
   gap: 12px;
   color: #646a73;
 }
-.da-welcome-icon {
-  font-size: 48px;
-  margin-bottom: 8px;
+.da-welcome-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #e6f7f2, #d0f0e8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+.da-avatar-img {
+  width: 28px;
+  height: 28px;
 }
 .da-welcome-title {
   font-size: 20px;
@@ -901,61 +1378,144 @@ onMounted(async () => {
 }
 .da-welcome-desc {
   font-size: 14px;
-  max-width: 400px;
+  max-width: 460px;
   line-height: 1.6;
   margin: 0;
+}
+.da-welcome-caps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: flex-start;
+}
+.da-cap-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #4e5969;
 }
 
 /* Messages */
 .da-msg {
   display: flex;
+  gap: 12px;
+  align-items: flex-start;
 }
 .da-msg-user {
-  justify-content: flex-end;
+  flex-direction: row-reverse;
 }
-.da-msg-agent {
-  justify-content: flex-start;
+.da-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e8e9eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #646a73;
 }
-.da-msg-bubble {
-  max-width: 80%;
-  border-radius: 16px;
-  padding: 12px 16px;
-  font-size: 14px;
-  line-height: 1.6;
+.da-agent-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e6f7f2, #d0f0e8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
+.da-agent-avatar .da-avatar-img {
+  width: 18px;
+  height: 18px;
+}
+.da-msg-content {
+  flex: 1;
+  min-width: 0;
+  max-width: 90%;
+}
+
 .da-bubble-user {
   background: var(--ed-color-primary, #1cba90);
   color: #fff;
-  border-bottom-right-radius: 4px;
+  border-radius: 16px 16px 4px 16px;
+  padding: 10px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  display: inline-block;
 }
-.da-bubble-agent {
-  background: #f5f6f7;
-  color: #1f2329;
-  border-bottom-left-radius: 4px;
+
+/* Agent status */
+.da-agent-status {
+  margin-bottom: 8px;
 }
-.da-loading-bubble {
-  display: flex;
+.da-status-tag {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  color: #8f959e;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.da-status-running {
+  background: rgba(28, 186, 144, 0.08);
+  color: #1cba90;
+}
+.da-status-done {
+  background: rgba(28, 186, 144, 0.08);
+  color: #1cba90;
+}
+
+/* Plan block */
+.da-plan-block {
+  background: #f7f8fa;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 1.7;
+  border: 1px solid #e8e9eb;
+}
+.da-plan-block :deep(h1),
+.da-plan-block :deep(h2),
+.da-plan-block :deep(h3) {
+  margin-top: 0.6em;
+  margin-bottom: 0.4em;
+}
+.da-plan-block :deep(ol),
+.da-plan-block :deep(ul) {
+  padding-left: 1.5em;
 }
 
 /* Steps timeline */
 .da-steps-timeline {
   margin-bottom: 12px;
+  padding: 4px 0;
 }
 .da-step-item {
   display: flex;
   gap: 10px;
   position: relative;
-  padding-bottom: 4px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.da-step-item:hover {
+  background: rgba(31, 35, 41, 0.04);
+}
+.da-step-item.da-step-selected {
+  background: rgba(28, 186, 144, 0.08);
 }
 .da-step-item:not(:last-child)::before {
   content: '';
   position: absolute;
-  left: 10px;
-  top: 24px;
-  bottom: 0;
+  left: 19px;
+  top: 30px;
+  bottom: -2px;
   width: 1.5px;
   background: #e4e7ed;
 }
@@ -969,7 +1529,6 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 1px;
   z-index: 1;
 }
 .da-step-check {
@@ -978,8 +1537,16 @@ onMounted(async () => {
   border-radius: 50%;
   background: var(--ed-color-primary, #1cba90);
   color: #fff;
-  font-size: 11px;
-  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.da-step-error-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f56c6c;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -992,23 +1559,14 @@ onMounted(async () => {
 }
 .da-step-icon-loading {
   color: var(--ed-color-primary, #1cba90);
-  font-size: 18px;
 }
 .da-step-body {
   flex: 1;
   min-width: 0;
-  padding-bottom: 8px;
-}
-.da-step-title {
   display: flex;
   align-items: center;
   gap: 4px;
-  cursor: pointer;
-  user-select: none;
-  padding: 2px 0;
-}
-.da-step-title:hover .da-step-label {
-  color: var(--ed-color-primary, #1cba90);
+  padding: 1px 0;
 }
 .da-step-label {
   font-size: 14px;
@@ -1022,178 +1580,354 @@ onMounted(async () => {
 .da-step-active .da-step-label {
   color: var(--ed-color-primary, #1cba90);
 }
-.da-step-toggle {
-  color: #8f959e;
-  transition: transform 0.2s;
+.da-step-error .da-step-label {
+  color: #f56c6c;
+}
+.da-step-arrow {
+  color: #c0c4cc;
   flex-shrink: 0;
+  transition: color 0.15s;
 }
-.da-step-toggle-open {
-  transform: rotate(90deg);
-}
-.da-step-details {
-  font-size: 13px;
-  color: #4e5969;
-  padding: 6px 0 2px;
-  line-height: 1.6;
-  max-height: 400px;
-  overflow-y: auto;
-}
-.da-step-details :deep(pre) {
-  background: #fff;
-  padding: 8px;
-  border-radius: 6px;
-  overflow-x: auto;
-  font-size: 12px;
-}
-.da-step-details :deep(table) {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 6px 0;
-  font-size: 12px;
-}
-.da-step-details :deep(th),
-.da-step-details :deep(td) {
-  border: 1px solid #dee0e3;
-  padding: 4px 8px;
-}
-.da-step-expand-enter-active,
-.da-step-expand-leave-active {
-  transition: all 0.2s ease;
-  overflow: hidden;
-}
-.da-step-expand-enter-from,
-.da-step-expand-leave-to {
-  opacity: 0;
-  max-height: 0;
+.da-step-item:hover .da-step-arrow {
+  color: var(--ed-color-primary, #1cba90);
 }
 
 /* Agent text */
 .da-agent-text {
   word-break: break-word;
+  font-size: 14px;
+  line-height: 1.6;
 }
 .da-agent-text :deep(pre) {
-  background: #fff;
+  background: #f7f8fa;
   padding: 10px;
   border-radius: 8px;
   overflow-x: auto;
 }
-.da-agent-text :deep(table) {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 8px 0;
-}
-.da-agent-text :deep(th),
-.da-agent-text :deep(td) {
-  border: 1px solid #dee0e3;
-  padding: 6px 10px;
-}
 
 /* Report card */
 .da-report-card {
-  margin-top: 10px;
-  padding: 10px 14px;
+  margin-top: 12px;
+  padding: 14px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(28, 186, 144, 0.3);
-  background: rgba(28, 186, 144, 0.05);
+  border: 1px solid #e8e9eb;
+  background: #fff;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s;
 }
 .da-report-card:hover {
-  background: rgba(28, 186, 144, 0.12);
-  border-color: var(--ed-color-primary);
+  border-color: var(--ed-color-primary, #1cba90);
+  box-shadow: 0 2px 8px rgba(28, 186, 144, 0.12);
 }
-.da-report-icon {
-  color: var(--ed-color-primary);
+.da-report-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #e6f7f2, #d0f0e8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ed-color-primary, #1cba90);
+  flex-shrink: 0;
 }
-.da-report-card-text {
+.da-report-card-body {
   flex: 1;
-  font-weight: 500;
+  min-width: 0;
+}
+.da-report-card-title {
   font-size: 14px;
-  color: var(--ed-color-primary);
+  font-weight: 600;
+  color: #1f2329;
+}
+.da-report-card-desc {
+  font-size: 12px;
+  color: #8f959e;
+  margin-top: 2px;
 }
 
 /* Input bar */
 .da-input-bar {
   padding: 16px 32px 20px;
-  border-top: 1px solid rgba(31, 35, 41, 0.06);
-  max-width: 900px;
+  border-top: 1px solid #f0f1f3;
+  max-width: 860px;
   margin: 0 auto;
   width: 100%;
 }
-.da-input :deep(.el-input__wrapper) {
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+.da-input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: #f7f8fa;
+  border: 1px solid #e8e9eb;
+  border-radius: 16px;
+  padding: 8px 12px;
+  transition: border-color 0.2s;
 }
-.da-input :deep(.el-input-group__append) {
-  padding: 0;
-  border-radius: 0 12px 12px 0;
+.da-input-wrapper:focus-within {
+  border-color: var(--ed-color-primary, #1cba90);
+}
+.da-input {
+  flex: 1;
+}
+.da-input :deep(.el-textarea__inner) {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  padding: 4px 0;
+  font-size: 14px;
+  line-height: 1.5;
 }
 .da-send-btn {
-  height: 40px;
-  width: 48px;
-  border-radius: 0 12px 12px 0;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
 }
 
-/* ===== Report Panel ===== */
-.da-report-panel {
-  width: 520px;
-  min-width: 400px;
-  max-width: 600px;
+/* ===== Detail Panel ===== */
+.da-detail-panel {
+  width: 440px;
+  min-width: 360px;
+  max-width: 520px;
   background: #fff;
-  border-left: 1px solid rgba(31, 35, 41, 0.08);
+  border-left: 1px solid #e8e9eb;
   display: flex;
   flex-direction: column;
-  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.04);
 }
-.da-report-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(31, 35, 41, 0.06);
+.da-detail-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f0f1f3;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-.da-report-title {
-  font-size: 16px;
+.da-detail-title {
+  font-size: 15px;
   font-weight: 600;
+  color: #1f2329;
 }
-.da-report-actions {
+.da-detail-toolbar {
+  padding: 10px 16px;
+  border-bottom: 1px solid #f0f1f3;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
-.da-report-body-scroll {
+.da-detail-tab {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2329;
+}
+.da-detail-tab.active {
+  color: var(--ed-color-primary, #1cba90);
+}
+.da-detail-actions {
+  display: flex;
+  gap: 8px;
+}
+.da-detail-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #8f959e;
+}
+.da-detail-body-scroll {
   flex: 1;
   min-height: 0;
 }
-.da-report-body {
-  padding: 20px;
+.da-detail-body {
+  padding: 16px;
   line-height: 1.75;
+  font-size: 14px;
 }
-.da-report-body :deep(h1) {
+.da-detail-body :deep(h1) {
   font-size: 1.3rem;
   margin: 1em 0 0.5em;
 }
-.da-report-body :deep(h2) {
+.da-detail-body :deep(h2) {
   font-size: 1.1rem;
   margin: 0.9em 0 0.4em;
   border-bottom: 1px solid #eee;
   padding-bottom: 6px;
 }
-.da-report-body :deep(table) {
+.da-detail-body :deep(table) {
   border-collapse: collapse;
   width: 100%;
   margin: 10px 0;
 }
-.da-report-body :deep(th),
-.da-report-body :deep(td) {
+.da-detail-body :deep(th),
+.da-detail-body :deep(td) {
   border: 1px solid #dee0e3;
   padding: 8px 10px;
 }
+.da-detail-events {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
-/* Panel slide animation */
+/* Event Cards */
+.da-event-card {
+  border: 1px solid #e8e9eb;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.da-event-card:hover {
+  border-color: #c0c4cc;
+}
+.da-event-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: #fafbfc;
+}
+.da-event-card-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.da-evt-data {
+  background: #e6f7f2;
+  color: #1cba90;
+}
+.da-evt-sql {
+  background: #e8eeff;
+  color: #4b6ef5;
+}
+.da-evt-transform {
+  background: #fef3e6;
+  color: #e6a23c;
+}
+.da-evt-tool {
+  background: #f0e6ff;
+  color: #9b6ed6;
+}
+.da-evt-info {
+  background: #f0f1f3;
+  color: #646a73;
+}
+.da-evt-error {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+.da-event-card-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2329;
+}
+.da-event-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f0f1f3;
+  color: #646a73;
+}
+.da-event-toggle {
+  color: #c0c4cc;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.da-event-toggle.open {
+  transform: rotate(90deg);
+}
+.da-event-card-body {
+  padding: 12px;
+  border-top: 1px solid #f0f1f3;
+}
+
+/* SQL code */
+.da-evt-sql-block .da-evt-section-title,
+.da-evt-section-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #8f959e;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.da-sql-code {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+.da-evt-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8f959e;
+}
+
+/* Schema table */
+.da-schema-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.da-schema-table th {
+  background: #f7f8fa;
+  font-weight: 500;
+  color: #646a73;
+  text-align: left;
+  padding: 6px 10px;
+  border: 1px solid #e8e9eb;
+}
+.da-schema-table td {
+  padding: 6px 10px;
+  border: 1px solid #e8e9eb;
+  color: #1f2329;
+}
+
+/* Event content */
+.da-evt-content {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4e5969;
+}
+.da-evt-content :deep(pre) {
+  background: #f7f8fa;
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.da-evt-content :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 6px 0;
+  font-size: 12px;
+}
+.da-evt-content :deep(th),
+.da-evt-content :deep(td) {
+  border: 1px solid #dee0e3;
+  padding: 4px 8px;
+}
+.da-evt-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Animations */
 .da-panel-slide-enter-active,
 .da-panel-slide-leave-active {
   transition: all 0.25s ease;
@@ -1202,6 +1936,16 @@ onMounted(async () => {
 .da-panel-slide-leave-to {
   transform: translateX(100%);
   opacity: 0;
+}
+.da-evt-expand-enter-active,
+.da-evt-expand-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.da-evt-expand-enter-from,
+.da-evt-expand-leave-to {
+  opacity: 0;
+  max-height: 0;
 }
 
 /* Popover */
@@ -1215,6 +1959,7 @@ onMounted(async () => {
   gap: 6px;
   cursor: pointer;
   font-size: 13px;
+  border-radius: 6px;
 }
 .da-popover-item:hover {
   background: rgba(31, 35, 41, 0.06);
@@ -1223,9 +1968,10 @@ onMounted(async () => {
   color: var(--ed-color-danger);
 }
 
+/* Responsive */
 @media (max-width: 1200px) {
-  .da-report-panel {
-    width: 400px;
+  .da-detail-panel {
+    width: 360px;
     min-width: 320px;
   }
 }
@@ -1237,7 +1983,7 @@ onMounted(async () => {
     width: 100% !important;
     max-height: 200px;
   }
-  .da-report-panel {
+  .da-detail-panel {
     width: 100% !important;
     max-height: 50vh;
   }
