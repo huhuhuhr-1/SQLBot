@@ -98,18 +98,17 @@ class DataAgentRunner:
         return f"http://localhost:{port}{settings.API_V1_STR}"
 
     def _get_user_token(self) -> str:
-        """从当前请求上下文中获取用户 token。"""
-        token = getattr(self.current_user, "_token", "") or ""
-        if not token:
-            from apps.openapi.service.openapi_service import (
-                create_access_token_with_expiry,
-            )
+        """为当前用户生成合法的 JWT token，供 run.sh 调用 API 使用。"""
+        from apps.openapi.service.openapi_service import (
+            create_access_token_with_expiry,
+        )
 
-            user_dict = {
-                "user_id": self.current_user.id,
-                "oid": getattr(self.current_user, "oid", 1),
-            }
-            token, _ = create_access_token_with_expiry(user_dict)
+        user_dict = {
+            "id": self.current_user.id,
+            "account": getattr(self.current_user, "account", ""),
+            "oid": getattr(self.current_user, "oid", 1),
+        }
+        token, _ = create_access_token_with_expiry(user_dict)
         return token
 
     def _get_datasource_id(self) -> str:
@@ -244,6 +243,7 @@ class DataAgentRunner:
             async for event in agent.astream_events(
                 {"messages": [{"role": "user", "content": user_input}]},
                 version="v2",
+                config={"recursion_limit": 150},
             ):
                 kind = event.get("event", "")
                 data = event.get("data", {})
