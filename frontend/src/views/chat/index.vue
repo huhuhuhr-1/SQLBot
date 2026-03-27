@@ -774,6 +774,7 @@ function getRecommendQuestions(id?: number) {
 }
 
 function quickAsk(question: string) {
+  pendingQuickAsk.value = true
   inputMessage.value = question
   nextTick(() => {
     sendMessage()
@@ -782,6 +783,7 @@ function quickAsk(question: string) {
 
 const chartAnswerRef = ref()
 const getRecommendQuestionsLoading = ref(false)
+const pendingQuickAsk = ref(false)
 async function onChartAnswerFinish(id: number) {
   getRecommendQuestionsLoading.value = true
   loading.value = false
@@ -845,9 +847,11 @@ const sendMessage = async (
   currentRecord.chart_answer = ''
   currentRecord.chart = ''
   currentRecord.is_enhanced_think = isEnhancedThink.value
+  currentRecord.is_quick_question = pendingQuickAsk.value
 
   currentChat.value.records.push(currentRecord)
   inputMessage.value = ''
+  pendingQuickAsk.value = false
 
   nextTick(async () => {
     if (!isCompletePage.value && innerRef.value) {

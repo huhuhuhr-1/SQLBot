@@ -743,6 +743,8 @@
     "text": "文本",
     "number": "数值",
     "parameter_type": "参数类型",
+    "global_think_switch": "全局 Think 开关",
+    "quick_question_think_switch": "快捷问题 Think 开关",
     "verification_successful": "校验成功",
     "del_default_tip": "无法删除模型: {msg}",
     "del_default_warn": "该模型为系统默认模型，请先设置其他模型为系统默认模型，再删除此模型。",
@@ -1207,7 +1209,8 @@
     "kimi": "Kimi",
     "tencent_cloud": "腾讯云",
     "volcano_engine": "火山引擎",
-    "generic_openai": "通用OpenAI"
+    "generic_openai": "通用OpenAI",
+    "ollama": "Ollama"
   },
   "modelType": {
     "llm": "大语言模型"

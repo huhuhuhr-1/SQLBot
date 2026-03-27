@@ -743,6 +743,8 @@
     "text": "Text",
     "number": "Number",
     "parameter_type": "Parameter type",
+    "global_think_switch": "Global Think Switch",
+    "quick_question_think_switch": "Quick Question Think Switch",
     "verification_successful": "Verification successful",
     "del_default_tip": "Unable to delete the model: {msg}",
     "del_default_warn": "This model is the system default model. Please set another model as the system default before deleting this model.",
@@ -1207,7 +1209,8 @@
     "kimi": "Kimi",
     "tencent_cloud": "Tencent Cloud",
     "volcano_engine": "Volcano Engine",
-    "generic_openai": "Generic OpenAI"
+    "generic_openai": "Generic OpenAI",
+    "ollama": "Ollama"
   },
   "modelType": {
     "llm": "Large Language Model"

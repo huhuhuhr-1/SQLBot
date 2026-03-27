@@ -107,6 +107,7 @@ const sendMessage = async () => {
       question: currentRecord.question,
       chat_id: _currentChatId.value,
       is_enhanced_think: currentRecord.is_enhanced_think ?? true,
+      is_quick_question: currentRecord.is_quick_question ?? false,
     }
     const response = await questionApi.add(param, controller)
     const reader = response.body.getReader()

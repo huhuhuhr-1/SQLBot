@@ -23,11 +23,16 @@ withDefaults(
 
 interface ParamsFormData {
   key?: string
-  val?: string
+  val?: string | number | boolean | object
   name?: string
   id?: string
 }
 const { t } = useI18n()
+const OLLAMA_SUPPLIER_ID = 16
+const THINK_SWITCH_CONFIG = [
+  { key: 'global_think_switch', nameKey: 'model.global_think_switch' },
+  { key: 'quick_question_think_switch', nameKey: 'model.quick_question_think_switch' },
+]
 
 const modelForm = reactive({
   id: '',
@@ -57,12 +62,47 @@ const currentSupplier = computed(() => {
   }
   return get_supplier(modelForm.supplier)
 })
+const isOllamaSupplier = computed(() => modelForm.supplier === OLLAMA_SUPPLIER_ID)
 const modelList = computed(() => {
   if (!modelForm.supplier) {
     return []
   }
   return base_model_options(modelForm.supplier, modelForm.model_type)
 })
+const thinkSwitchMap = reactive<Record<string, boolean>>({
+  global_think_switch: true,
+  quick_question_think_switch: true,
+})
+const toBool = (value: unknown, fallback = true) => {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (['true', '1', 'yes', 'on', 'y'].includes(normalized)) return true
+    if (['false', '0', 'no', 'off', 'n'].includes(normalized)) return false
+  }
+  return fallback
+}
+const applyThinkSwitchFromSettings = () => {
+  if (!isOllamaSupplier.value) {
+    thinkSwitchMap.global_think_switch = true
+    thinkSwitchMap.quick_question_think_switch = true
+    return
+  }
+  const defaults = { global_think_switch: true, quick_question_think_switch: true }
+  const remain: ParamsFormData[] = []
+  advancedSetting.value.forEach((item) => {
+    const key = item.key || ''
+    if (key === 'global_think_switch' || key === 'quick_question_think_switch') {
+      defaults[key] = toBool(item.val, defaults[key])
+    } else {
+      remain.push(item)
+    }
+  })
+  advancedSetting.value = remain
+  thinkSwitchMap.global_think_switch = defaults.global_think_switch
+  thinkSwitchMap.quick_question_think_switch = defaults.quick_question_think_switch
+}
 const handleParamsEdite = (ele?: any) => {
   isCreate.value = false
   paramsFormDrawer.value = true
@@ -179,6 +219,8 @@ const supplierChang = (supplier: any) => {
   modelForm.base_model = ''
   modelForm.protocol = supplier.type === 'vllm' ? 2 : 1
   advancedSetting.value = []
+  thinkSwitchMap.global_think_switch = true
+  thinkSwitchMap.quick_question_think_switch = true
 }
 let curId = +new Date()
 const initForm = (item?: any) => {
@@ -198,6 +240,7 @@ const initForm = (item?: any) => {
     } else {
       advancedSetting.value = []
     }
+    applyThinkSwitchFromSettings()
     tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
   }
 }
@@ -220,12 +263,14 @@ const baseModelChange = (val: string) => {
   const current_config_list = tempConfigMap.get(`${modelForm.supplier}-${modelForm.base_model}`)
   if (current_config_list) {
     formatAdvancedSetting(current_config_list)
+    applyThinkSwitchFromSettings()
     return
   }
   const defaultArgs = getModelDefaultArgs()
   if (defaultArgs?.size) {
     const defaultArgsList = [...defaultArgs.values()]
     formatAdvancedSetting(defaultArgsList)
+    applyThinkSwitchFromSettings()
     tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
   }
 }
@@ -255,9 +300,17 @@ const emits = defineEmits(['submit'])
 const submitModel = () => {
   modelRef.value.validate((res: any) => {
     if (res) {
+      const thinkConfigs = isOllamaSupplier.value
+        ? THINK_SWITCH_CONFIG.map((item) => ({
+            key: item.key,
+            name: t(item.nameKey),
+            val: thinkSwitchMap[item.key],
+          }))
+        : []
       emits('submit', {
         ...modelForm,
         config_list: [
+          ...thinkConfigs,
           ...advancedSetting.value.map((item) => {
             return { key: item.key, name: item.name, val: item.val }
           }),
@@ -353,6 +406,19 @@ defineExpose({
               type="password"
               show-password
             />
+          </el-form-item>
+          <el-form-item v-if="modelSelected && isOllamaSupplier" :label="t('model.global_think_switch')">
+            <div class="think-switch-row">
+              <el-switch v-model="thinkSwitchMap.global_think_switch" />
+            </div>
+          </el-form-item>
+          <el-form-item
+            v-if="modelSelected && isOllamaSupplier"
+            :label="t('model.quick_question_think_switch')"
+          >
+            <div class="think-switch-row">
+              <el-switch v-model="thinkSwitchMap.quick_question_think_switch" />
+            </div>
           </el-form-item>
         </el-form>
         <div
@@ -589,6 +655,12 @@ defineExpose({
         .ed-button + .ed-button {
           margin-left: 8px;
         }
+      }
+
+      .think-switch-row {
+        display: flex;
+        align-items: center;
+        height: 32px;
       }
     }
   }

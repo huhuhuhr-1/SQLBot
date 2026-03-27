@@ -235,6 +235,8 @@ class AiModelQuestion(BaseModel):
     # 新增字段用于增强思考
     is_enhanced_think: bool = True
     enhanced_think_result: str = None
+    no_reasoning: Optional[bool] = None
+    is_quick_question: bool = False
     user_name: str = None
 
     # 新增用户信息

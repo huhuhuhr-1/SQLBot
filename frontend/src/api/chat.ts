@@ -60,6 +60,8 @@ export class ChatRecord {
   total_tokens?: number
   /** 是否启用增强思考（发问时传给后端，控制生成 SQL 前是否先进行一步思考） */
   is_enhanced_think?: boolean
+  /** 是否来自快捷问题入口（用于模型内快捷问题思考开关） */
+  is_quick_question?: boolean
 
   constructor()
   constructor(

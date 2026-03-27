@@ -1,15 +1,33 @@
 <script lang="ts" setup>
-import { ref, reactive } from 'vue'
+import { computed, ref, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const paramsRef = ref()
-const paramsForm = reactive({
+const paramsForm = reactive<{
+  name: string
+  key: string
+  val: any
+  id: string
+}>({
   name: '',
   key: '',
   val: '',
   id: '',
 })
+
+const THINK_SWITCH_KEYS = new Set(['global_think_switch', 'quick_question_think_switch'])
+const isThinkSwitch = computed(() => THINK_SWITCH_KEYS.has((paramsForm.key || '').trim()))
+const toBoolean = (value: any) => {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false
+  }
+  if (typeof value === 'number') return value !== 0
+  return true
+}
 
 const rules = {
   name: [
@@ -39,11 +57,23 @@ const initForm = (item: any) => {
   if (item) {
     Object.assign(paramsForm, { ...item })
   }
+  if (isThinkSwitch.value) {
+    paramsForm.val = toBoolean(paramsForm.val)
+  }
   if (!paramsForm.id) {
     paramsForm.id = `${+new Date()}`
   }
   paramsRef.value.clearValidate()
 }
+
+watch(
+  () => paramsForm.key,
+  () => {
+    if (isThinkSwitch.value) {
+      paramsForm.val = toBoolean(paramsForm.val)
+    }
+  }
+)
 
 const emits = defineEmits(['submit'])
 
@@ -95,7 +125,9 @@ defineExpose({
         />
       </el-form-item>
       <el-form-item prop="val" :label="$t('model.parameter_value')">
+        <el-switch v-if="isThinkSwitch" v-model="paramsForm.val" />
         <el-input
+          v-else
           v-model="paramsForm.val"
           clearable
           :placeholder="

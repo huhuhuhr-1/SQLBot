@@ -53,6 +53,10 @@ class BaseLLM(ABC):
     def __init__(self, config: LLMConfig, use_tool: bool = False):
         self.config = config
         self.use_tool = use_tool
+        # Internal switches used by SQLBot logic should never be sent to vendor APIs.
+        if isinstance(self.config.additional_params, dict):
+            self.config.additional_params.pop("global_think_switch", None)
+            self.config.additional_params.pop("quick_question_think_switch", None)
         self._llm = self._init_llm()
 
     @abstractmethod

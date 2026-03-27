@@ -12,7 +12,7 @@ import icon_hsyq_colorful from '@/assets/model/icon_hsyq_colorful.png'
 import icon_common_openai from '@/assets/model/icon_common_openai.png'
 // import icon_azure_openAI_colorful from '@/assets/model/icon_Azure_OpenAI_colorful.png'
 
-type ModelArg = { key: string; val?: string | number; type: string; range?: string }
+type ModelArg = { key: string; val?: string | number | boolean; type: string; range?: string }
 type ModelOption = { name: string; api_domain?: string; args?: ModelArg[] }
 type ModelConfig = Record<
   number,
@@ -345,6 +345,30 @@ export const supplierList: Array<{
           { name: 'o1' },
           { name: 'o1-pro' },
           { name: 'o1-mini' },
+        ],
+      },
+    },
+  },
+  {
+    id: 16,
+    name: 'Ollama',
+    i18nKey: 'supplier.ollama',
+    icon: icon_common_openai,
+    is_private: true,
+    model_config: {
+      0: {
+        api_domain: 'http://127.0.0.1:11434/v1',
+        common_args: [
+          { key: 'temperature', val: 0.7, type: 'number', range: '[0, 2]' },
+          { key: 'top_p', val: 0.9, type: 'number', range: '[0, 1]' },
+          { key: 'global_think_switch', val: true, type: 'boolean' },
+          { key: 'quick_question_think_switch', val: true, type: 'boolean' },
+          { key: 'extra_body', val: '{"options":{"num_ctx":8192}}', type: 'json' },
+        ],
+        model_options: [
+          { name: 'llama3.1:8b' },
+          { name: 'qwen2.5:7b' },
+          { name: 'deepseek-r1:8b' },
         ],
       },
     },

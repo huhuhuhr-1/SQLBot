@@ -152,11 +152,20 @@ class LLMService:
         self.chat_question = chat_question
         self.config = config
         if no_reasoning:
-            # only work while using qwen
-            if self.config.additional_params:
-                if self.config.additional_params.get('extra_body'):
-                    if self.config.additional_params.get('extra_body').get('enable_thinking'):
-                        del self.config.additional_params['extra_body']['enable_thinking']
+            # Make "disable thinking" effective for OpenAI-compatible backends (including Ollama).
+            # We set both legacy and chat_template_kwargs flags for better compatibility.
+            if self.config.additional_params is None:
+                self.config.additional_params = {}
+            extra_body = self.config.additional_params.setdefault('extra_body', {})
+            if not isinstance(extra_body, dict):
+                extra_body = {}
+                self.config.additional_params['extra_body'] = extra_body
+            extra_body['enable_thinking'] = False
+            chat_template_kwargs = extra_body.setdefault('chat_template_kwargs', {})
+            if not isinstance(chat_template_kwargs, dict):
+                chat_template_kwargs = {}
+                extra_body['chat_template_kwargs'] = chat_template_kwargs
+            chat_template_kwargs['enable_thinking'] = False
 
         self.chat_question.ai_modal_id = self.config.model_id
         self.chat_question.ai_modal_name = self.config.model_name
@@ -175,9 +184,67 @@ class LLMService:
             self.chat_question.error_msg = ''
 
     @classmethod
+    def _as_bool(cls, value: Any, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "y", "on"}:
+                return True
+            if normalized in {"false", "0", "no", "n", "off"}:
+                return False
+        return default
+
+    @classmethod
+    def _resolve_no_reasoning_by_model_switch(
+            cls,
+            config: LLMConfig,
+            is_quick_question: bool,
+            explicit_no_reasoning: Optional[bool],
+    ) -> bool:
+        if explicit_no_reasoning is not None:
+            return bool(explicit_no_reasoning)
+
+        additional_params = config.additional_params or {}
+        global_think_switch = cls._as_bool(additional_params.pop("global_think_switch", None), True)
+        quick_think_switch = cls._as_bool(
+            additional_params.pop("quick_question_think_switch", None),
+            global_think_switch,
+        )
+        effective_think_enabled = quick_think_switch if is_quick_question else global_think_switch
+        return not effective_think_enabled
+
+    @classmethod
     async def create(cls, *args, **kwargs):
         config: LLMConfig = await get_default_config()
-        instance = cls(*args, **kwargs, config=config)
+        chat_question: Optional[ChatQuestion] = None
+        if len(args) > 2 and isinstance(args[2], ChatQuestion):
+            chat_question = args[2]
+        elif isinstance(kwargs.get("chat_question"), ChatQuestion):
+            chat_question = kwargs.get("chat_question")
+
+        explicit_no_reasoning = kwargs.pop("no_reasoning", None)
+        if explicit_no_reasoning is None and chat_question is not None:
+            explicit_no_reasoning = chat_question.no_reasoning
+
+        is_quick_question = bool(chat_question.is_quick_question) if chat_question else False
+        resolved_no_reasoning = cls._resolve_no_reasoning_by_model_switch(
+            config=config,
+            is_quick_question=is_quick_question,
+            explicit_no_reasoning=explicit_no_reasoning,
+        )
+        init_args = list(args)
+        # Backward compatible with positional invocation:
+        # LLMService.create(session, user, question, assistant, no_reasoning, ...)
+        if len(init_args) >= 5:
+            init_args[4] = resolved_no_reasoning
+            instance = cls(*init_args, **kwargs, config=config)
+        else:
+            instance = cls(*init_args, **kwargs, no_reasoning=resolved_no_reasoning, config=config)
 
         chat_params: list[SysArgModel] = await get_groups(args[0], "chat")
         for config in chat_params:
@@ -1013,12 +1080,19 @@ class LLMService:
         data: dict
         try:
             data = orjson.loads(json_str)
-
-            if data['success']:
-                sql = data['sql']
+            # Compatible with OpenAI-style payload and Ollama minimal payload.
+            # 1) preferred format: {"success": true/false, "sql": "...", "message": "..."}
+            # 2) compatible format: {"sql": "..."}
+            if 'success' in data:
+                if data.get('success'):
+                    sql = data.get('sql', '')
+                else:
+                    message = data.get('message') or data.get('error') or 'SQL generation failed'
+                    raise SingleMessageError(str(message))
+            elif 'sql' in data:
+                sql = data.get('sql', '')
             else:
-                message = data['message']
-                raise SingleMessageError(message)
+                raise SingleMessageError('Cannot find `sql` field from answer')
         except SingleMessageError as e:
             trigger_log_error(session, log)
             raise e

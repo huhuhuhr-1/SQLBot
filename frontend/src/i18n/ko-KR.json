@@ -639,6 +639,8 @@
     "text": "텍스트",
     "number": "숫자",
     "parameter_type": "매개변수 유형",
+    "global_think_switch": "전역 Think 스위치",
+    "quick_question_think_switch": "빠른 질문 Think 스위치",
     "verification_successful": "검증 성공",
     "del_default_tip": "모델을 삭제할 수 없습니다: {msg}",
     "del_default_warn": "해당 모델은 시스템 기본 모델입니다. 먼저 다른 모델을 시스템 기본 모델로 설정한 후 이 모델을 삭제하십시오.",
