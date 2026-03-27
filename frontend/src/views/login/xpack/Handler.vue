@@ -412,9 +412,9 @@ onMounted(() => {
   }
   // eslint-disable-next-line no-undef
   const obj = LicenseGenerator.getLicense()
+  // 社区版/无 License 场景下也应允许走认证方式初始化（如 OIDC）
   if (obj?.status !== 'valid') {
-    updateLoading(false, 100)
-    return
+    console.warn('License invalid, continue with authentication initialization')
   }
   wsCache.delete('sqlbot-platform-client')
   init(async () => {

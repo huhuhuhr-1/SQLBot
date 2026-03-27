@@ -10,6 +10,7 @@ from apps.openapi.demo import demo
 from apps.system.api import (
     login,
     user,
+    authentication,
     aimodel,
     workspace,
     assistant,
@@ -31,6 +32,7 @@ api_router = APIRouter()
 api_router.include_router(openapi.router)
 api_router.include_router(demo.router)
 api_router.include_router(login.router)
+api_router.include_router(authentication.router)
 api_router.include_router(user.router)
 api_router.include_router(workspace.router)
 api_router.include_router(assistant.router)
