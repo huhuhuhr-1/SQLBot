@@ -92,7 +92,7 @@
               <!-- 欢迎态 -->
               <div v-if="!messages.length && !loading" class="da-welcome">
                 <div class="da-welcome-avatar">
-                  <img src="@/assets/svg/icon_ai.svg" class="da-avatar-img" />
+                  <icon_ai class="da-avatar-svg" />
                 </div>
                 <h2 class="da-welcome-title">{{ t('deep_analysis.starter_title') }}</h2>
                 <p class="da-welcome-desc">{{ t('deep_analysis.starter_desc') }}</p>
@@ -127,7 +127,7 @@
                 <!-- Agent 消息 -->
                 <div v-else class="da-msg da-msg-agent">
                   <div class="da-agent-avatar">
-                    <img src="@/assets/svg/icon_ai.svg" class="da-avatar-img" />
+                    <icon_ai class="da-avatar-svg" />
                   </div>
                   <div class="da-msg-content">
                     <!-- 状态标签 -->
@@ -223,7 +223,7 @@
               <!-- 加载占位 -->
               <div v-if="loading && !messages.length" class="da-msg da-msg-agent">
                 <div class="da-agent-avatar">
-                  <img src="@/assets/svg/icon_ai.svg" class="da-avatar-img" />
+                  <icon_ai class="da-avatar-svg" />
                 </div>
                 <div class="da-msg-content">
                   <div class="da-agent-status">
@@ -453,6 +453,7 @@ import icon_logs_outlined from '@/assets/svg/icon_logs_outlined.svg'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import icon_user from '@/assets/svg/icon_user.svg'
 import icon_sql_outlined from '@/assets/svg/icon_sql_outlined.svg'
+import icon_ai from '@/assets/svg/icon_ai.svg'
 import 'github-markdown-css/github-markdown-light.css'
 
 const { t } = useI18n()
@@ -1366,9 +1367,12 @@ onMounted(async () => {
   justify-content: center;
   margin-bottom: 4px;
 }
-.da-avatar-img {
+.da-avatar-svg {
   width: 28px;
   height: 28px;
+}
+.da-avatar-svg :deep(path) {
+  fill: #1cba90;
 }
 .da-welcome-title {
   font-size: 20px;
@@ -1427,7 +1431,7 @@ onMounted(async () => {
   justify-content: center;
   flex-shrink: 0;
 }
-.da-agent-avatar .da-avatar-img {
+.da-agent-avatar .da-avatar-svg {
   width: 18px;
   height: 18px;
 }
