@@ -602,7 +602,8 @@ async def deep_analysis(
                 question=body.question[:50] if len(body.question) > 50 else body.question,
                 origin=1,
             )
-            chat_info = create_chat(session, current_user, create_chat_obj, require_datasource=True,
+            has_ds = body.datasource_id is not None
+            chat_info = create_chat(session, current_user, create_chat_obj, require_datasource=has_ds,
                                     current_assistant=current_assistant)
             chat_id = chat_info.id
             if not chat_id:

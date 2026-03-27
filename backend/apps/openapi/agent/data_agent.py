@@ -42,18 +42,20 @@ DATA_AGENT_SYSTEM_PROMPT = """\
 ## 当前用户上下文
 
 - 用户 ID: {user_id}
-- 数据源 ID: {datasource_id}
 - API 地址: {api_url}
 - Token 已通过 `scripts/run.sh init` 预配置
+- 所有可用数据源的 schema 和术语已自动同步到本地 `~/.sqlbot/{user_id}/`
 
 ## 你的工作流程
 
-1. **元数据感知**: 执行 `bash scripts/run.sh check {user_id} {datasource_id}` 检查缓存
-2. **按需同步**: 若缺失则 `pull-index`, `pull-semantic`, `pull-relations`
-3. **阅读 schema**: `bash scripts/run.sh describe {user_id} {datasource_id}` 或读取本地缓存
+1. **发现数据源**: 执行 `bash scripts/run.sh list-ds {user_id}` 查看可用数据源
+2. **检查缓存**: `bash scripts/run.sh check {user_id} <db_id>` 查看某数据源的元数据状态
+3. **阅读 schema**: `bash scripts/run.sh describe {user_id} <db_id>` 或直接读 `~/.sqlbot/{user_id}/schema/<db_id>/summary.json`
 4. **参考方言**: 读取 `references/engines/` 下的 YAML 确保 SQL 语法正确
 5. **迭代探查**: 少量多次执行 SQL，每次导出 CSV 到 exports/，读取分析
 6. **产出报告**: 汇总所有 CSV 证据，生成结构化中文报告
+
+**重要**: 你无需知道具体的数据源 ID，先 list-ds 看有哪些，再根据用户问题选择合适的数据源。
 
 ## 输出要求
 
@@ -125,26 +127,40 @@ class DataAgentRunner:
         return ""
 
     async def _pre_init_user_space(self) -> None:
-        """在启动 Agent 前，用当前用户的 token 初始化 .sqlbot 缓存。"""
+        """在启动 Agent 前，初始化 .sqlbot 缓存并自动拉取所有可用数据源的元数据。"""
         uid = str(self.current_user.id)
         api_url = self._get_api_url()
         token = self._get_user_token()
         script = str(SKILL_DIR / "scripts" / "run.sh")
 
-        proc = await asyncio.create_subprocess_exec(
-            "bash",
-            script,
-            "init",
-            uid,
-            api_url,
-            token,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(SKILL_DIR),
-        )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            SQLBotLogUtil.error(f"init user space failed: {stderr.decode()}")
+        async def _run(cmd: list[str]) -> tuple[int, str, str]:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(SKILL_DIR),
+            )
+            out, err = await proc.communicate()
+            return proc.returncode, out.decode(), err.decode()
+
+        rc, _, err = await _run(["bash", script, "init", uid, api_url, token])
+        if rc != 0:
+            SQLBotLogUtil.error(f"init user space failed: {err}")
+            return
+
+        # 拉取权限（可用数据源列表）
+        await _run(["bash", script, "pull-permissions", uid])
+
+        # 自动拉取所有数据源的 schema 索引和术语
+        from apps.datasource.crud.datasource import get_datasource_list_for_openapi
+
+        ds_list = get_datasource_list_for_openapi(session=self.session, user=self.current_user)
+        for ds in ds_list:
+            ds_id = str(ds.id)
+            # 拉取 L1/L2 schema 索引
+            await _run(["bash", script, "pull-index", uid, ds_id])
+            # 拉取术语口径
+            await _run(["bash", script, "pull-semantic", uid, ds_id])
 
     async def _build_agent(self):
         from deepagents import create_deep_agent
@@ -153,12 +169,10 @@ class DataAgentRunner:
         llm = await create_llm(use_tool=True)
 
         uid = str(self.current_user.id)
-        ds_id = self._get_datasource_id()
         api_url = self._get_api_url()
 
         system_prompt = DATA_AGENT_SYSTEM_PROMPT.format(
             user_id=uid,
-            datasource_id=ds_id,
             api_url=api_url,
         )
 
@@ -197,7 +211,6 @@ class DataAgentRunner:
         try:
             await self._pre_init_user_space()
 
-            ds_id = self._get_datasource_id()
             uid = str(self.current_user.id)
 
             await self.queue.put(
@@ -208,7 +221,7 @@ class DataAgentRunner:
                         "使用 DeepAgents 框架，具备 bash 执行、本地文件读写、"
                         "data-explorer 技能加载等完整 agentic 数据探查能力。\n\n"
                         f"- 用户 ID: `{uid}`\n"
-                        f"- 数据源 ID: `{ds_id}`\n"
+                        "- 数据源: 自动发现所有可用数据源\n"
                         "- 技能: `data-explorer` (Local First + 渐进式加载 + 证据链)\n"
                         "- 工具: `execute` (bash), `read_file`, `write_file`, `ls`, `grep`"
                     ),

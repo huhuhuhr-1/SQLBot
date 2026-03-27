@@ -29,9 +29,10 @@ from apps.template.generate_sql.generator import get_sql_template
 class DeepAnalysisRequest(BaseModel):
     """
     深度分析请求模型
-    用于单独菜单「深度分析」：Agent 自主规划、多次查数、意图驱动分析
+    用于单独菜单「Data Agent」：Agent 自主规划、多次查数、意图驱动分析
+    Data Agent 模式下 datasource_id 可选，Agent 会自动发现所有可用数据源
     """
-    datasource_id: int = Body(..., description='数据源 ID')
+    datasource_id: Optional[int] = Body(None, description='数据源 ID（可选，Data Agent 模式下自动发现）')
     question: str = Body(..., description='用户分析意图/问题')
     chat_id: Optional[int] = Body(None, description='可选，已有会话 ID；不传则自动创建新会话')
     no_reasoning: Optional[bool] = Body(default=False, description='是否关闭思考过程')
