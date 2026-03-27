@@ -214,6 +214,61 @@ class DataAgentRunner:
 
         return agent
 
+    @staticmethod
+    def _tool_to_stage_code(tool_name: str) -> str:
+        mapping = {
+            "execute": "execute",
+            "read_file": "read",
+            "write_file": "write",
+            "ls": "browse",
+            "grep": "search",
+            "write_todos": "plan",
+            "glob": "browse",
+        }
+        return mapping.get(tool_name, "tool")
+
+    @staticmethod
+    def _build_stage_label(tool_name: str, tool_input) -> str:
+        """从工具名和输入参数生成可读的步骤描述（类似参考产品的"查询数据：..."格式）。"""
+        type_labels = {
+            "execute": "执行命令",
+            "read_file": "读取文件",
+            "write_file": "写入文件",
+            "ls": "浏览目录",
+            "grep": "搜索内容",
+            "write_todos": "任务规划",
+            "glob": "文件匹配",
+        }
+        base_label = type_labels.get(tool_name, tool_name)
+
+        detail = ""
+        if isinstance(tool_input, dict):
+            if tool_name == "execute":
+                cmd = tool_input.get("command", tool_input.get("cmd", ""))
+                if isinstance(cmd, str) and cmd:
+                    short_cmd = cmd.strip().split("\n")[0][:120]
+                    detail = short_cmd
+            elif tool_name == "read_file":
+                path = tool_input.get("path", tool_input.get("file_path", ""))
+                if path:
+                    detail = str(path)
+            elif tool_name == "write_file":
+                path = tool_input.get("path", tool_input.get("file_path", ""))
+                if path:
+                    detail = str(path)
+            elif tool_name == "ls":
+                path = tool_input.get("path", tool_input.get("dir", "."))
+                detail = str(path)
+            elif tool_name == "grep":
+                pattern = tool_input.get("pattern", tool_input.get("query", ""))
+                detail = str(pattern)[:80] if pattern else ""
+        elif isinstance(tool_input, str) and tool_input:
+            detail = tool_input.strip().split("\n")[0][:120]
+
+        if detail:
+            return f"{base_label}：{detail}"
+        return base_label
+
     async def run(self) -> None:
         _log = SQLBotLogUtil
         try:
@@ -312,30 +367,29 @@ class DataAgentRunner:
 
                     _log.info(f"  🔧 tool_start #{tool_call_count}: {tool_name} | input: {input_preview[:120]}")
 
-                    stage_map = {
-                        "execute": ("执行命令", "execute"),
-                        "read_file": ("读取文件", "read"),
-                        "write_file": ("写入文件", "write"),
-                        "ls": ("浏览目录", "browse"),
-                        "grep": ("搜索内容", "search"),
-                        "write_todos": ("任务规划", "plan"),
-                        "glob": ("文件匹配", "browse"),
-                    }
+                    stage_label = self._build_stage_label(tool_name, tool_input)
+                    stage_code = self._tool_to_stage_code(tool_name)
 
-                    if tool_name in stage_map:
-                        label, stage = stage_map[tool_name]
-                        await self.queue.put(
-                            {
-                                "type": "stage",
-                                "content": f"当前阶段：{label}",
-                                "stage": stage,
-                            }
-                        )
+                    await self.queue.put(
+                        {
+                            "type": "stage",
+                            "content": stage_label,
+                            "stage": stage_code,
+                            "tool": tool_name,
+                        }
+                    )
 
                     await self.queue.put(
                         {
                             "reasoning_content": "",
-                            "content": f"\n### 调用工具: `{tool_name}`\n```\n{input_preview}\n```\n",
+                            "content": f"开始执行：{stage_label}\n\n",
+                            "type": "process",
+                        }
+                    )
+                    await self.queue.put(
+                        {
+                            "reasoning_content": "",
+                            "content": f"### 调用工具: `{tool_name}`\n```\n{input_preview}\n```\n",
                             "type": "process",
                         }
                     )
@@ -343,16 +397,24 @@ class DataAgentRunner:
                 elif kind == "on_tool_end":
                     tool_name = event.get("name", "")
                     output = data.get("output", "")
-                    output_preview = str(output)[:500] if output else ""
-                    _log.info(f"  ✅ tool_end: {tool_name} | output_len={len(str(output))}, preview: {str(output)[:80]}")
-                    if output_preview:
-                        await self.queue.put(
-                            {
-                                "reasoning_content": "",
-                                "content": f"\n**`{tool_name}` 结果**:\n```\n{output_preview}\n```\n",
-                                "type": "process",
-                            }
-                        )
+                    output_str = str(output) if output else ""
+                    output_preview = output_str[:800]
+                    _log.info(f"  ✅ tool_end: {tool_name} | output_len={len(output_str)}, preview: {output_str[:80]}")
+
+                    await self.queue.put(
+                        {
+                            "reasoning_content": "",
+                            "content": f"\n**`{tool_name}` 执行结果** (共 {len(output_str)} 字符):\n```\n{output_preview}\n```\n",
+                            "type": "process",
+                        }
+                    )
+                    await self.queue.put(
+                        {
+                            "reasoning_content": "",
+                            "content": "\n执行结束\n",
+                            "type": "process",
+                        }
+                    )
 
             _log.info(f"astream_events 结束: 共 {event_count} 个事件, {tool_call_count} 次工具调用, report_len={len(report_content)}")
 

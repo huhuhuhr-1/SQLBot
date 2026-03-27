@@ -193,17 +193,29 @@
                         </div>
                         <div class="da-step-body">
                           <div class="da-step-header" @click="selectStep(idx, sIdx, step)">
-                            <span class="da-step-label">{{ step.title }}</span>
+                            <span class="da-step-label">{{ getStepDisplayTitle(step) }}</span>
                             <span v-if="step.detailsMd" class="da-step-detail-link"
                               >查看详情 &rsaquo;</span
                             >
                           </div>
-                          <!-- 步骤摘要 — 显示前 2 行文字 -->
+                          <div v-if="getStepDesc(step)" class="da-step-desc">
+                            {{ getStepDesc(step) }}
+                          </div>
                           <div
-                            v-if="step.detailsMd && step.status === 'done'"
-                            class="da-step-summary"
+                            v-if="step.status === 'done' && step.detailsMd"
+                            class="da-step-substeps"
                           >
-                            {{ getStepSummary(step) }}
+                            <span class="da-substep-item da-substep-done">开始执行</span>
+                            <span class="da-substep-divider">›</span>
+                            <span class="da-substep-item da-substep-done">执行结束</span>
+                          </div>
+                          <div v-else-if="step.status === 'running'" class="da-step-substeps">
+                            <span class="da-substep-item da-substep-done">开始执行</span>
+                            <span class="da-substep-divider">›</span>
+                            <span class="da-substep-item da-substep-active">
+                              <el-icon class="is-loading" size="10"><Loading /></el-icon>
+                              执行中...
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -611,15 +623,28 @@ function scrollToBottom() {
   })
 }
 
-function getStepSummary(step: StepItem): string {
-  if (!step.detailsMd) return ''
-  const clean = step.detailsMd
-    .replace(/```[\s\S]*?```/g, '[代码]')
-    .replace(/#{1,3}\s+/g, '')
-    .replace(/\*\*/g, '')
-    .replace(/\n+/g, ' ')
-    .trim()
-  return clean.length > 120 ? clean.slice(0, 120) + '...' : clean
+function getStepDisplayTitle(step: StepItem): string {
+  const t = step.title
+  const colonIdx = t.indexOf('：')
+  if (colonIdx > 0 && colonIdx < 8) return t.slice(0, colonIdx)
+  const colonIdx2 = t.indexOf(': ')
+  if (colonIdx2 > 0 && colonIdx2 < 8) return t.slice(0, colonIdx2)
+  return t
+}
+
+function getStepDesc(step: StepItem): string {
+  const t = step.title
+  const colonIdx = t.indexOf('：')
+  if (colonIdx > 0 && colonIdx < 8) {
+    const desc = t.slice(colonIdx + 1).trim()
+    return desc.length > 100 ? desc.slice(0, 100) + '...' : desc
+  }
+  const colonIdx2 = t.indexOf(': ')
+  if (colonIdx2 > 0 && colonIdx2 < 8) {
+    const desc = t.slice(colonIdx2 + 2).trim()
+    return desc.length > 100 ? desc.slice(0, 100) + '...' : desc
+  }
+  return ''
 }
 
 function getLastRunningStep(msg: ChatMessage): StepItem | null {
@@ -811,6 +836,7 @@ function selectSession(item: ChatInfo) {
 
 function classifyStageTitle(raw: string): string {
   const s = raw.replace(/^当前阶段：/, '').trim()
+  if (s.includes('：') || s.includes(': ')) return s
   if (/任务拆解|plan/i.test(s)) return '任务规划'
   if (/启动|start|agent/i.test(s)) return 'Data Agent 启动'
   if (/智能取数|query|get_data/i.test(s)) return '智能取数'
@@ -1705,16 +1731,41 @@ onMounted(async () => {
   transition: opacity 0.15s;
   white-space: nowrap;
   margin-left: auto;
+  flex-shrink: 0;
 }
-.da-step-summary {
+.da-step-desc {
   font-size: 12px;
-  color: #8f959e;
+  color: #646a73;
   line-height: 1.5;
   margin-top: 2px;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  word-break: break-all;
+}
+.da-step-substeps {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+.da-substep-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.da-substep-done {
+  color: #1cba90;
+  background: rgba(28, 186, 144, 0.06);
+}
+.da-substep-active {
+  color: var(--ed-color-primary, #1cba90);
+  background: rgba(28, 186, 144, 0.1);
+  font-weight: 500;
+}
+.da-substep-divider {
+  color: #c0c4cc;
+  font-size: 12px;
 }
 
 /* Stream block — realtime agent output */
