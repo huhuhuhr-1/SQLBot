@@ -37,6 +37,7 @@ const emits = defineEmits([
   'onClickHistory',
   'onChatDeleted',
   'onChatRenamed',
+  'onChatListCleared',
   'onClickSideBarBtn',
   'update:loading',
   'update:chatList',
@@ -214,6 +215,10 @@ function onChatRenamed(chat: Chat) {
   }
   emits('onChatRenamed', chat)
 }
+
+function onChatListCleared() {
+  emits('onChatListCleared')
+}
 </script>
 
 <template>
@@ -256,6 +261,7 @@ function onChatRenamed(chat: Chat) {
         @chat-selected="onClickHistory"
         @chat-deleted="onChatDeleted"
         @chat-renamed="onChatRenamed"
+        @chat-list-cleared="onChatListCleared"
       />
     </el-main>
 

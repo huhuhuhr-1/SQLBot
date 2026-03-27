@@ -26,6 +26,7 @@
         @on-click-history="onClickHistory"
         @on-chat-deleted="onChatDeleted"
         @on-chat-renamed="onChatRenamed"
+        @on-chat-list-cleared="getChatList"
         @on-click-side-bar-btn="hideSideBar"
       />
     </el-aside>
@@ -65,6 +66,7 @@
           @on-click-history="onClickHistory"
           @on-chat-deleted="onChatDeleted"
           @on-chat-renamed="onChatRenamed"
+          @on-chat-list-cleared="getChatList"
           @on-click-side-bar-btn="hideSideBar"
         />
       </el-popover>
@@ -91,6 +93,7 @@
           @on-click-history="onClickHistory"
           @on-chat-deleted="onChatDeleted"
           @on-chat-renamed="onChatRenamed"
+          @on-chat-list-cleared="getChatList"
           @on-click-side-bar-btn="hideSideBar"
         />
       </el-drawer>
@@ -423,17 +426,25 @@
             @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
           />
 
-          <el-button
-            circle
-            type="primary"
-            class="input-icon"
-            :disabled="isTyping"
-            @click.stop="($event: any) => sendMessage(undefined, $event)"
-          >
-            <el-icon size="16">
-              <icon_send_filled />
-            </el-icon>
-          </el-button>
+          <div class="input-actions">
+            <div class="enhanced-think-row" @click.stop>
+              <el-tooltip effect="dark" :content="t('qa.enhanced_think_tooltip')" placement="top">
+                <span class="enhanced-think-label">{{ t('qa.enhanced_think') }}</span>
+              </el-tooltip>
+              <el-switch v-model="isEnhancedThink" :disabled="isTyping" />
+            </div>
+            <el-button
+              circle
+              type="primary"
+              class="input-icon"
+              :disabled="isTyping"
+              @click.stop="($event: any) => sendMessage(undefined, $event)"
+            >
+              <el-icon size="16">
+                <icon_send_filled />
+              </el-icon>
+            </el-button>
+          </div>
         </div>
       </el-footer>
     </el-container>
@@ -521,6 +532,7 @@ const isPhone = computed(() => {
   return isMobile()
 })
 const inputMessage = ref('')
+const isEnhancedThink = ref(true)
 
 const chatListRef = ref()
 const innerRef = ref()
@@ -832,6 +844,7 @@ const sendMessage = async (
   currentRecord.sql = ''
   currentRecord.chart_answer = ''
   currentRecord.chart = ''
+  currentRecord.is_enhanced_think = isEnhancedThink.value
 
   currentChat.value.records.push(currentRecord)
   inputMessage.value = ''
@@ -1284,6 +1297,26 @@ onMounted(() => {
         }
       }
 
+      .input-actions {
+        position: absolute;
+        bottom: 12px;
+        right: 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .enhanced-think-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .enhanced-think-label {
+          font-size: 13px;
+          color: rgba(100, 106, 115, 1);
+        }
+      }
+
       .input-area {
         border-color: #d9dcdf;
 
@@ -1311,10 +1344,6 @@ onMounted(() => {
 
       .input-icon {
         min-width: unset;
-        position: absolute;
-        bottom: 12px;
-        right: 12px;
-
         border-color: unset;
 
         &.is-disabled {

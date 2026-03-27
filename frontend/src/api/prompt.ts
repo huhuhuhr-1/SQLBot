@@ -1,5 +1,16 @@
 import { request } from '@/utils/request'
 
+export interface DefaultPromptItem {
+  defaultContent: string
+  variables: { name: string; description: string }[]
+}
+
+export interface DefaultPromptsResponse {
+  GENERATE_SQL: DefaultPromptItem
+  ANALYSIS: DefaultPromptItem
+  PREDICT_DATA: DefaultPromptItem
+}
+
 export const promptApi = {
   getList: (pageNum: any, pageSize: any, type: any, params: any) =>
     request.get(`/system/custom_prompt/${type}/page/${pageNum}/${pageSize}${params}`),
@@ -12,4 +23,7 @@ export const promptApi = {
       responseType: 'blob',
       requestOptions: { customError: true },
     }),
+  getDefaultPrompts: () => request.get<DefaultPromptsResponse>('/system/default-prompts'),
+  optimizePrompt: (type: string, prompt: string) =>
+    request.post<{ optimized: string }>('/system/prompt/optimize', { type, prompt }),
 }

@@ -93,6 +93,10 @@ tags_metadata = [
         "description": f"{PLACEHOLDER_PREFIX}terminology_api"
     },
     {
+        "name": "Dictionary",
+        "description": f"{PLACEHOLDER_PREFIX}dict_api"
+    },
+    {
         "name": "CustomPrompt",
         "description": f"{PLACEHOLDER_PREFIX}custom_prompt_api"
     },

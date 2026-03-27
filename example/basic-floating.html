@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>基础应用 - 浮窗模式</title>
+  <script src="config.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f6f8; color: #1f2329; line-height: 1.5; min-height: 100vh; }
+    .bar { background: #fff; padding: 12px 24px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+    .bar a { color: #1cba90; text-decoration: none; font-size: 14px; }
+    .bar a:hover { text-decoration: underline; }
+    .main { max-width: 720px; margin: 0 auto; padding: 40px 24px; }
+    .main h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+    .main p { color: #646a73; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="bar"><a href="index.html">← 返回示例首页</a></div>
+  <div class="main">
+    <h1>基础应用 · 浮窗模式</h1>
+    <p>本页通过 assistant.js 嵌入小助手，右下角会出现浮窗按钮，点击即可打开对话。数据源由 SQLBot 中配置的「基础应用」数据源列表决定。</p>
+    <div id="config-tip" class="tip" style="display: none; margin-top: 16px; padding: 12px 16px; background: #fff3cd; border-radius: 8px; font-size: 14px; color: #856404;">
+      <strong>未检测到配置：</strong>请编辑 <code>example/config.js</code>，填写 <code>SQLBOT_BASE_URL</code>（如 http://localhost:5173）和 <code>BASIC_ASSISTANT_ID</code>（小助手应用 ID），保存后刷新本页。并在 SQLBot「小助手应用」中将该小助手的跨域设置包含本页地址（如 http://localhost:3000）。
+    </div>
+    <div id="hint-tip" class="tip" style="display: none; margin-top: 16px; padding: 12px 16px; background: #e7f4ff; border-radius: 8px; font-size: 14px; color: #0c5394;">
+      <strong>若浮窗未出现：</strong>请确认 SQLBot 前端已启动（与 config 中地址一致）、小助手跨域设置包含本页地址，并打开浏览器控制台（F12）查看是否有报错或「嵌入失败」提示。
+    </div>
+  </div>
+  <script>
+    (function () {
+      var c = window.SQLBOT_EXAMPLE_CONFIG || {};
+      var id = (c.BASIC_ASSISTANT_ID || '').toString().trim();
+      var base = (c.SQLBOT_BASE_URL || '').toString().replace(/\/$/, '');
+      if (!id || !base) {
+        document.getElementById('config-tip').style.display = 'block';
+        return;
+      }
+      document.getElementById('hint-tip').style.display = 'block';
+      var script = document.createElement('script');
+      script.async = true;
+      script.defer = true;
+      script.id = 'sqlbot-assistant-float-script-' + id;
+      script.src = base + '/assistant.js?id=' + encodeURIComponent(id);
+      script.onerror = function () {
+        console.error('assistant.js 加载失败，请确认 SQLBOT_BASE_URL 可访问且 SQLBot 前端已启动：' + base);
+      };
+      document.head.appendChild(script);
+    })();
+  </script>
+</body>
+</html>

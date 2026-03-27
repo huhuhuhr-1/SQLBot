@@ -220,6 +220,24 @@ def get_all_terminology(session: SessionDep, name: Optional[str] = None, oid: Op
     return _list
 
 
+def get_all_terminology_by_dslist(
+        session: SessionDep,
+        name: Optional[str] = None,
+        oid: Optional[int] = 1,
+        dslist: Optional[list[int]] = None,
+):
+    """
+    获取术语（不分页），并支持按数据源列表 dslist 过滤。
+
+    注意：这比 openapi 中基于 question/命中的 terminologies 模板查询更适合做“全量上下文构建”。
+    """
+    stmt, total_count, total_pages, current_page, page_size = build_terminology_query(
+        session, oid, name, False, dslist=dslist
+    )
+    _list = execute_terminology_query(session, stmt)
+    return _list
+
+
 def create_terminology(session: SessionDep, info: TerminologyInfo, oid: int, trans: Trans,
                        skip_embedding: bool = False):
     """

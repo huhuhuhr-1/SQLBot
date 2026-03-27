@@ -5,6 +5,8 @@ import {
   workspaceUserList,
   workspaceUwsDelete,
   workspaceUwsCreate,
+  workspaceUwsExport,
+  workspaceUwsImport,
 } from '@/api/workspace'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
@@ -202,6 +204,62 @@ const addWorkspace = () => {
   fieldDialog.value = true
 }
 
+const exportLoading = ref(false)
+const exportAll = () => {
+  exportLoading.value = true
+  workspaceUwsExport()
+    .then((res) => {
+      if (!res?.members?.length) {
+        ElMessage.warning(t('workspace.no_user'))
+        return
+      }
+      const blob = new Blob([JSON.stringify(res, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `workspace-members-${Date.now()}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      ElMessage.success(t('common.save_success'))
+    })
+    .catch(() => ElMessage.error(t('workspace.batch_import_failed')))
+    .finally(() => { exportLoading.value = false })
+}
+
+const importInputRef = ref<HTMLInputElement | null>(null)
+const onImportFile = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      const raw = reader.result as string
+      const data = JSON.parse(raw)
+      const members = Array.isArray(data?.members) ? data.members : Array.isArray(data) ? data : []
+      const list = members.map((m: any) => ({
+        account: m.account ?? m.name ?? '',
+        weight: m.weight ?? 0,
+      })).filter((m: any) => m.account)
+      if (!list.length) {
+        ElMessage.error(t('workspace.batch_import_invalid'))
+        return
+      }
+      workspaceUwsImport({ members: list })
+        .then((created) => {
+          ElMessage.success(t('workspace.batch_import_success', { count: created?.length ?? list.length }))
+          search()
+        })
+        .catch((err: any) => ElMessage.error(err?.message || t('workspace.batch_import_failed')))
+        .finally(() => { input.value = '' })
+    } catch {
+      ElMessage.error(t('workspace.batch_import_invalid'))
+      input.value = ''
+    }
+  }
+  reader.readAsText(file)
+}
+
 const handleSizeChange = (val: number) => {
   pageInfo.currentPage = 1
   pageInfo.pageSize = val
@@ -232,6 +290,19 @@ const handleCurrentChange = (val: number) => {
           </template>
         </el-input>
 
+        <el-button @click="exportAll" :loading="exportLoading">
+          {{ $t('workspace.export_all') }}
+        </el-button>
+        <el-button secondary @click="importInputRef?.click()">
+          {{ $t('workspace.batch_import') }}
+        </el-button>
+        <input
+          ref="importInputRef"
+          type="file"
+          accept=".json,application/json"
+          style="display: none"
+          @change="onImportFile"
+        />
         <el-button type="primary" @click="addWorkspace()">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>

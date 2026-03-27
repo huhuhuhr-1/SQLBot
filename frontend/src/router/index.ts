@@ -21,6 +21,8 @@ import EmbeddedCommon from '@/views/embedded/common.vue'
 import Member from '@/views/system/member/index.vue'
 import Professional from '@/views/system/professional/index.vue'
 import Training from '@/views/system/training/index.vue'
+import Dictionary from '@/views/system/dictionary/index.vue'
+import Metric from '@/views/system/metric/index.vue'
 import Prompt from '@/views/system/prompt/index.vue'
 import Audit from '@/views/system/audit/index.vue'
 import Appearance from '@/views/system/appearance/index.vue'
@@ -56,6 +58,23 @@ export const routes = [
           return { startChatDsId: route.query.start_chat }
         },
         meta: { title: t('menu.Data Q&A'), iconActive: 'chat', iconDeActive: 'noChat' },
+      },
+    ],
+  },
+  {
+    path: '/deep-analysis',
+    component: LayoutDsl,
+    redirect: '/deep-analysis/index',
+    children: [
+      {
+        path: 'index',
+        name: 'deepAnalysis',
+        component: () => import('@/views/deep-analysis/index.vue'),
+        meta: {
+          title: t('menu.deep_analysis'),
+          iconActive: 'model',
+          iconDeActive: 'noModel',
+        },
       },
     ],
   },
@@ -110,13 +129,13 @@ export const routes = [
     meta: { title: t('workspace.set'), iconActive: 'set', iconDeActive: 'noSet' },
     children: [
       {
-        path: '/set/member',
+        path: 'member',
         name: 'member',
         component: Member,
         meta: { title: t('workspace.member_management') },
       },
       {
-        path: '/set/permission',
+        path: 'permission',
         name: 'permission',
         component: Permission,
         meta: { title: t('workspace.permission_configuration') },
@@ -128,22 +147,40 @@ export const routes = [
         meta: { title: t('embedded.assistant_app') },
       }, */
       {
-        path: '/set/professional',
+        path: 'professional',
         name: 'professional',
         component: Professional,
         meta: { title: t('professional.professional_terminology') },
       },
       {
-        path: '/set/training',
+        path: 'training',
         name: 'training',
         component: Training,
         meta: { title: t('training.data_training') },
       },
       {
-        path: '/set/prompt',
+        path: 'dictionary',
+        name: 'dictionary',
+        component: Dictionary,
+        meta: { title: t('dictionary.title') },
+      },
+      {
+        path: 'metric',
+        name: 'metric',
+        component: Metric,
+        meta: { title: t('metric.title') },
+      },
+      {
+        path: 'prompt',
         name: 'prompt',
         component: Prompt,
         meta: { title: t('prompt.customize_prompt_words') },
+      },
+      /** 与一级菜单「统计分析」(/st/index) 兼容：旧链接 /set/statistics 仍可用 */
+      {
+        path: 'statistics',
+        name: 'statisticsRedirect',
+        redirect: '/st/index',
       },
     ],
   },
@@ -205,7 +242,7 @@ export const routes = [
       {
         path: 'setting',
         meta: { title: t('system.system_settings'), iconActive: 'set', iconDeActive: 'noSet' },
-        redirect: 'system_/appearance',
+        redirect: { name: 'appearance' },
         name: 'setting',
         children: [
           {
@@ -237,6 +274,12 @@ export const routes = [
             name: 'platform',
             component: Platform,
             meta: { title: t('platform.title') },
+          },
+          {
+            path: 'prompt',
+            name: 'customPrompt',
+            component: Prompt,
+            meta: { title: t('prompt.customize_prompt_words') },
           },
         ],
       },

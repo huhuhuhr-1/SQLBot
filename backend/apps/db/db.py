@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import platform
+import threading
 import urllib.parse
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
@@ -46,6 +47,53 @@ try:
         SQLBotLogUtil.info("init oracle client failed, because not found oracle client, use thin mode")
 except Exception as e:
     SQLBotLogUtil.error("init oracle client failed, check your client is installed, use thin mode")
+
+# 按数据源缓存 Engine，避免每次新建导致高并发下 PostgreSQL 连接数超限（too many clients already）
+_engine_cache: dict[tuple[int, int], Engine] = {}
+_engine_cache_lock = threading.Lock()
+
+# 方案 A：PostgreSQL 按数据源并发上限（信号量），单 ds 同时最多 N 个操作，连接用 NullPool
+_ds_semaphores: dict[int, threading.Semaphore] = {}
+_ds_semaphores_lock = threading.Lock()
+
+
+def _cache_key(ds: CoreDatasource, timeout: int) -> tuple[int, int]:
+    return (ds.id, timeout)
+
+
+def _get_semaphore_for_ds(ds: CoreDatasource | AssistantOutDsSchema) -> Optional[threading.Semaphore]:
+    """仅对 CoreDatasource 且 type 为 pg 时返回该 ds 的信号量，用于限制并发连接数."""
+    if not isinstance(ds, CoreDatasource) or ds.id is None or not equals_ignore_case(ds.type, "pg"):
+        return None
+    n = getattr(settings, "DS_PG_MAX_CONCURRENT", 30)
+    with _ds_semaphores_lock:
+        if ds.id not in _ds_semaphores:
+            _ds_semaphores[ds.id] = threading.Semaphore(n)
+        return _ds_semaphores[ds.id]
+
+
+def clear_ds_engine_cache(ds_id: Optional[int] = None):
+    """数据源配置变更后调用，清除该数据源的 engine 缓存；ds_id 为 None 时清空全部."""
+    with _engine_cache_lock:
+        if ds_id is None:
+            for eng in _engine_cache.values():
+                try:
+                    eng.dispose()
+                except Exception:
+                    pass
+            _engine_cache.clear()
+        else:
+            to_remove = [k for k in _engine_cache if k[0] == ds_id]
+            for k in to_remove:
+                try:
+                    _engine_cache[k].dispose()
+                except Exception:
+                    pass
+                del _engine_cache[k]
+    # 仅在全量清空时清空信号量，避免残留；按 ds_id 清除时保留信号量，防止更新后并发限流翻倍
+    if ds_id is None:
+        with _ds_semaphores_lock:
+            _ds_semaphores.clear()
 
 
 def get_uri(ds: CoreDatasource) -> str:
@@ -134,7 +182,7 @@ def get_origin_connect(type: str, conf: DatasourceConf):
 
 
 # use sqlalchemy
-def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
+def get_engine(ds: CoreDatasource | AssistantOutDsSchema, timeout: int = 0) -> Engine:
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if not equals_ignore_case(ds.type,
                                                                                                  "excel") else get_engine_config()
     if conf.timeout is None:
@@ -142,13 +190,20 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
     if timeout > 0:
         conf.timeout = timeout
 
+    # 仅对 CoreDatasource 使用缓存，避免高并发下对同一 PG 建过多连接导致 "too many clients already"
+    use_cache = isinstance(ds, CoreDatasource)
+    if use_cache:
+        key = _cache_key(ds, timeout)
+        with _engine_cache_lock:
+            if key in _engine_cache:
+                return _engine_cache[key]
+
     if equals_ignore_case(ds.type, "pg"):
+        # 方案 A：PostgreSQL 使用 NullPool，并发数由 _get_semaphore_for_ds 在 get_session 层限流
+        pg_connect_args = {"connect_timeout": conf.timeout}
         if conf.dbSchema is not None and conf.dbSchema != "":
-            engine = create_engine(get_uri(ds),
-                                   connect_args={"options": f"-c search_path={urllib.parse.quote(conf.dbSchema)}",
-                                                 "connect_timeout": conf.timeout}, poolclass=NullPool)
-        else:
-            engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, poolclass=NullPool)
+            pg_connect_args["options"] = f"-c search_path={urllib.parse.quote(conf.dbSchema)}"
+        engine = create_engine(get_uri(ds), connect_args=pg_connect_args, poolclass=NullPool)
     elif equals_ignore_case(ds.type, 'sqlServer'):
         engine = create_engine('mssql+pymssql://', creator=lambda: get_origin_connect(ds.type, conf),
                                poolclass=NullPool)
@@ -159,19 +214,55 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
         engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout, "ssl": ssl_mode}, poolclass=NullPool)
     else:  # ck
         engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, poolclass=NullPool)
+
+    if use_cache:
+        with _engine_cache_lock:
+            if key in _engine_cache:
+                engine.dispose()
+                return _engine_cache[key]
+            _engine_cache[key] = engine
     return engine
 
 
-def get_session(ds: CoreDatasource | AssistantOutDsSchema):
-    # engine = get_engine(ds) if isinstance(ds, CoreDatasource) else get_ds_engine(ds)
+class _DsSessionContext:
+    """方案 A：对 PG 数据源在 with 内先拿信号量再建连接，退出时关闭 session 并释放信号量."""
+
+    def __init__(self, ds: CoreDatasource | AssistantOutDsSchema):
+        self.ds = ds
+        self._sem: Optional[threading.Semaphore] = None
+        self._session = None
+
+    def __enter__(self):
+        self._sem = _get_semaphore_for_ds(self.ds)
+        if self._sem:
+            self._sem.acquire()
+        try:
+            engine = get_engine(self.ds)
+            session_maker = sessionmaker(bind=engine)
+            self._session = session_maker()
+            return self._session
+        except Exception:
+            if self._sem:
+                self._sem.release()
+                self._sem = None  # 避免 __exit__ 再次 release 导致重复释放
+            raise
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if self._session:
+                self._session.close()
+        finally:
+            if self._sem:
+                self._sem.release()
+        return False
+
+
+def get_session(ds: CoreDatasource | AssistantOutDsSchema) -> _DsSessionContext:
+    """Return a context manager that yields a SQLAlchemy session. Must be used with `with`."""
     if isinstance(ds, AssistantOutDsSchema):
         out_conf = get_out_ds_conf(ds, 30)
         ds.configuration = out_conf
-
-    engine = get_engine(ds)
-    session_maker = sessionmaker(bind=engine)
-    session = session_maker()
-    return session
+    return _DsSessionContext(ds)
 
 
 def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDsSchema, is_raise: bool = False):
@@ -181,9 +272,9 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
 
     db = DB.get_db(ds.type)
     if db.connect_type == ConnectType.sqlalchemy:
-        conn = get_engine(ds, 10)
         try:
-            with conn.connect() as connection:
+            with get_session(ds) as session:
+                session.execute(text("select 1")).scalar()
                 SQLBotLogUtil.info("success")
                 return True
         except Exception as e:

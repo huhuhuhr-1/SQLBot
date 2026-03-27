@@ -41,6 +41,10 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       chunkSizeWarningLimit: 2000,
+      // 临时关闭压缩：线上打包产物在部分环境触发 TDZ（Cannot access 'x' before initialization）
+      // 便于先验证功能可用；后续可结合 sourcemap 精准定位再恢复压缩。
+      minify: false,
+      sourcemap: true,
       rollupOptions: {
         output: {
           manualChunks: {

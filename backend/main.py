@@ -1,4 +1,9 @@
 import os
+
+# 进程内清除代理，避免 LangChain/httpx 使用 SOCKS 代理报错；不影响本机其他程序（如 Clash）
+for _k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+    os.environ.pop(_k, None)
+
 from typing import Dict, Any
 
 import sqlbot_xpack
@@ -80,6 +85,7 @@ app = FastAPI(
 # cache docs for different text
 _openapi_cache: Dict[str, Dict[str, Any]] = {}
 
+
 # replace placeholder
 def replace_placeholders_in_schema(schema: Dict[str, Any], trans: Dict[str, str]) -> None:
     """
@@ -95,7 +101,6 @@ def replace_placeholders_in_schema(schema: Dict[str, Any], trans: Dict[str, str]
     elif isinstance(schema, list):
         for item in schema:
             replace_placeholders_in_schema(item, trans)
-
 
 
 # OpenAPI build
@@ -148,7 +153,6 @@ def generate_openapi_for_lang(lang: str) -> Dict[str, Any]:
     # 4. cache
     _openapi_cache[lang] = openapi_schema
     return openapi_schema
-
 
 
 # custom /openapi.json and /docs

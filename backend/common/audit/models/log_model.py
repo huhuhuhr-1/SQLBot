@@ -12,6 +12,7 @@ class OperationModules(str, Enum):
     PERMISSION = "permission"  # 权限
     RULES = "rules"  # q组
     TERMINOLOGY = "terminology"  # 术语
+    BIZ_DICTIONARY = "biz_dictionary"  # 数据字典
     DATA_TRAINING = "data_training"  # SQL 示例库
     PROMPT_WORDS = "prompt_words"  # 自定义提示词
     USER = "user"  # 用户

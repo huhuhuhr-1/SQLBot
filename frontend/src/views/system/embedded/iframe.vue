@@ -16,7 +16,7 @@ import SetUi from './SetUi.vue'
 import Card from './Card.vue'
 // import { workspaceList } from '@/api/workspace'
 import DsCard from './DsCard.vue'
-import { getList, updateAssistant, saveAssistant, delOne, dsApi } from '@/api/embedded'
+import { getList, updateAssistant, saveAssistant, delOne, dsApi, validateAssistantDomain } from '@/api/embedded'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { useUserStore } from '@/stores/user.ts'
@@ -412,6 +412,32 @@ const certificateRules = {
   ],
 }
 
+const domainTestLoading = ref(false)
+const handleDomainTest = async () => {
+  const val = (currentEmbedded.domain || '').trim()
+  if (!val) {
+    ElMessage.warning(t('embedded.domain_test_empty'))
+    return
+  }
+  domainTestLoading.value = true
+  try {
+    const res = await validateAssistantDomain(val)
+    if (res.valid) {
+      ElMessage.success(t('embedded.domain_test_success'))
+    } else if (res.message === 'domain_unreachable' && res.unreachable_list?.length) {
+      const detail = res.unreachable_list.map((x) => `${x.url}（${x.reason}）`).join('；')
+      ElMessage.error(t('embedded.domain_test_unreachable', { detail }))
+    } else {
+      const msg = res.invalid_value || res.message || ''
+      ElMessage.error(t('embedded.domain_test_fail', { msg }))
+    }
+  } catch (_e) {
+    ElMessage.error(t('embedded.domain_test_fail', { msg: (typeof _e === 'object' && _e && 'message' in _e) ? String((_e as any).message) : '' }))
+  } finally {
+    domainTestLoading.value = false
+  }
+}
+
 const preview = () => {
   activeStep.value = 0
 }
@@ -774,6 +800,9 @@ const saveHandler = () => {
               </el-form-item>
 
               <el-form-item prop="domain" :label="t('embedded.cross_domain_settings')">
+                <div class="cross_domain_remark">
+                  {{ t('embedded.cross_domain_remark') }}
+                </div>
                 <el-input
                   v-model="currentEmbedded.domain"
                   type="textarea"
@@ -782,6 +811,15 @@ const saveHandler = () => {
                   :placeholder="$t('embedded.third_party_address')"
                   autocomplete="off"
                 />
+                <div class="domain_test_wrap">
+                  <el-button
+                    type="primary"
+                    :loading="domainTestLoading"
+                    @click="handleDomainTest"
+                  >
+                    {{ t('embedded.domain_test') }}
+                  </el-button>
+                </div>
               </el-form-item>
             </el-form>
           </div>
@@ -804,6 +842,9 @@ const saveHandler = () => {
               @submit.prevent
             >
               <el-form-item prop="endpoint" :label="t('embedded.interface_url')">
+                <div class="cross_domain_remark">
+                  {{ t('embedded.interface_url_remark') }}
+                </div>
                 <el-input
                   v-model="urlForm.endpoint"
                   clearable
@@ -861,6 +902,9 @@ const saveHandler = () => {
                     </span>
                   </div>
                 </template>
+                <div class="cross_domain_remark" style="margin-bottom: 8px;">
+                  {{ t('embedded.interface_credentials_remark') }}
+                </div>
                 <div
                   class="table-content"
                   :class="!!urlForm.certificate.length && 'no-credentials_yet'"
@@ -1235,6 +1279,16 @@ const saveHandler = () => {
     .mb-16 {
       margin-bottom: 16px;
     }
+  }
+
+  .cross_domain_remark {
+    font-size: 12px;
+    color: var(--el-text-color-secondary, #909399);
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+  .domain_test_wrap {
+    margin-top: 8px;
   }
 }
 </style>

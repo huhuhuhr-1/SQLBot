@@ -79,6 +79,10 @@ const handleEditDatasource = (res: any) => {
   addDrawerRef.value.handleEditDatasource(res)
 }
 
+const handleCopyDatasource = (item: Datasource) => {
+  addDrawerRef.value.handleCopyDatasource(item)
+}
+
 const handleRecommendation = (res: Datasource) => {
   recommendedProblemConfigRef.value?.init(res)
 }
@@ -194,6 +198,83 @@ const dataTableDetail = (ele: any) => {
   currentDataTable.value = ele
 }
 
+const selectedIds = ref<string[]>([])
+const exportLoading = ref(false)
+const importFileRef = ref<HTMLInputElement | null>(null)
+
+const hasSelection = computed(() => selectedIds.value.length > 0)
+
+const allVisibleIds = computed<string[]>(() =>
+  datasourceListWithSearch.value.map((ele: any) => String(ele.id))
+)
+
+const allSelected = computed(
+  () =>
+    allVisibleIds.value.length > 0 &&
+    allVisibleIds.value.every((id) => selectedIds.value.includes(id))
+)
+
+const isSelected = (item: Datasource) => {
+  return selectedIds.value.includes(String(item.id))
+}
+
+const toggleSelect = (item: Datasource) => {
+  const id = String(item.id)
+  if (selectedIds.value.includes(id)) {
+    selectedIds.value = selectedIds.value.filter((x) => x !== id)
+  } else {
+    selectedIds.value = [...selectedIds.value, id]
+  }
+}
+
+const clearSelection = () => {
+  selectedIds.value = []
+}
+
+const toggleSelectAll = () => {
+  if (allSelected.value) {
+    clearSelection()
+    return
+  }
+  selectedIds.value = [...allVisibleIds.value]
+}
+
+const handleBatchDelete = async () => {
+  if (!selectedIds.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      `将删除选中的 ${selectedIds.value.length} 个数据源，且无法恢复，是否继续？`,
+      t('common.confirm'),
+      {
+        confirmButtonText: t('dashboard.delete'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+      }
+    )
+  } catch {
+    return
+  }
+
+  const ids = [...selectedIds.value]
+  const all = datasourceList.value as any[]
+
+  for (const id of ids) {
+    const item = all.find((d: any) => String(d.id) === id)
+    if (!item) continue
+    try {
+      await datasourceApi.delete(item.id, item.name)
+    } catch (e: any) {
+      ElMessage({
+        type: 'error',
+        message: e?.message || '删除数据源失败',
+      })
+    }
+  }
+
+  clearSelection()
+  search()
+}
+
 const back = () => {
   currentDataTable.value = null
 }
@@ -205,6 +286,67 @@ function startLoading() {
 }
 function endLoading() {
   loading.value = false
+}
+
+const exportBatch = () => {
+  const ids = (datasourceList.value || []).map((d: any) => d.id).filter(Boolean)
+  if (!ids.length) {
+    ElMessage.warning(t('ds.batch_export_empty'))
+    return
+  }
+  exportLoading.value = true
+  datasourceApi
+    .exportBatch(ids)
+    .then((res) => {
+      const blob = new Blob([JSON.stringify(res, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `datasources_export_${Date.now()}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      ElMessage.success(t('ds.batch_export_success'))
+    })
+    .finally(() => {
+      exportLoading.value = false
+    })
+}
+
+const triggerImportFile = () => {
+  importFileRef.value?.click()
+}
+
+const onImportFile = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(reader.result as string)
+      if (!payload.datasources || !Array.isArray(payload.datasources)) {
+        ElMessage.error(t('ds.batch_import_invalid'))
+        return
+      }
+      searchLoading.value = true
+      datasourceApi
+        .importBatch(payload)
+        .then((created) => {
+          ElMessage.success(t('ds.batch_import_success', { count: created?.length ?? 0 }))
+          search()
+        })
+        .catch((err) => {
+          ElMessage.error(err?.message || t('ds.batch_import_failed'))
+        })
+        .finally(() => {
+          searchLoading.value = false
+        })
+    } catch {
+      ElMessage.error(t('ds.batch_import_invalid'))
+    }
+    input.value = ''
+  }
+  reader.readAsText(file)
 }
 
 useEmitt({
@@ -273,6 +415,19 @@ useEmitt({
           </div>
         </el-popover>
 
+        <el-button @click="exportBatch" :loading="exportLoading">
+          {{ $t('ds.batch_export') }}
+        </el-button>
+        <el-button @click="triggerImportFile">
+          {{ $t('ds.batch_import') }}
+        </el-button>
+        <input
+          ref="importFileRef"
+          type="file"
+          accept=".json"
+          style="display: none"
+          @change="onImportFile"
+        />
         <el-button type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
@@ -281,6 +436,38 @@ useEmitt({
         </el-button>
       </div>
     </div>
+
+    <!-- 列表选择工具栏：与卡片列表视觉关联，仅在有数据时展示 -->
+    <div
+      v-if="datasourceListWithSearch.length"
+      class="selection-toolbar"
+    >
+      <el-checkbox
+        class="selection-toolbar__select-all"
+        :indeterminate="selectedIds.length > 0 && !allSelected"
+        :model-value="allSelected"
+        @change="toggleSelectAll"
+      >
+        {{ $t('datasource.select_all') }}
+      </el-checkbox>
+      <template v-if="hasSelection">
+        <span class="selection-toolbar__count">
+          {{ $t('user.selected_2_items', { msg: selectedIds.length }) }}
+        </span>
+        <el-button
+          type="danger"
+          text
+          class="selection-toolbar__delete"
+          @click="handleBatchDelete"
+        >
+          {{ $t('dashboard.delete') }}
+        </el-button>
+        <el-button text @click="clearSelection">
+          {{ $t('common.cancel') }}
+        </el-button>
+      </template>
+    </div>
+
     <EmptyBackground
       v-if="!!keywords && !datasourceListWithSearch.length"
       :description="$t('datasource.relevant_content_found')"
@@ -300,22 +487,30 @@ useEmitt({
           :xl="6"
           class="mb-16"
         >
-          <Card
-            :id="ele.id"
-            :key="ele.id"
-            :name="ele.name"
-            :type="ele.type"
-            :type-name="ele.type_name"
-            :num="ele.num"
-            :description="ele.description"
-            @start-checking="startLoading"
-            @end-checking="endLoading"
-            @question="handleQuestion"
-            @edit="handleEditDatasource(ele)"
-            @recommendation="handleRecommendation(ele)"
-            @del="deleteHandler(ele)"
-            @data-table-detail="dataTableDetail(ele)"
-          ></Card>
+          <div class="card-with-select">
+            <el-checkbox
+              class="card-select"
+              :model-value="isSelected(ele)"
+              @change="() => toggleSelect(ele)"
+            />
+            <Card
+              :id="ele.id"
+              :key="ele.id"
+              :name="ele.name"
+              :type="ele.type"
+              :type-name="ele.type_name"
+              :num="ele.num"
+              :description="ele.description"
+              @start-checking="startLoading"
+              @end-checking="endLoading"
+              @question="handleQuestion"
+              @edit="handleEditDatasource(ele)"
+              @copy="handleCopyDatasource(ele)"
+              @recommendation="handleRecommendation(ele)"
+              @del="deleteHandler(ele)"
+              @data-table-detail="dataTableDetail(ele)"
+            ></Card>
+          </div>
         </el-col>
       </el-row>
     </div>
@@ -363,6 +558,30 @@ useEmitt({
       font-weight: 500;
       font-size: 20px;
       line-height: 28px;
+    }
+  }
+
+  .selection-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 24px;
+    margin-bottom: 8px;
+    min-height: 44px;
+    background: var(--ed-fill-color-light, #f7f8fa);
+    border-radius: 8px;
+    margin-left: 24px;
+    margin-right: 24px;
+
+    .selection-toolbar__select-all {
+      font-size: 14px;
+      color: var(--ed-text-color-regular, #646a73);
+    }
+
+    .selection-toolbar__count {
+      font-size: 14px;
+      color: var(--ed-text-color-secondary, #8f959e);
+      margin-right: auto;
     }
   }
 

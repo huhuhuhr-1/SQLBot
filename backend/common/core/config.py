@@ -1,6 +1,8 @@
+import pathlib
 import secrets
 import urllib.parse
 from typing import Annotated, Any, Literal
+import os
 
 from pydantic import (
     AnyUrl,
@@ -24,7 +26,7 @@ def parse_cors(v: Any) -> list[str] | str:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Use top level .env file (one level above ./backend/)
-        env_file="../.env",
+        env_file=pathlib.Path(__file__).resolve().parent.parent.parent / ".env",
         env_ignore_empty=True,
         extra="ignore",
     )
@@ -115,10 +117,16 @@ class Settings(BaseSettings):
     DEFAULT_REASONING_CONTENT_START: str = '<think>'
     DEFAULT_REASONING_CONTENT_END: str = '</think>'
 
-    PG_POOL_SIZE: int = 20
-    PG_MAX_OVERFLOW: int = 30
+    PG_POOL_SIZE: int = 50
+    PG_MAX_OVERFLOW: int = 100
     PG_POOL_RECYCLE: int = 3600
+    PG_POOL_TIMEOUT: int = 60
     PG_POOL_PRE_PING: bool = True
+    # 方案 A：PostgreSQL 数据源按 ds 的并发上限（信号量），连接用 NullPool，单 ds 同时最多 N 个操作
+    DS_PG_MAX_CONCURRENT: int = 30
+    # qian wen 32k
+    MAX_TOKEN_CHUNK: int = 30000
+    TIKTOKEN_CACHE_DIR: str = '/opt/sqlbot/app/apps/tiktoken_cache'
 
     TABLE_EMBEDDING_ENABLED: bool = True
     TABLE_EMBEDDING_COUNT: int = 10
@@ -126,12 +134,16 @@ class Settings(BaseSettings):
 
     ORACLE_CLIENT_PATH: str = '/opt/sqlbot/db_client/oracle_instant_client'
 
+    # 深度分析：是否使用 LangGraph 执行引擎（False 时回退到原 PlanAgent）
+    DEEP_ANALYSIS_USE_LANGGRAPH: bool = True
+
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'GENERATE_SQL_QUERY_LIMIT_ENABLED',
                      'PARSE_REASONING_BLOCK_ENABLED',
                      'PG_POOL_PRE_PING',
                      'TABLE_EMBEDDING_ENABLED',
+                     'DEEP_ANALYSIS_USE_LANGGRAPH',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:

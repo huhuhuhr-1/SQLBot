@@ -18,13 +18,28 @@
         </el-input>
       </div>
 
-      <el-button
-        class="border-radius_8"
-        type="primary"
-        :icon="IconOpeAdd"
-        @click="editDs(undefined)"
-        >{{ t('ds.add') }}</el-button
-      >
+      <div class="header-actions">
+        <el-button class="border-radius_8" @click="exportBatch" :loading="exportLoading">
+          {{ t('ds.batch_export') }}
+        </el-button>
+        <el-button class="border-radius_8" @click="triggerImportFile">
+          {{ t('ds.batch_import') }}
+        </el-button>
+        <input
+          ref="importFileRef"
+          type="file"
+          accept=".json"
+          style="display: none"
+          @change="onImportFile"
+        />
+        <el-button
+          class="border-radius_8"
+          type="primary"
+          :icon="IconOpeAdd"
+          @click="editDs(undefined)"
+          >{{ t('ds.add') }}</el-button
+        >
+      </div>
     </div>
 
     <div class="connections-container">
@@ -63,7 +78,7 @@ import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import { Search, List } from '@element-plus/icons-vue'
 import DsForm from './form.vue'
 import { datasourceApi } from '@/api/datasource'
-import { ElMessageBox } from 'element-plus-secondary'
+import { ElMessageBox, ElMessage } from 'element-plus-secondary'
 import { useRouter } from 'vue-router'
 import DatasourceItemCard from '@/views/ds/DatasourceItemCard.vue'
 
@@ -74,6 +89,8 @@ const dsList = ref<any>([]) // show ds list
 const allDsList = ref<any>([]) // all ds list
 const router = useRouter()
 const loading = ref(false)
+const exportLoading = ref(false)
+const importFileRef = ref<HTMLInputElement | null>(null)
 
 function searchHandle() {
   if (searchValue.value) {
@@ -120,6 +137,67 @@ const getTables = (id: number, name: string) => {
   router.push(`/dsTable/${id}/${name}`)
 }
 
+const exportBatch = () => {
+  const ids = (allDsList.value || []).map((d: any) => d.id).filter(Boolean)
+  if (!ids.length) {
+    ElMessage.warning(t('ds.batch_export_empty'))
+    return
+  }
+  exportLoading.value = true
+  datasourceApi
+    .exportBatch(ids)
+    .then((res) => {
+      const blob = new Blob([JSON.stringify(res, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `datasources_export_${Date.now()}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      ElMessage.success(t('ds.batch_export_success'))
+    })
+    .finally(() => {
+      exportLoading.value = false
+    })
+}
+
+const triggerImportFile = () => {
+  importFileRef.value?.click()
+}
+
+const onImportFile = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(reader.result as string)
+      if (!payload.datasources || !Array.isArray(payload.datasources)) {
+        ElMessage.error(t('ds.batch_import_invalid'))
+        return
+      }
+      loading.value = true
+      datasourceApi
+        .importBatch(payload)
+        .then((created) => {
+          ElMessage.success(t('ds.batch_import_success', { count: created?.length ?? 0 }))
+          refresh()
+        })
+        .catch((err) => {
+          ElMessage.error(err?.message || t('ds.batch_import_failed'))
+        })
+        .finally(() => {
+          loading.value = false
+        })
+    } catch {
+      ElMessage.error(t('ds.batch_import_invalid'))
+    }
+    input.value = ''
+  }
+  reader.readAsText(file)
+}
+
 onMounted(() => {
   list()
 })
@@ -133,6 +211,11 @@ onMounted(() => {
   margin-bottom: 20px;
   display: flex;
   justify-content: space-between;
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   .input-with-select {
     --ed-input-border-radius: 8px;
     --ed-border-radius-base: 8px;

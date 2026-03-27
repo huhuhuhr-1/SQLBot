@@ -18,7 +18,6 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
 develop-eggs/
 dist/
 downloads/
@@ -67,6 +66,7 @@ cover/
 
 # Django stuff:
 *.log
+backend/logs/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -181,11 +181,28 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
+# SQLBot AI cache
+.sqlbot/cache/
+
 # PyPI configuration file
 .pypirc
 
 .DS_Store
 test.py
 
+# 临时与产出目录（分析脚本、会话输出、构建临时文件）
+/tmp/
+/build/tmp/
+# 本地通过 OpenAPI CSV 等导出的数据样例
+/exports/
+
 
 !/.venv/
+/backend/offline_packages/
+/backend/requirements.txt
+.github
+.jbeval
+.devcontainer
+.claude
+.cursor
+.idea

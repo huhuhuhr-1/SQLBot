@@ -1,3 +1,4 @@
+import copy
 import datetime
 import json
 from typing import List, Optional
@@ -7,11 +8,12 @@ from sqlalchemy import and_, text
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
 from sqlmodel import select
 
+from apps.dict.curd.dict_prompt import format_field_line_with_enums, load_enum_map
 from apps.datasource.crud.permission import get_column_permission_fields, get_row_permission_filters, is_normal_user
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
-from apps.db.db import get_tables, get_fields, exec_sql, check_connection
+from apps.db.db import get_tables, get_fields, exec_sql, check_connection, clear_ds_engine_cache
 from apps.db.engine import get_engine_config, get_engine_conn
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from common.core.config import settings
@@ -22,8 +24,71 @@ from common.core.sqlbot_cache import cache, clear_cache
 from .table import get_tables_by_ds_id
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
-from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, TableObj, \
-    DatasourceConf, TableAndFields
+from ..models.datasource import (
+    CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, TableObj,
+    DatasourceConf, TableAndFields,
+    ExportDatasourceItem, ExportTableItem, ExportFieldItem, DatasourceExportPayload, DatasourceImportPayload,
+)
+from ...openapi.models.openapiModels import DatasourceResponse
+
+
+# modify by huhuhuhr
+def get_datasource_list_for_openapi_excels(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[
+    int]:
+    current_oid = user.oid if user.oid is not None else 1
+    if user.isAdmin and oid:
+        current_oid = oid
+
+    # 使用 scalars() 直接获取 ID 值列表
+    return session.exec(
+        select(CoreDatasource.id)
+        .where(
+            and_(
+                CoreDatasource.type == 'excel',
+                CoreDatasource.oid == current_oid
+            )
+        )
+    ).all()
+
+
+# modify by huhuhuhr
+# 修改函数实现
+def get_datasource_list_for_openapi(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[
+    DatasourceResponse]:
+    current_oid = user.oid if user.oid is not None else 1
+    if user.isAdmin and oid:
+        current_oid = oid
+
+    result = session.exec(
+        select(
+            CoreDatasource.id,
+            CoreDatasource.name,
+            CoreDatasource.description,
+            CoreDatasource.type,
+            CoreDatasource.type_name,
+            CoreDatasource.configuration,
+            CoreDatasource.create_time,
+            CoreDatasource.create_by,
+            CoreDatasource.status,
+            CoreDatasource.num,
+            CoreDatasource.oid,
+        ).where(CoreDatasource.oid == current_oid).order_by(
+            CoreDatasource.name)).all()
+
+    # 将查询结果转换为 DatasourceResponse 对象列表
+    return [DatasourceResponse(
+        id=row[0],
+        name=row[1],
+        description=row[2],
+        type=row[3],
+        type_name=row[4],
+        configuration=row[5],
+        create_time=row[6],
+        create_by=row[7],
+        status=row[8],
+        num=row[9],
+        oid=row[10]
+    ) for row in result]
 
 
 def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[CoreDatasource]:
@@ -107,6 +172,7 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
         setattr(record, field, value)
     session.add(record)
     session.commit()
+    clear_ds_engine_cache(ds.id)
 
     run_save_ds_embeddings([ds.id])
     return ds
@@ -117,6 +183,102 @@ def update_ds_recommended_config(session: SessionDep, datasource_id: int, recomm
     record.recommended_config = recommended_config
     session.add(record)
     session.commit()
+
+
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="user.oid")
+def copy_ds(session: SessionDep, trans: Trans, user: CurrentUser, source_id: int, new_name: Optional[str] = None) -> CoreDatasource:
+    """Clone a datasource: same configuration and selected tables/fields/table_relation, new name."""
+    source = session.exec(select(CoreDatasource).where(CoreDatasource.id == source_id)).first()
+    if not source:
+        raise HTTPException(status_code=404, detail=trans('i18n_ds_invalid'))
+    name = (new_name or source.name + "_copy").strip()
+    if not name:
+        name = source.name + "_copy"
+    # ensure unique name
+    ds_for_check = CoreDatasource(id=None, name=name, oid=user.oid if user.oid is not None else 1)
+    check_name(session, trans, user, ds_for_check)
+
+    new_ds = CoreDatasource(
+        name=name,
+        description=source.description or "",
+        type=source.type,
+        type_name=source.type_name,
+        configuration=source.configuration,
+        create_time=datetime.datetime.now(),
+        create_by=user.id,
+        status=source.status or "Success",
+        num=source.num or "0/0",
+        oid=user.oid if user.oid is not None else 1,
+        table_relation=None,
+        embedding=None,
+        recommended_config=source.recommended_config or 1,
+    )
+    session.add(new_ds)
+    session.flush()
+    session.refresh(new_ds)
+
+    old_to_new_table_id = {}
+    source_tables = session.query(CoreTable).filter(CoreTable.ds_id == source_id).order_by(CoreTable.id).all()
+    for t in source_tables:
+        new_table = CoreTable(
+            ds_id=new_ds.id,
+            checked=t.checked,
+            table_name=t.table_name,
+            table_comment=t.table_comment or "",
+            custom_comment=t.custom_comment or "",
+            embedding=None,
+        )
+        session.add(new_table)
+        session.flush()
+        session.refresh(new_table)
+        old_to_new_table_id[t.id] = new_table.id
+
+    old_to_new_field_id = {}
+    source_fields = session.query(CoreField).filter(CoreField.ds_id == source_id).order_by(CoreField.table_id, CoreField.field_index).all()
+    for f in source_fields:
+        new_table_id = old_to_new_table_id.get(f.table_id)
+        if new_table_id is None:
+            continue
+        new_field = CoreField(
+            ds_id=new_ds.id,
+            table_id=new_table_id,
+            checked=f.checked,
+            field_name=f.field_name,
+            field_type=f.field_type or "",
+            field_comment=f.field_comment or "",
+            custom_comment=f.custom_comment or "",
+            field_index=f.field_index,
+        )
+        session.add(new_field)
+        session.flush()
+        session.refresh(new_field)
+        old_to_new_field_id[f.id] = new_field.id
+
+    if source.table_relation and len(source.table_relation) > 0:
+        new_relation = copy.deepcopy(source.table_relation)
+        for item in new_relation:
+            if item.get('shape') != 'edge':
+                continue
+            src = item.get('source') or {}
+            tgt = item.get('target') or {}
+            old_cell_s, old_cell_t = src.get('cell'), tgt.get('cell')
+            old_port_s, old_port_t = src.get('port'), tgt.get('port')
+            if old_cell_s is not None and old_cell_s in old_to_new_table_id:
+                item.setdefault('source', {})['cell'] = old_to_new_table_id[old_cell_s]
+            if old_cell_t is not None and old_cell_t in old_to_new_table_id:
+                item.setdefault('target', {})['cell'] = old_to_new_table_id[old_cell_t]
+            if old_port_s is not None and old_port_s in old_to_new_field_id:
+                item.setdefault('source', {})['port'] = old_to_new_field_id[old_port_s]
+            if old_port_t is not None and old_port_t in old_to_new_field_id:
+                item.setdefault('target', {})['port'] = old_to_new_field_id[old_port_t]
+        new_ds.table_relation = new_relation
+        session.add(new_ds)
+
+    session.commit()
+    updateNum(session, new_ds)
+    run_save_ds_embeddings([new_ds.id])
+    session.refresh(new_ds)
+    return new_ds
 
 
 async def delete_ds(session: SessionDep, id: int):
@@ -132,6 +294,7 @@ async def delete_ds(session: SessionDep, id: int):
 
     session.delete(term)
     session.commit()
+    clear_ds_engine_cache(id)
     delete_table_by_ds_id(session, id)
     delete_field_by_ds_id(session, id)
     if term:
@@ -436,6 +599,13 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
     table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
     if len(table_objs) == 0:
         return schema_str
+    enum_map = {}
+    try:
+        oid = getattr(current_user, "oid", None)
+        if oid is not None and ds and ds.id:
+            enum_map = load_enum_map(session, int(oid), int(ds.id))
+    except Exception:
+        enum_map = {}
     db_name = table_objs[0].schema
     schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
     tables = []
@@ -461,10 +631,13 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
                 field_comment = ''
                 if field.custom_comment:
                     field_comment = field.custom_comment.strip()
-                if field_comment == '':
-                    field_list.append(f"({field.field_name}:{field.field_type})")
-                else:
-                    field_list.append(f"({field.field_name}:{field.field_type}, {field_comment})")
+                key = (obj.table.table_name, field.field_name)
+                enums = enum_map.get(key, [])
+                field_list.append(
+                    format_field_line_with_enums(
+                        field.field_name, field.field_type or '', field_comment, enums
+                    )
+                )
             schema_table += ",\n".join(field_list)
         schema_table += '\n]\n'
 
@@ -532,6 +705,178 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
                     schema_str += f"{table_dict.get(int(ele.get('source').get('cell')))}.{field_dict.get(int(ele.get('source').get('port')))}={table_dict.get(int(ele.get('target').get('cell')))}.{field_dict.get(int(ele.get('target').get('port')))}\n"
 
     return schema_str
+
+
+def export_datasources(
+    session: SessionDep, user: CurrentUser, ids: List[int]
+) -> DatasourceExportPayload:
+    """批量导出数据源：基础信息、选中表、表映射关系、标准元数据（表/字段备注等）。"""
+    current_oid = user.oid if user.oid is not None else 1
+    if user.isAdmin:
+        pass  # admin 可导出任意 oid 的数据源，由调用方传 ids
+    items = []
+    for ds_id in ids:
+        ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds_id)).first()
+        if not ds or (ds.oid != current_oid and not user.isAdmin):
+            continue
+        tables = session.query(CoreTable).filter(CoreTable.ds_id == ds_id).order_by(CoreTable.table_name).all()
+        table_items = []
+        for t in tables:
+            fields = session.query(CoreField).filter(CoreField.table_id == t.id).order_by(CoreField.field_index).all()
+            field_items = [
+                ExportFieldItem(
+                    id=f.id,
+                    field_name=f.field_name or "",
+                    field_type=f.field_type or "",
+                    field_comment=f.field_comment or "",
+                    custom_comment=f.custom_comment or "",
+                    checked=f.checked,
+                    field_index=f.field_index,
+                )
+                for f in fields
+            ]
+            table_items.append(
+                ExportTableItem(
+                    id=t.id,
+                    table_name=t.table_name or "",
+                    table_comment=t.table_comment or "",
+                    custom_comment=t.custom_comment or "",
+                    checked=t.checked,
+                    fields=field_items,
+                )
+            )
+        ds_dict = {
+            "name": ds.name,
+            "description": ds.description or "",
+            "type": ds.type,
+            "type_name": ds.type_name or "",
+            "configuration": ds.configuration,
+            "status": ds.status or "Success",
+            "num": ds.num or "0/0",
+            "recommended_config": ds.recommended_config or 1,
+        }
+        items.append(
+            ExportDatasourceItem(
+                version=1,
+                datasource=ds_dict,
+                tables=table_items,
+                table_relation=copy.deepcopy(ds.table_relation) if ds.table_relation else [],
+            )
+        )
+    return DatasourceExportPayload(datasources=items)
+
+
+def _apply_import_to_ds(
+    session: SessionDep,
+    new_ds: CoreDatasource,
+    item: ExportDatasourceItem,
+) -> None:
+    """对已存在或新创建的数据源应用导入的表/字段/表关系。"""
+    new_tables = session.query(CoreTable).filter(CoreTable.ds_id == new_ds.id).order_by(CoreTable.table_name).all()
+    old_to_new_table_id = {}
+    old_to_new_field_id = {}
+    for exp_t in item.tables:
+        new_t = next((x for x in new_tables if x.table_name == exp_t.table_name), None)
+        if not new_t:
+            continue
+        old_to_new_table_id[exp_t.id] = new_t.id
+        new_fields = session.query(CoreField).filter(CoreField.table_id == new_t.id).order_by(CoreField.field_index).all()
+        for exp_f in exp_t.fields:
+            new_f = next((x for x in new_fields if x.field_name == exp_f.field_name), None)
+            if new_f:
+                old_to_new_field_id[exp_f.id] = new_f.id
+                if exp_f.custom_comment:
+                    new_f.custom_comment = exp_f.custom_comment
+                    session.add(new_f)
+    session.commit()
+
+    if item.table_relation:
+        new_relation = copy.deepcopy(item.table_relation)
+        for rel in new_relation:
+            if rel.get("shape") != "edge":
+                continue
+            for key, mapping in [("source", old_to_new_table_id), ("target", old_to_new_table_id)]:
+                cell = (rel.get(key) or {}).get("cell")
+                if cell is not None and cell in mapping:
+                    rel.setdefault(key, {})["cell"] = mapping[cell]
+            for key, mapping in [("source", old_to_new_field_id), ("target", old_to_new_field_id)]:
+                port = (rel.get(key) or {}).get("port")
+                if port is not None and port in mapping:
+                    rel.setdefault(key, {})["port"] = mapping[port]
+        new_ds.table_relation = new_relation
+        session.add(new_ds)
+        session.commit()
+    updateNum(session, new_ds)
+    run_save_ds_embeddings([new_ds.id])
+
+
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="user.oid")
+async def import_datasources(
+    session: SessionDep, trans: Trans, user: CurrentUser, payload: DatasourceImportPayload
+) -> List[CoreDatasource]:
+    """批量导入数据源：合并模式——同名称则更新，否则新建；不因重复报错。"""
+    current_oid = user.oid if user.oid is not None else 1
+    result = []
+    for item in payload.datasources:
+        if not item.datasource or not item.datasource.get("name"):
+            continue
+        ds_dict = item.datasource
+        name = ds_dict["name"]
+        tables_payload = [
+            CoreTable(
+                table_name=t.table_name,
+                table_comment=t.table_comment or "",
+                custom_comment=t.custom_comment or "",
+            )
+            for t in item.tables
+        ]
+
+        existing = session.exec(
+            select(CoreDatasource).where(
+                and_(CoreDatasource.name == name, CoreDatasource.oid == current_oid)
+            )
+        ).first()
+
+        if existing:
+            try:
+                existing.description = ds_dict.get("description") or ""
+                existing.type = ds_dict.get("type") or "mysql"
+                existing.type_name = DB.get_db(existing.type).db_name
+                existing.configuration = ds_dict.get("configuration") or ""
+                existing.status = ds_dict.get("status") or "Success"
+                existing.recommended_config = ds_dict.get("recommended_config") or 1
+                session.add(existing)
+                session.commit()
+                clear_ds_engine_cache(existing.id)
+                sync_table(session, existing, tables_payload)
+                session.refresh(existing)
+                _apply_import_to_ds(session, existing, item)
+                session.refresh(existing)
+                result.append(existing)
+            except Exception as e:
+                SQLBotLogUtil.warning(f"import_datasources merge ds {name}: {e}")
+                continue
+        else:
+            try:
+                create_ds_obj = CreateDatasource(
+                    name=name,
+                    description=ds_dict.get("description") or "",
+                    type=ds_dict.get("type") or "mysql",
+                    configuration=ds_dict.get("configuration") or "",
+                    status=ds_dict.get("status") or "Success",
+                    num=ds_dict.get("num") or "0/0",
+                    recommended_config=ds_dict.get("recommended_config") or 1,
+                    tables=tables_payload,
+                )
+                new_ds = await create_ds(session, trans, user, create_ds_obj)
+                _apply_import_to_ds(session, new_ds, item)
+                session.refresh(new_ds)
+                result.append(new_ds)
+            except Exception as e:
+                SQLBotLogUtil.warning(f"import_datasources create ds {name}: {e}")
+                continue
+    return result
+
 
 @cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="oid")
 async def get_ws_ds(session, oid) -> list:

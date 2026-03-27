@@ -1,0 +1,56 @@
+# 若集群无默认 StorageClass 或仅想快速测试，可在 deployment 中改用 emptyDir，不 apply 本文件
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sqlbot-postgresql
+  namespace: sqlbot
+  labels:
+    app.kubernetes.io/name: sqlbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sqlbot-data
+  namespace: sqlbot
+  labels:
+    app.kubernetes.io/name: sqlbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sqlbot-images
+  namespace: sqlbot
+  labels:
+    app.kubernetes.io/name: sqlbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sqlbot-logs
+  namespace: sqlbot
+  labels:
+    app.kubernetes.io/name: sqlbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

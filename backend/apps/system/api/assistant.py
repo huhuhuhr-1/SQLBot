@@ -2,9 +2,11 @@ import json
 import os
 from datetime import timedelta
 from typing import List, Optional
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Form, HTTPException, Path, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Body, Form, HTTPException, Path, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlbot_xpack.file_utils import SQLBotFileUtils
 from sqlmodel import select
 
@@ -21,7 +23,8 @@ from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, Trans, CurrentUser
 from common.core.security import create_access_token
 from common.core.sqlbot_cache import clear_cache
-from common.utils.utils import get_origin_from_referer, origin_match_domain
+from common.utils.utils import get_domain_list, get_origin_from_referer, origin_match_domain, validate_domain_settings
+from common.utils.http_utils import verify_url
 
 router = APIRouter(tags=["system_assistant"], prefix="/system/assistant")
 from common.audit.models.log_model import OperationType, OperationModules
@@ -65,6 +68,42 @@ async def getApp(request: Request, response: Response, session: SessionDep, tran
     
     response.headers["Access-Control-Allow-Origin"] = origin
     return db_model
+
+
+class ValidateDomainBody(BaseModel):
+    domain: Optional[str] = Field(default=None, description="跨域设置字符串，多个用逗号或分号分隔")
+
+
+@router.post("/validate-domain", include_in_schema=False)
+@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+async def validate_domain(body: ValidateDomainBody = Body(...)):
+    """校验跨域设置格式是否正确，并对每个域名做可访问性检查（请求该地址，无法连接或超时则视为不可用）。"""
+    domain = body.domain or ""
+    valid, msg = validate_domain_settings(domain)
+    if not valid:
+        if msg == "empty":
+            return {"valid": False, "message": "domain_empty"}
+        return {"valid": False, "message": "domain_invalid", "invalid_value": msg}
+    # 格式正确，再检查每个域名是否可访问（localhost/127.0.0.1 仅校验格式，不请求）
+    origins = get_domain_list(domain)
+    unreachable_list: List[dict] = []
+    for origin in origins:
+        try:
+            host = urlparse(origin).hostname or ""
+            if host.lower() in ("localhost", "127.0.0.1"):
+                continue
+        except Exception:
+            pass
+        reachable, reason = verify_url(origin, timeout=5)
+        if not reachable:
+            unreachable_list.append({"url": origin, "reason": reason})
+    if unreachable_list:
+        return {
+            "valid": False,
+            "message": "domain_unreachable",
+            "unreachable_list": unreachable_list,
+        }
+    return {"valid": True, "message": ""}
 
 
 @router.get("/validator", response_model=AssistantValidator, include_in_schema=False)

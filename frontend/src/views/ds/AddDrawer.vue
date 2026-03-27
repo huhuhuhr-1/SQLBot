@@ -12,6 +12,7 @@ const datasourceConfigVisible = ref(false)
 const activeStep = ref(0)
 const currentType = ref('')
 const editDatasource = ref(false)
+const copyMode = ref(false)
 const activeName = ref('')
 const activeType = ref('')
 const datasourceFormRef = ref()
@@ -19,6 +20,7 @@ const datasourceFormRef = ref()
 const beforeClose = () => {
   datasourceConfigVisible.value = false
   activeStep.value = 0
+  copyMode.value = false
   datasourceApi.cancelRequests()
 }
 const clickDatasource = (ele: any) => {
@@ -38,6 +40,7 @@ const refresh = () => {
   activeName.value = ''
   activeStep.value = 0
   activeType.value = ''
+  copyMode.value = false
   datasourceConfigVisible.value = false
   emits('search')
 }
@@ -54,7 +57,23 @@ const handleEditDatasource = (res: any) => {
 
 const handleAddDatasource = () => {
   editDatasource.value = false
+  copyMode.value = false
   datasourceConfigVisible.value = true
+}
+
+const handleCopyDatasource = (item: any) => {
+  editDatasource.value = false
+  copyMode.value = true
+  datasourceApi.getDs(item.id).then((res: any) => {
+    activeStep.value = 1
+    activeName.value = res.type_name
+    activeType.value = res.type
+    currentType.value = res.type_name
+    datasourceConfigVisible.value = true
+    nextTick(() => {
+      datasourceFormRef.value?.initFormForCopy(res)
+    })
+  })
 }
 
 const changeActiveStep = (val: number) => {
@@ -64,6 +83,7 @@ const changeActiveStep = (val: number) => {
 defineExpose({
   handleEditDatasource,
   handleAddDatasource,
+  handleCopyDatasource,
 })
 </script>
 
@@ -82,7 +102,9 @@ defineExpose({
       <span style="white-space: nowrap">{{
         editDatasource
           ? t('datasource.mysql_data_source', { msg: currentType })
-          : $t('datasource.new_data_source')
+          : copyMode
+            ? t('datasource.copy_data_source')
+            : $t('datasource.new_data_source')
       }}</span>
       <div v-if="!editDatasource" class="flex-center" style="width: 100%">
         <el-steps custom style="max-width: 800px; flex: 1" :active="activeStep" align-center>
@@ -103,7 +125,7 @@ defineExpose({
     </template>
     <DatasourceList v-if="activeStep === 0" @click-datasource="clickDatasource"></DatasourceList>
     <DatasourceListSide
-      v-if="activeStep === 1 && !editDatasource"
+      v-if="activeStep === 1 && !editDatasource && !copyMode"
       :active-name="activeName"
       @click-datasource="clickDatasourceSide"
     ></DatasourceListSide>

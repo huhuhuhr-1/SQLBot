@@ -83,6 +83,13 @@
     "description_cannot_be_empty": "术语描述不能为空",
     "datasource_not_found": "找不到数据源"
   },
+  "i18n_dict": {
+    "code_name_required": "字典名称与编码不能为空",
+    "code_exists": "同一工作空间下字典编码已存在",
+    "not_found": "字典不存在",
+    "table_column_required": "表名与列名不能为空",
+    "binding_exists": "该数据源下此表字段已绑定字典"
+  },
   "i18n_data_training": {
     "datasource_list_is_not_found": "数据源列表未找到",
     "datasource_id_not_found": "数据源ID: {key} 未找到",

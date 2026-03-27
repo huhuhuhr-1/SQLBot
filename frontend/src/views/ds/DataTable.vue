@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, reactive, nextTick, watch } from 'vue'
 import { datasourceApi } from '@/api/datasource'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
@@ -12,7 +12,10 @@ import ParamsForm from './ParamsForm.vue'
 import UploaderRemark from '@/views/system/excel-upload/UploaderRemark.vue'
 import TableRelationship from '@/views/ds/TableRelationship.vue'
 import icon_mindnote_outlined from '@/assets/svg/icon_mindnote_outlined.svg'
+import icon_ai from '@/assets/svg/icon_ai.svg'
+import icon_warning_filled from '@/assets/svg/icon_warning_filled.svg'
 import { Refresh } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus-secondary'
 import { debounce } from 'lodash-es'
 
 interface Table {
@@ -90,8 +93,37 @@ const singleDragStartD = (e: DragEvent, ele: any) => {
   e.dataTransfer!.setData('table', JSON.stringify(ele))
 }
 
+const tableRelationshipRef = ref<{ addAllTables: (tables: any[]) => void } | null>(null)
 const getTableName = (val: any) => {
   tableName.value = val
+}
+
+const batchAddVisible = ref(false)
+const batchAddSelectedIds = ref<number[]>([])
+const handleOpenBatchAdd = () => {
+  if (!tableList.value.length) {
+    ElMessage.info(t('training.no_tables_to_add'))
+    return
+  }
+  batchAddSelectedIds.value = [...tableName.value]
+  batchAddVisible.value = true
+}
+const handleBatchSelectAll = (checked: boolean | unknown) => {
+  const allIds = tableList.value.map((table) => table.id)
+  batchAddSelectedIds.value = checked ? [...allIds] : []
+}
+const handleBatchAddConfirm = () => {
+  const idsOnCanvas = new Set(tableName.value)
+  const toAddIds = batchAddSelectedIds.value.filter((id) => !idsOnCanvas.has(id))
+  if (!toAddIds.length) {
+    batchAddVisible.value = false
+    return
+  }
+  const toAdd = tableList.value.filter((table) => toAddIds.includes(table.id))
+  batchAddVisible.value = false
+  nextTick(() => {
+    tableRelationshipRef.value?.addAllTables(toAdd)
+  })
 }
 
 const singleDragEnd = () => {
@@ -160,26 +192,67 @@ const handleSelectTableList = () => {
   paramsFormRef.value.open(props.info)
 }
 
+const relationshipDrawerVisible = ref(false)
+const relationshipDetailLoading = ref(false)
+
+watch(activeRelationship, (v) => {
+  if (!v) relationshipDrawerVisible.value = false
+})
+
+const applyFieldListResult = (res: any) => {
+  fieldList.value = res
+  pageInfo.total = res.length
+  pageInfo.currentPage = 1
+  fieldName.value = ''
+}
+
 const clickTable = (table: any) => {
-  if (activeRelationship.value) return
-  loading.value = true
   currentTable.value = table
   fieldList.value = []
   pageInfo.total = 0
   previewData.value = []
+
+  if (activeRelationship.value) {
+    relationshipDrawerVisible.value = true
+    relationshipDetailLoading.value = true
+    datasourceApi
+      .fieldList(table.id)
+      .then((res) => applyFieldListResult(res))
+      .finally(() => {
+        relationshipDetailLoading.value = false
+      })
+    return
+  }
+
+  loading.value = true
   datasourceApi
     .fieldList(table.id)
     .then((res) => {
-      fieldList.value = res
-      pageInfo.total = res.length
-      pageInfo.currentPage = 1
-      fieldName.value = ''
-      datasourceApi.previewData(props.info.id, buildData()).then((res) => {
-        previewData.value = res
-      })
+      applyFieldListResult(res)
+      return datasourceApi.previewData(props.info.id, buildData())
+    })
+    .then((res) => {
+      previewData.value = res
     })
     .finally(() => {
       loading.value = false
+    })
+}
+
+const onOpenTableFromCanvas = (payload: { id: string | number }) => {
+  const table = tableList.value.find((x: any) => String(x.id) === String(payload.id))
+  if (!table) {
+    ElMessage.info(t('training.open_table_not_in_list'))
+    return
+  }
+  currentTable.value = table
+  relationshipDrawerVisible.value = true
+  relationshipDetailLoading.value = true
+  datasourceApi
+    .fieldList(table.id)
+    .then((res) => applyFieldListResult(res))
+    .finally(() => {
+      relationshipDetailLoading.value = false
     })
 }
 
@@ -266,6 +339,109 @@ const syncFields = () => {
     })
     .catch(() => {
       loading.value = false
+    })
+}
+
+/** 字段备注不全的表 id 集合，用于在左侧表名旁显示警告 */
+const tablesWithIncompleteRemark = ref<number[]>([])
+
+const hasIncompleteRemark = (tableId: number) => tablesWithIncompleteRemark.value.includes(tableId)
+
+const smartDetectLoading = ref(false)
+/** 批量检测左侧数据表列表中所有表的字段备注，在表名旁标记备注不全的表 */
+const smartDetect = () => {
+  const list = tableList.value
+  if (!list?.length) {
+    ElMessage.warning(t('ds.smart_detect_no_tables'))
+    return
+  }
+  smartDetectLoading.value = true
+  Promise.all(
+    list.map((table: any) =>
+      datasourceApi.fieldList(table.id).then((fields: any[]) => ({
+        tableId: table.id,
+        incomplete: (fields || []).some((f: any) => !(f.custom_comment || '').trim()),
+      }))
+    )
+  )
+    .then((results) => {
+      const incompleteIds = results.filter((r) => r.incomplete).map((r) => r.tableId)
+      tablesWithIncompleteRemark.value = incompleteIds
+      if (incompleteIds.length > 0) {
+        ElMessage.warning(t('ds.smart_detect_done_incomplete', { count: incompleteIds.length }))
+      } else {
+        ElMessage.success(t('ds.smart_detect_done_ok'))
+      }
+    })
+    .catch(() => {
+      ElMessage.error(t('ds.smart_comment_failed'))
+    })
+    .finally(() => {
+      smartDetectLoading.value = false
+    })
+}
+
+const smartCommentLoading = ref(false)
+/** 智能备注模式：只备注未备注 / 全部备注覆盖 */
+const smartCommentMode = ref<'only_empty' | 'overwrite_all'>('overwrite_all')
+
+const smartComment = () => {
+  if (!currentTable.value?.id) {
+    ElMessage.warning(t('ds.smart_comment_no_table'))
+    return
+  }
+  const pageFields = fieldListComputed.value
+  if (!pageFields?.length) {
+    ElMessage.warning(t('ds.smart_comment_no_fields'))
+    return
+  }
+  const isOnlyEmpty = smartCommentMode.value === 'only_empty'
+  const fieldsToProcess = isOnlyEmpty
+    ? pageFields.filter((f: any) => !(f.custom_comment || '').trim())
+    : pageFields
+  if (isOnlyEmpty && !fieldsToProcess.length) {
+    ElMessage.warning(t('ds.smart_comment_no_empty_fields'))
+    return
+  }
+  smartCommentLoading.value = true
+  const payload = fieldsToProcess.map((f: any) => ({
+    id: f.id,
+    field_name: f.field_name,
+    field_comment: f.field_comment,
+  }))
+  const emptyIds = new Set(isOnlyEmpty ? fieldsToProcess.map((f: any) => f.id) : [])
+  datasourceApi
+    .inferFieldComments(currentTable.value.id, payload)
+    .then((res) => {
+      const suggestions = res?.suggestions || []
+      const idToComment = Object.fromEntries(suggestions.map((s: any) => [s.field_id, s.suggested_comment || '']))
+      for (const field of fieldList.value) {
+        if (field.id in idToComment && (!isOnlyEmpty || emptyIds.has(field.id))) {
+          field.custom_comment = idToComment[field.id]
+        }
+      }
+      const toSave = isOnlyEmpty
+        ? suggestions.filter((s: any) => emptyIds.has(s.field_id) && (s.suggested_comment || '').trim() !== '')
+        : suggestions.filter((s: any) => (s.suggested_comment || '').trim() !== '')
+      return Promise.all(
+        toSave.map((s: any) => {
+          const f = fieldList.value.find((x: any) => x.id === s.field_id)
+          return f ? datasourceApi.saveField(f) : Promise.resolve()
+        })
+      )
+    })
+    .then((savedCount) => {
+      if (isOnlyEmpty && Array.isArray(savedCount) && savedCount.length > 0) {
+        ElMessage.success(t('ds.smart_comment_success_count', { count: savedCount.length }))
+      } else {
+        ElMessage.success(t('ds.smart_comment_success'))
+      }
+    })
+    .catch((e) => {
+      ElMessage.error(e?.message || t('ds.smart_comment_failed'))
+    })
+    .finally(() => {
+      smartCommentLoading.value = false
     })
 }
 
@@ -385,23 +561,41 @@ const btnSelectClick = (val: any) => {
         ></UploaderRemark>
       </div>
     </div>
-    <div class="content">
+    <div
+      class="content"
+      v-loading="smartCommentLoading"
+      :element-loading-text="t('ds.smart_comment_loading')"
+    >
       <div class="side-list">
         <div class="select-table_top">
-          {{ $t('ds.tables') }}
-
-          <el-tooltip
-            effect="dark"
-            offset="10"
-            :content="$t('ds.form.choose_tables')"
-            placement="top"
-          >
-            <el-button style="margin-right: -4px" text @click="handleSelectTableList">
-              <el-icon size="18">
-                <icon_form_outlined></icon_form_outlined>
-              </el-icon>
-            </el-button>
-          </el-tooltip>
+          <span>{{ $t('ds.tables') }}</span>
+          <div class="select-table_top-actions">
+            <el-tooltip
+              effect="dark"
+              offset="10"
+              :content="$t('ds.form.choose_tables')"
+              placement="top"
+            >
+              <el-button style="margin-right: -4px" text @click="handleSelectTableList">
+                <el-icon size="18">
+                  <icon_form_outlined></icon_form_outlined>
+                </el-icon>
+              </el-button>
+            </el-tooltip>
+            <el-tooltip
+              effect="dark"
+              :content="$t('ds.smart_detect_tooltip')"
+              placement="top"
+            >
+              <el-button
+                :loading="smartDetectLoading"
+                text
+                @click="smartDetect"
+              >
+                {{ t('ds.smart_detect') }}
+              </el-button>
+            </el-tooltip>
+          </div>
         </div>
         <el-input
           v-model="keywords"
@@ -416,7 +610,11 @@ const btnSelectClick = (val: any) => {
           </template>
         </el-input>
 
-        <div v-loading="initLoading" class="list-content">
+        <div
+          v-loading="initLoading || smartDetectLoading"
+          class="list-content"
+          :element-loading-text="smartDetectLoading ? t('ds.smart_detect_loading') : undefined"
+        >
           <el-scrollbar v-if="tableListWithSearch.length">
             <div
               v-for="ele in tableListWithSearch"
@@ -436,6 +634,16 @@ const btnSelectClick = (val: any) => {
                 <icon_form_outlined></icon_form_outlined>
               </el-icon>
               <span class="name">{{ ele.table_name }}</span>
+              <el-tooltip
+                v-if="hasIncompleteRemark(ele.id)"
+                effect="dark"
+                :content="t('ds.smart_detect_tooltip')"
+                placement="top"
+              >
+                <el-icon size="14" class="table-warning-icon">
+                  <icon_warning_filled></icon_warning_filled>
+                </el-icon>
+              </el-tooltip>
             </div>
           </el-scrollbar>
           <EmptyBackground
@@ -466,13 +674,22 @@ const btnSelectClick = (val: any) => {
       </div>
 
       <div v-if="activeRelationship" class="relationship-content">
-        <div class="title">{{ t('training.table_relationship_management') }}</div>
+        <div class="relationship-title-row">
+          <span class="title">{{ t('training.table_relationship_management') }}</span>
+          <div class="relationship-actions">
+            <el-button secondary @click="handleOpenBatchAdd">
+              {{ t('training.batch_add_tables') }}
+            </el-button>
+          </div>
+        </div>
         <div class="content">
           <TableRelationship
+            ref="tableRelationshipRef"
             :id="info.id"
             :dragging="isDrag"
             @get-table-name="getTableName"
-          ></TableRelationship>
+            @open-table-detail="onOpenTableFromCanvas"
+          />
         </div>
       </div>
 
@@ -550,6 +767,24 @@ const btnSelectClick = (val: any) => {
               @click="syncFields()"
             >
               {{ t('ds.sync_fields') }}
+            </el-button>
+            <el-select
+              v-model="smartCommentMode"
+              size="default"
+              style="margin-left: 12px; width: 140px"
+            >
+              <el-option value="only_empty" :label="t('ds.smart_comment_mode_only_empty')" />
+              <el-option value="overwrite_all" :label="t('ds.smart_comment_mode_overwrite_all')" />
+            </el-select>
+            <el-button
+              :loading="smartCommentLoading"
+              style="margin-left: 8px"
+              @click="smartComment()"
+            >
+              <el-icon class="smart-comment-ai-icon" style="margin-right: 4px">
+                <icon_ai></icon_ai>
+              </el-icon>
+              {{ t('ds.smart_comment') }}
             </el-button>
           </div>
 
@@ -687,10 +922,128 @@ const btnSelectClick = (val: any) => {
       <el-button type="primary" @click="saveField">{{ t('common.save') }}</el-button>
     </div>
   </el-dialog>
+
+  <el-dialog
+    v-model="batchAddVisible"
+    :title="t('training.batch_add_tables')"
+    width="480px"
+    :destroy-on-close="true"
+  >
+    <div class="batch-add-toolbar">
+      <el-checkbox
+        :model-value="batchAddSelectedIds.length === tableList.length"
+        :indeterminate="batchAddSelectedIds.length > 0 && batchAddSelectedIds.length < tableList.length"
+        @change="handleBatchSelectAll"
+      >
+        {{ t('training.select_all') }}
+      </el-checkbox>
+    </div>
+    <el-checkbox-group v-model="batchAddSelectedIds">
+      <div class="batch-add-list">
+        <el-checkbox
+          v-for="table in tableList"
+          :key="table.id"
+          :label="table.id"
+          class="batch-add-item"
+        >
+          {{ table.table_name }}
+        </el-checkbox>
+      </div>
+    </el-checkbox-group>
+    <template #footer>
+      <el-button secondary @click="batchAddVisible = false">{{ t('common.cancel') }}</el-button>
+      <el-button
+        type="primary"
+        :disabled="!batchAddSelectedIds.length"
+        @click="handleBatchAddConfirm"
+      >
+        {{ t('training.add_selected') }}
+      </el-button>
+    </template>
+  </el-dialog>
+
+  <el-drawer
+    v-model="relationshipDrawerVisible"
+    :title="currentTable.table_name || t('training.relationship_table_detail')"
+    size="520px"
+    append-to-body
+  >
+    <div v-loading="relationshipDetailLoading" class="relationship-drawer-body">
+      <div v-if="currentTable.table_name" class="drawer-table-notes">
+        {{ $t('about.remark') }}:
+        <span :title="currentTable.custom_comment" class="field-notes">{{
+          currentTable.custom_comment || '-'
+        }}</span>
+        <el-tooltip :offset="14" effect="dark" :content="$t('datasource.edit')" placement="top">
+          <el-icon style="margin-left: 8px; cursor: pointer" size="16" @click="editTable">
+            <edit></edit>
+          </el-icon>
+        </el-tooltip>
+      </div>
+      <el-input
+        v-model="fieldName"
+        style="width: 100%; margin-bottom: 12px"
+        :placeholder="t('dashboard.search')"
+        clearable
+        autocomplete="off"
+        @input="fieldNameSearch"
+      />
+      <el-table row-class-name="hover-icon_edit" :data="fieldListComputed" style="width: 100%">
+        <el-table-column prop="field_name" :label="t('datasource.field_name')" width="140" />
+        <el-table-column prop="field_type" :label="t('datasource.field_type')" width="120" />
+        <el-table-column prop="field_comment" :label="t('datasource.field_original_notes')" />
+        <el-table-column :label="t('datasource.field_notes_1')">
+          <template #default="scope">
+            <div class="field-comment">
+              <span :title="scope.row.custom_comment" class="notes-in_table">{{
+                scope.row.custom_comment
+              }}</span>
+              <el-tooltip :offset="14" effect="dark" :content="$t('datasource.edit')" placement="top">
+                <el-icon class="action-btn" size="16" @click="editField(scope.row)">
+                  <edit></edit>
+                </el-icon>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('datasource.enabled_status')" width="100">
+          <template #default="scope">
+            <el-switch
+              v-model="scope.row.checked"
+              size="small"
+              @change="changeStatus(scope.row)"
+            />
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="pageInfo.total" class="pagination-container">
+        <el-pagination
+          v-model:current-page="pageInfo.currentPage"
+          v-model:page-size="pageInfo.pageSize"
+          :page-sizes="[10, 20, 30]"
+          :background="true"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="pageInfo.total"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
+    </div>
+  </el-drawer>
+
   <ParamsForm ref="paramsFormRef" @refresh="refresh"></ParamsForm>
 </template>
 
 <style lang="less" scoped>
+.relationship-drawer-body {
+  min-height: 200px;
+}
+.drawer-table-notes {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #646a73;
+}
+
 .data-table {
   height: 100%;
   .info {
@@ -789,6 +1142,11 @@ const btnSelectClick = (val: any) => {
         padding: 8px;
         font-weight: 500;
 
+        .select-table_top-actions {
+          display: flex;
+          align-items: center;
+        }
+
         .ed-icon {
           cursor: pointer;
           color: var(--ed-color-primary);
@@ -838,6 +1196,12 @@ const btnSelectClick = (val: any) => {
             overflow: hidden;
             text-overflow: ellipsis;
           }
+
+          .table-warning-icon {
+            margin-left: 6px;
+            flex-shrink: 0;
+            color: var(--ed-color-warning, #f7ba2a);
+          }
           &:hover {
             background: #1f23291a;
           }
@@ -875,13 +1239,25 @@ const btnSelectClick = (val: any) => {
         width: 100%;
       }
 
-      .title {
+      .relationship-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         height: 56px;
         padding-left: 24px;
+        padding-right: 16px;
         line-height: 56px;
-        font-weight: 500;
-        font-size: 16px;
         border-bottom: 1px solid #1f232926;
+
+        .title {
+          font-weight: 500;
+          font-size: 16px;
+        }
+
+        .relationship-actions {
+          display: flex;
+          gap: 8px;
+        }
       }
     }
     .info-table {
@@ -957,6 +1333,11 @@ const btnSelectClick = (val: any) => {
           right: 24px;
           top: 16px;
           display: flex;
+        }
+
+        .smart-comment-ai-icon {
+          width: 14px;
+          height: 14px;
         }
 
         .btn-select {
@@ -1073,6 +1454,20 @@ const btnSelectClick = (val: any) => {
 .notes-dialog {
   .ed-textarea__inner {
     line-height: 22px;
+  }
+}
+.batch-add-toolbar {
+  margin-bottom: 12px;
+}
+.batch-add-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .batch-add-item {
+    display: block;
   }
 }
 </style>

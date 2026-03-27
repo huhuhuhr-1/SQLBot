@@ -1,6 +1,7 @@
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Path, Query
-from sqlmodel import exists, or_, select, delete as sqlmodel_delete, update as sqlmodel_update   
+from typing import Optional, List
+from fastapi import APIRouter, HTTPException, Path, Query, Body
+from pydantic import BaseModel
+from sqlmodel import exists, or_, select, delete as sqlmodel_delete, update as sqlmodel_update
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.user import clean_user_cache
 from apps.system.crud.workspace import reset_single_user_oid, reset_user_oid
@@ -16,6 +17,106 @@ from common.core.schemas import PaginatedResponse, PaginationParams
 from common.utils.time import get_timestamp
 
 router = APIRouter(tags=["system_ws"], prefix="/system/workspace")
+
+
+class MemberExportItem(BaseModel):
+    uid: int
+    account: str
+    name: str
+    weight: int
+
+
+class MemberExportPayload(BaseModel):
+    version: int = 1
+    oid: int = 0
+    members: List[MemberExportItem] = []
+
+
+class MemberImportItem(BaseModel):
+    account: str
+    weight: int = 0
+
+
+class MemberImportPayload(BaseModel):
+    members: List[MemberImportItem] = []
+
+
+@router.post("/uws/export", response_model=MemberExportPayload, summary="全部导出成员",
+             description="导出当前工作空间全部成员（账号、姓名、权重）。")
+@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+async def uws_export_all(
+    session: SessionDep,
+    current_user: CurrentUser,
+    trans: Trans,
+    oid: Optional[int] = Query(None, description="空间ID(仅admin生效)"),
+):
+    if current_user.isAdmin and oid is not None:
+        workspace_id = oid
+    else:
+        workspace_id = current_user.oid or 1
+    stmt = (
+        select(UserModel.id, UserModel.account, UserModel.name, UserWsModel.weight)
+        .join(UserWsModel, UserModel.id == UserWsModel.uid)
+        .where(UserWsModel.oid == workspace_id, UserModel.id != 1)
+        .order_by(UserModel.account)
+    )
+    rows = session.exec(stmt).all()
+    members = [
+        MemberExportItem(uid=r[0], account=r[1] or "", name=r[2] or "", weight=r[3] or 0)
+        for r in rows
+    ]
+    return MemberExportPayload(version=1, oid=workspace_id, members=members)
+
+
+@router.post("/uws/import", response_model=List[MemberExportItem], summary="批量导入成员",
+             description="合并导入：按账号匹配，存在则更新权重，不存在则加入工作空间。")
+@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@system_log(LogConfig(operation_type=OperationType.ADD, module=OperationModules.MEMBER))
+async def uws_import(
+    session: SessionDep,
+    current_user: CurrentUser,
+    trans: Trans,
+    body: MemberImportPayload = Body(...),
+    oid: Optional[int] = Query(None, description="空间ID(仅admin生效)"),
+):
+    if current_user.isAdmin and oid is not None:
+        workspace_id = oid
+    else:
+        workspace_id = current_user.oid or 1
+    result = []
+    for item in body.members or []:
+        if not item.account or not item.account.strip():
+            continue
+        account = item.account.strip()
+        user = session.exec(select(UserModel).where(UserModel.account == account, UserModel.id != 1)).first()
+        if not user:
+            continue
+        uid = user.id
+        existing = session.exec(
+            select(UserWsModel).where(UserWsModel.uid == uid, UserWsModel.oid == workspace_id)
+        ).first()
+        try:
+            if existing:
+                existing.weight = item.weight
+                session.add(existing)
+                session.commit()
+                await clean_user_cache(uid)
+            else:
+                session.add(
+                    UserWsModel(oid=workspace_id, uid=uid, weight=item.weight)
+                )
+                session.commit()
+                await reset_single_user_oid(session, uid, workspace_id)
+                await clean_user_cache(uid)
+            u = session.get(UserModel, uid)
+            result.append(
+                MemberExportItem(uid=uid, account=u.account or "", name=u.name or "", weight=item.weight)
+            )
+        except Exception:
+            session.rollback()
+            continue
+    return result
+
 
 @router.get("/uws/option/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[UserWsOption], summary=f"{PLACEHOLDER_PREFIX}ws_user_grid_api", description=f"{PLACEHOLDER_PREFIX}ws_user_grid_api")
 @require_permissions(permission=SqlbotPermission(role=['ws_admin']))

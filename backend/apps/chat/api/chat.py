@@ -14,7 +14,7 @@ from apps.chat.curd.chat import delete_chat_with_user, get_chart_data_with_user,
     list_chats, get_chat_with_records, create_chat, rename_chat, \
     delete_chat, get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data, get_chat_record_by_id, \
     format_json_data, format_json_list_data, get_chart_config, list_recent_questions, get_chat as get_chat_exec, \
-    rename_chat_with_user, get_chat_log_history, get_chart_data_with_user_live
+    rename_chat_with_user, get_chat_log_history, get_chart_data_with_user_live, delete_chat_record_with_user
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand, \
     ChatInfo, Chat, ChatFinishStep
 from apps.chat.task.llm import LLMService
@@ -174,10 +174,24 @@ async def delete(session: SessionDep, current_user: CurrentUser, chart_id: int, 
     try:
         return delete_chat_with_user(session=session, current_user=current_user, chart_id=chart_id)
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        # 该接口的“禁止删除深度分析会话”属于业务规则，前端不应把它当作服务端 500 错误
+        msg = str(e)
+        if "不允许删除深度分析会话" in msg:
+            status_code = 403
+        elif "not owned" in msg.lower():
+            status_code = 403
+        else:
+            status_code = 500
+
+        raise HTTPException(status_code=status_code, detail=msg)
+
+
+@router.delete("/record/{record_id}", response_model=str, summary=f"{PLACEHOLDER_PREFIX}delete_chat_record")
+async def delete_record(session: SessionDep, current_user: CurrentUser, record_id: int = Path(..., description="Chat record id")):
+    try:
+        return delete_chat_record_with_user(session=session, current_user=current_user, record_id=record_id)
+    except Exception as e:
+        raise HTTPException(status_code=403 if "not owned" in str(e).lower() else 404, detail=str(e))
 
 
 @router.post("/start", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}start_chat")

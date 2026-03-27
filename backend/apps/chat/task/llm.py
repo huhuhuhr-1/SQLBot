@@ -40,10 +40,12 @@ from apps.datasource.crud.permission import get_row_permission_filters, is_norma
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection
+from apps.system.crud import custom_prompt as system_custom_prompt_crud
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
+from apps.metric.curd.metric import get_metric_template
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
@@ -293,26 +295,86 @@ class LLMService:
                                                                 log=self.current_logs[OperationEnum.FILTER_TERMS],
                                                                 full_message=term_list)
 
+    def filter_metric_template(self, _session: Session, oid: int = None, ds_id: int = None):
+        calculate_oid = oid
+        calculate_ds_id = ds_id
+        if self.current_assistant:
+            calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.current_user.oid
+        self.current_logs[OperationEnum.FILTER_METRICS] = start_log(
+            session=_session,
+            operate=OperationEnum.FILTER_METRICS,
+            record_id=self.record.id,
+            local_operation=True,
+        )
+        self.chat_question.metrics, metric_list = get_metric_template(
+            _session, self.chat_question.question, calculate_oid, calculate_ds_id
+        )
+        self.current_logs[OperationEnum.FILTER_METRICS] = end_log(
+            session=_session,
+            log=self.current_logs[OperationEnum.FILTER_METRICS],
+            full_message=metric_list,
+        )
+
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, oid: int = None,
                               ds_id: int = None):
+        calculate_oid = oid
+        calculate_ds_id = ds_id
+        if self.current_assistant:
+            calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.current_user.oid
+            if self.current_assistant.type == 1:
+                calculate_ds_id = None
+
+        self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = start_log(
+            session=_session,
+            operate=OperationEnum.FILTER_CUSTOM_PROMPT,
+            record_id=self.record.id,
+            local_operation=True,
+        )
+
+        # 1. 兼容 xpack 自定义提示词（如有 License）
+        xpack_prompt: str = ""
+        xpack_list: list = []
         if SQLBotLicenseUtil.valid():
-            calculate_oid = oid
-            calculate_ds_id = ds_id
-            if self.current_assistant:
-                calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.current_user.oid
-                if self.current_assistant.type == 1:
-                    calculate_ds_id = None
-            self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = start_log(session=_session,
-                                                                              operate=OperationEnum.FILTER_CUSTOM_PROMPT,
-                                                                              record_id=self.record.id,
-                                                                              local_operation=True)
-            self.chat_question.custom_prompt, prompt_list = find_custom_prompts(_session, custom_prompt_type,
-                                                                                calculate_oid,
-                                                                                calculate_ds_id)
-            self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
-                                                                            log=self.current_logs[
-                                                                                OperationEnum.FILTER_CUSTOM_PROMPT],
-                                                                            full_message=prompt_list)
+            xpack_prompt, xpack_list = find_custom_prompts(
+                _session,
+                custom_prompt_type,
+                calculate_oid,
+                calculate_ds_id,
+            )
+
+        # 2. 系统内置 custom_prompt 作为补充规则，统一包成 <rule> 片段
+        system_rules_str: str = ""
+        system_rows = []
+        if custom_prompt_type in (
+            CustomPromptTypeEnum.GENERATE_SQL,
+            CustomPromptTypeEnum.ANALYSIS,
+            CustomPromptTypeEnum.PREDICT_DATA,
+        ):
+            system_rules_str, system_rows = system_custom_prompt_crud.build_rule_snippets(
+                _session,
+                calculate_oid or 1,
+                custom_prompt_type.value,
+                calculate_ds_id,
+            )
+
+        # 3. 合并结果：xpack 在前，系统规则在后
+        pieces: list[str] = []
+        if xpack_prompt:
+            pieces.append(xpack_prompt)
+        if system_rules_str:
+            pieces.append(system_rules_str)
+        self.chat_question.custom_prompt = "\n".join(pieces) if pieces else ""
+
+        # 4. 记录日志，包含 xpack 与系统规则明细，便于排查
+        full_message = {
+            "xpack": xpack_list,
+            "system": [r.prompt for r in system_rows],
+        }
+        self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(
+            session=_session,
+            log=self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT],
+            full_message=full_message,
+        )
 
     def filter_training_template(self, _session: Session, oid: int = None, ds_id: int = None):
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = start_log(session=_session,
@@ -641,6 +703,8 @@ class LLMService:
 
             self.filter_terminology_template(_session, oid, ds_id)
 
+            self.filter_metric_template(_session, oid, ds_id)
+
             self.filter_training_template(_session, oid, ds_id)
 
             self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, oid, ds_id)
@@ -650,7 +714,107 @@ class LLMService:
         if _error:
             raise _error
 
+        # modify by huhuhuhr
+
+    def stream_with_think(self, raw_stream: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
+        for chunk in self.model_think_parse(raw_stream):
+            SQLBotLogUtil.debug(f"stream_with_think-chunk:{chunk}")
+            yield chunk
+
+        # modify by huhuhuhr
+
+    def model_think_parse(self, chunks: Iterator[BaseMessageChunk]) -> Iterator[BaseMessageChunk]:
+        THINK_BEGIN_TAG = "<think>"
+        THINK_END_TAG = "</think>"
+        response_content = ""
+        force_think_begin = False
+        tag_begin = False
+        think_begin = True if force_think_begin else False
+        think_end = False
+
+        for chunk in chunks:
+            SQLBotLogUtil.info(f"original chunk:{chunk}")
+            if (chunk.additional_kwargs and hasattr(chunk.additional_kwargs, "reasoning_content")
+                    and chunk.additional_kwargs["reasoning_content"] is not None and chunk.additional_kwargs[
+                        "reasoning_content"] != ''):
+                yield chunk
+                continue
+            token = chunk.content
+            # 分次处理输入字符，以缓冲的为准，防止连续的 < 符号判断导致丢失 tag 的前部分，导致出错，如 <\n</|th|in|k>
+            if "<" in token:
+                tag_begin = True
+                response_content = ""
+
+            if tag_begin:
+                response_content += token
+                if not force_think_begin and not think_begin and THINK_BEGIN_TAG in response_content:
+                    think_begin = True
+                    tag_begin = False
+                elif not think_end and THINK_END_TAG in response_content:
+                    # 返回 think 结束之前的内容
+                    end_index = response_content.index(THINK_END_TAG) + len(THINK_END_TAG)
+                    chunk.additional_kwargs["reasoning_content"] = response_content[:end_index]
+                    chunk.content = ''
+                    yield chunk
+                    think_end = True
+                    tag_begin = False
+                    # 返回 think 结束之后的内容（如果有）
+                    response_content = response_content[end_index:]
+                    if response_content == "":
+                        continue
+                # 去除 < 符号之前的字符，防止 < 符号之前有其他字符导致判断出错
+                elif (response_content[response_content.index("<"):] not in THINK_BEGIN_TAG
+                      and response_content[response_content.index("<"):] not in THINK_END_TAG):
+                    tag_begin = False
+
+            if tag_begin:
+                continue
+
+            if response_content == "":
+                response_content = token
+            if response_content == "":
+                continue
+
+            if think_begin and not think_end:
+                chunk.additional_kwargs["reasoning_content"] = response_content
+                chunk.content = ''
+                yield chunk
+            else:
+                chunk.content = response_content
+                yield chunk
+            response_content = ""
+
     def generate_sql(self, _session: Session):
+        full_thinking_text = ''
+        full_sql_text = ''
+        token_usage = {}
+
+        # 开启加强型思考为sql生成做参考
+        if self.chat_question.is_enhanced_think:
+            think_result = ''
+            temp_think_result = ''
+
+            enhanced_think_prompt = self.chat_question.enhanced_think_question(
+                current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            res = process_stream(self.stream_with_think(self.llm.stream(enhanced_think_prompt)), token_usage)
+
+            for chunk in res:
+                if chunk.get('content'):
+                    chunk['reasoning_content'] = chunk.get('content')
+                    chunk['content'] = ""
+                    think_result += chunk.get('reasoning_content')
+
+                full_thinking_text += chunk.get('reasoning_content')
+                temp_think_result += chunk.get('reasoning_content')
+
+                yield chunk
+
+            if len(think_result) == 0:
+                think_result = temp_think_result
+
+            self.chat_question.enhanced_think_result = think_result
+            SQLBotLogUtil.info(f"\n\nenhanced think result:\n {think_result}\n")
+
         # append current question
         self.sql_message.append(HumanMessage(
             self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -664,9 +828,6 @@ class LLMService:
                                                                   full_message=[
                                                                       {'type': msg.type, 'content': msg.content} for msg
                                                                       in self.sql_message])
-        full_thinking_text = ''
-        full_sql_text = ''
-        token_usage = {}
         res = process_stream(self.llm.stream(self.sql_message), token_usage)
         for chunk in res:
             if chunk.get('content'):
@@ -1085,6 +1246,8 @@ class LLMService:
 
                 self.filter_terminology_template(_session, oid, ds_id)
 
+                self.filter_metric_template(_session, oid, ds_id)
+
                 self.filter_training_template(_session, oid, ds_id)
 
                 self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, oid, ds_id)
@@ -1133,10 +1296,14 @@ class LLMService:
             sql_res = self.generate_sql(_session)
             full_sql_text = ''
             for chunk in sql_res:
-                full_sql_text += chunk.get('content') or ''
+                if not isinstance(chunk, dict):
+                    chunk = {'content': str(chunk) if chunk else '', 'reasoning_content': ''}
+                content = chunk.get('content') or ''
+                reasoning_content = chunk.get('reasoning_content') or ''
+                full_sql_text += content
                 if in_chat:
                     yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                        {'content': content, 'reasoning_content': reasoning_content,
                          'type': 'sql-result'}).decode() + '\n\n'
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'

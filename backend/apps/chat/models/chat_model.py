@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Body
 from pydantic import BaseModel
@@ -18,6 +18,7 @@ from apps.template.generate_guess_question.generator import get_guess_question_t
 from apps.template.generate_predict.generator import get_predict_template
 from apps.template.generate_sql.generator import get_sql_template, get_sql_example_template
 from apps.template.select_datasource.generator import get_datasource_template
+from apps.openapi.service.openapi_prompt import get_myself_template
 
 
 def enum_values(enum_class: type[Enum]) -> list:
@@ -44,6 +45,7 @@ class OperationEnum(Enum):
     FILTER_TERMS = '9'
     FILTER_SQL_EXAMPLE = '10'
     FILTER_CUSTOM_PROMPT = '11'
+    FILTER_METRICS = '14'
     EXECUTE_SQL = '12'
     GENERATE_PICTURE = '13'
 
@@ -224,10 +226,63 @@ class AiModelQuestion(BaseModel):
     filter: str = []
     sub_query: Optional[list[dict]] = None
     terminologies: str = ""
+    metrics: str = ""
     data_training: str = ""
     custom_prompt: str = ""
     error_msg: str = ""
     regenerate_record_id: Optional[int] = None
+
+    # 新增字段用于增强思考
+    is_enhanced_think: bool = True
+    enhanced_think_result: str = None
+    user_name: str = None
+
+    # 新增用户信息
+    user_name: Optional[str] = Body(default=None, description='用户名')
+    analysis_complexity: str = "medium"
+    analysis_main_question: Optional[str] = None
+    analysis_plan: Optional[Dict[str, Any]] = None
+
+    # modify by huhuhuhr
+    def sql_sys_question_with_schema(self, db_type: Union[str, DB], enable_query_limit: bool = True, mySchema: str = None):
+        if mySchema:
+            tmp_schema = mySchema
+        else:
+            tmp_schema = self.db_schema
+        _sql_template = get_sql_example_template(db_type)
+        _base_template = get_sql_template()
+        _process_check = _sql_template.get('process_check') if _sql_template.get('process_check') else _base_template[
+            'process_check']
+        _query_limit = _base_template['query_limit'] if enable_query_limit else _base_template['no_query_limit']
+        _base_sql_rules = _sql_template['quot_rule'] + _query_limit + _sql_template['limit_rule'] + _sql_template[
+            'other_rule']
+        _sql_examples = _sql_template['basic_example']
+        _example_engine = _sql_template['example_engine']
+        _example_answer_1 = _sql_template['example_answer_1_with_limit'] if enable_query_limit else _sql_template[
+            'example_answer_1']
+        _example_answer_2 = _sql_template['example_answer_2_with_limit'] if enable_query_limit else _sql_template[
+            'example_answer_2']
+        _example_answer_3 = _sql_template['example_answer_3_with_limit'] if enable_query_limit else _sql_template[
+            'example_answer_3']
+        return _base_template['system'].format(engine=self.engine, schema=tmp_schema, question=self.question,
+                                               lang=self.lang, terminologies=self.terminologies,
+                                               metrics=self.metrics,
+                                               data_training=self.data_training, custom_prompt=self.custom_prompt,
+                                               process_check=_process_check,
+                                               base_sql_rules=_base_sql_rules,
+                                               basic_sql_examples=_sql_examples,
+                                               example_engine=_example_engine,
+                                               example_answer_1=_example_answer_1,
+                                               example_answer_2=_example_answer_2,
+                                               example_answer_3=_example_answer_3)
+
+    # modify by huhuhuhr
+    def analysis_user_question_with_schema(self, mySchema: str = None):
+        if mySchema:
+            tmp_schema = mySchema
+        else:
+            tmp_schema = self.fields
+        return get_analysis_template()['user'].format(fields=tmp_schema, data=self.data)
 
     def sql_sys_question(self, db_type: Union[str, DB], enable_query_limit: bool = True):
         _sql_template = get_sql_example_template(db_type)
@@ -245,25 +300,80 @@ class AiModelQuestion(BaseModel):
             'example_answer_2']
         _example_answer_3 = _sql_template['example_answer_3_with_limit'] if enable_query_limit else _sql_template[
             'example_answer_3']
-        return _base_template['system'].format(engine=self.engine, schema=self.db_schema, question=self.question,
-                                               lang=self.lang, terminologies=self.terminologies,
-                                               data_training=self.data_training, custom_prompt=self.custom_prompt,
-                                               process_check=_process_check,
-                                               base_sql_rules=_base_sql_rules,
-                                               basic_sql_examples=_sql_examples,
-                                               example_engine=_example_engine,
-                                               example_answer_1=_example_answer_1,
-                                               example_answer_2=_example_answer_2,
-                                               example_answer_3=_example_answer_3)
+        return _base_template['system'].format(
+            engine=self.engine,
+            schema=self.db_schema,
+            question=self.question,
+            lang=self.lang,
+            terminologies=self.terminologies,
+            metrics=self.metrics,
+            data_training=self.data_training,
+            custom_prompt=self.custom_prompt or "",
+            process_check=_process_check,
+            base_sql_rules=_base_sql_rules,
+            basic_sql_examples=_sql_examples,
+            example_engine=_example_engine,
+            example_answer_1=_example_answer_1,
+            example_answer_2=_example_answer_2,
+            example_answer_3=_example_answer_3,
+        )
 
     def sql_user_question(self, current_time: str, change_title: bool):
         _question = self.question
         if self.regenerate_record_id:
             _question = get_sql_template()['regenerate_hint'] + self.question
-        return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=_question,
-                                                 rule=self.rule, current_time=current_time, error_msg=self.error_msg,
-                                                 change_title=change_title)
+        analysis_context = self.sql_analysis_context()
+        question_prompt = get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=_question,
+                                                            rule=self.rule, current_time=current_time,
+                                                            error_msg=self.error_msg,
+                                                            change_title=change_title,
+                                                            thinking_result=(self.enhanced_think_result or ''))
+        if analysis_context:
+            question_prompt += f"\n{analysis_context}"
+        return question_prompt
 
+    def sql_analysis_context(self) -> str:
+        if not self.analysis_plan:
+            return ""
+
+        required_fields = self.analysis_plan.get("required_fields") or []
+        forbidden_shapes = self.analysis_plan.get("forbidden_query_shapes") or []
+        subquestions = self.analysis_plan.get("subquestions") or []
+
+        required_fields_text = "\n".join(f"- {item}" for item in required_fields) or "- 无"
+        forbidden_shapes_text = "\n".join(f"- {item}" for item in forbidden_shapes) or "- 无"
+        subquestions_text = "\n".join(f"- {item}" for item in subquestions) or "- 无"
+
+        return (
+            "<analysis-execution-context>\n"
+            f"<main-question>{self.analysis_main_question or self.question}</main-question>\n"
+            f"<task-type>{self.analysis_plan.get('task_type', 'aggregate')}</task-type>\n"
+            f"<query-mode>{self.analysis_plan.get('query_mode', 'aggregate')}</query-mode>\n"
+            f"<answer-granularity>{self.analysis_plan.get('answer_granularity', 'direct_evidence')}</answer-granularity>\n"
+            f"<required-result-shape>{self.analysis_plan.get('required_result_shape', '')}</required-result-shape>\n"
+            "<required-fields>\n"
+            f"{required_fields_text}\n"
+            "</required-fields>\n"
+            "<forbidden-query-shapes>\n"
+            f"{forbidden_shapes_text}\n"
+            "</forbidden-query-shapes>\n"
+            "<subquestions>\n"
+            f"{subquestions_text}\n"
+            "</subquestions>\n"
+            "<instruction>\n"
+            "先判断当前取数请求属于聚合、排序、对比、趋势还是快照/详情问题，再选择对应的 SQL 形态。"
+            "如果 task-type 为 snapshot/detail，则优先返回能直接回答问题的记录级结果，"
+            "不要先改写成次数、总量、趋势等聚合问题。"
+            "</instruction>\n"
+            "</analysis-execution-context>"
+        )
+
+    def enhanced_think_question(self, current_time: str):
+        return get_myself_template()['think_prompt'].format(user_info=self.user_name,
+                                                            current_time=current_time,
+                                                            schema=self.db_schema,
+                                                            query=self.question,
+                                                            terminologies=self.terminologies)
     def chart_sys_question(self):
         return get_chart_template()['system'].format(sql=self.sql, question=self.question, lang=self.lang)
 

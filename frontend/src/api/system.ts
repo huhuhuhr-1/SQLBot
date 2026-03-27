@@ -29,4 +29,10 @@ export const modelApi = {
   check: (data: any) => request.fetchStream('/system/aimodel/status', data),
   platform: (id: number) => request.get(`/system/platform/org/${id}`),
   userSync: (data: any) => request.post(`/system/platform/user/sync`, data),
+  /** 批量导出 AI 模型配置（ids 为空则导出全部） */
+  exportBatch: (ids?: number[]) =>
+    request.post<{ version: number; models: any[] }>('/system/aimodel/export', { ids: ids ?? null }),
+  /** 批量导入 AI 模型配置 */
+  importBatch: (payload: { version?: number; models: any[] }) =>
+    request.post<any[]>('/system/aimodel/import', payload),
 }

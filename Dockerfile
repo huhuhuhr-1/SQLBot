@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
 COPY frontend /tmp/frontend
-RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
+RUN cd /tmp/frontend && npm config set registry https://registry.npmmirror.com && npm install && npm run build && mv dist ${UI_HOME}/dist
 
 
 FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS sqlbot-builder
@@ -30,18 +30,20 @@ RUN mkdir -p ${APP_HOME} ${UI_HOME}
 WORKDIR ${APP_HOME}
 
 COPY  --from=sqlbot-ui-builder ${UI_HOME} ${UI_HOME}
-# Install dependencies
-RUN test -f "./uv.lock" && \
-    --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=backend/uv.lock,target=uv.lock \
-    --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project || echo "uv.lock file not found, skipping intermediate-layers"
+# Optional: sync with frozen lock if present (mounts from build context, no COPY backend yet)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=backend/uv.lock,target=/tmp/uv.lock,readonly \
+    --mount=type=bind,source=backend/pyproject.toml,target=/tmp/pyproject.toml,readonly \
+    sh -c 'cp /tmp/uv.lock /tmp/pyproject.toml . 2>/dev/null || true; test -f uv.lock && uv sync --frozen --no-install-project || echo "uv.lock not found, skipping"'
 
 COPY ./backend ${APP_HOME}
 
 # Final sync to ensure all dependencies are installed
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --extra cpu
+
+# Install debugpy for IDE remote attach (dev/debug container use)
+RUN uv pip install debugpy
 
 # Build g2-ssr
 FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS ssr-builder
@@ -55,10 +57,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpixman-1-dev libfreetype6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# configure npm
+# configure npm (use China mirror for faster downloads)
 RUN npm config set fund false \
     && npm config set audit false \
-    && npm config set progress false
+    && npm config set progress false \
+    && npm config set registry https://registry.npmmirror.com
 
 COPY g2-ssr/app.js g2-ssr/package.json /app/
 COPY g2-ssr/charts/* /app/charts/
@@ -82,6 +85,7 @@ ENV POSTGRES_PASSWORD=Password123@pg
 
 # Copy necessary files from builder
 COPY start.sh /opt/sqlbot/app/start.sh
+COPY start-debug.sh /opt/sqlbot/app/start-debug.sh
 COPY g2-ssr/*.ttf /usr/share/fonts/truetype/liberation/
 COPY --from=sqlbot-builder ${SQLBOT_HOME} ${SQLBOT_HOME}
 COPY --from=ssr-builder /app /opt/sqlbot/g2-ssr
@@ -91,7 +95,7 @@ WORKDIR ${SQLBOT_HOME}/app
 
 RUN mkdir -p /opt/sqlbot/images /opt/sqlbot/g2-ssr
 
-EXPOSE 3000 8000 8001 5432
+EXPOSE 3000 8000 8001 5432 5678
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

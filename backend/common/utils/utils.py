@@ -284,7 +284,35 @@ def get_domain_list(domain: str) -> list[str]:
         if d_clean:
             domains.append(d_clean)
     return domains
-    
+
+
+# 跨域设置单条格式：http(s)://host[:port]，不能以 / 结尾，与前端校验一致
+_DOMAIN_ORIGIN_PATTERN = re.compile(r'^https?://[^\s/?#]+(:\d+)?$', re.IGNORECASE)
+
+
+def validate_domain_origin_format(origin: str) -> bool:
+    """校验单条跨域 origin 格式是否合法（与前端规则一致）。"""
+    if not origin or not isinstance(origin, str):
+        return False
+    s = origin.strip().rstrip('/')
+    return bool(s and _DOMAIN_ORIGIN_PATTERN.match(s))
+
+
+def validate_domain_settings(domain: str) -> tuple[bool, str]:
+    """
+    校验小助手跨域设置整串是否合法。
+    返回 (是否全部合法, 错误信息；合法时为空)。
+    """
+    if not domain or not domain.strip():
+        return False, "empty"
+    for part in re.split(r'[,;]', domain):
+        s = part.strip().rstrip('/')
+        if not s:
+            continue
+        if not _DOMAIN_ORIGIN_PATTERN.match(s):
+            return False, s
+    return True, ""
+
 
 def equals_ignore_case(str1: str, *args: str) -> bool:
     if str1 is None:

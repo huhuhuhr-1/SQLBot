@@ -79,6 +79,13 @@ docker run -d \
 - 用户名: admin
 - 密码: SQLBot@123456
 
+### 更多文档
+
+- [完整指南](docs/GUIDE.md) — 从安装部署到项目深度分析（安装、构建、开发、架构与流程）
+- [本地调试](docs/DEBUG.md) — PyCharm 调试、backend/frontend 联调、容器 debugpy
+- [构建与打包](build/README.md) — 本地构建脚本说明
+- [安全与待办](docs/SECURITY_TODO.md) — 已知安全项与修复计划
+
 ### 联系我们
 
 如你有更多问题，可以加入我们的技术交流群与我们交流。

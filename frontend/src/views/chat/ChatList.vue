@@ -88,7 +88,29 @@ const computedChatList = computed(() => {
   return _list
 })
 
-const emits = defineEmits(['chatSelected', 'chatRenamed', 'chatDeleted', 'update:loading'])
+const selectedIds = ref<number[]>([])
+
+const hasSelection = computed(() => selectedIds.value.length > 0)
+
+const allVisibleIds = computed<number[]>(() => {
+  const ids: number[] = []
+  computedChatList.value.forEach((group: { list: Chat[] }) => {
+    group.list?.forEach((chat: Chat) => {
+      if (chat.id !== undefined) {
+        ids.push(chat.id)
+      }
+    })
+  })
+  return ids
+})
+
+const allSelected = computed(
+  () =>
+    allVisibleIds.value.length > 0 &&
+    allVisibleIds.value.every((id) => selectedIds.value.includes(id))
+)
+
+const emits = defineEmits(['chatSelected', 'chatRenamed', 'chatDeleted', 'chatListCleared', 'update:loading'])
 
 const _loading = computed({
   get() {
@@ -99,8 +121,140 @@ const _loading = computed({
   },
 })
 
+function isSelected(id?: number) {
+  if (id === undefined) return false
+  return selectedIds.value.includes(id)
+}
+
+function toggleSelect(chat: Chat) {
+  if (chat.id === undefined) return
+  if (isSelected(chat.id)) {
+    selectedIds.value = selectedIds.value.filter((id) => id !== chat.id)
+  } else {
+    selectedIds.value = [...selectedIds.value, chat.id]
+  }
+}
+
+function clearSelection() {
+  selectedIds.value = []
+}
+
+function toggleSelectAll() {
+  if (allSelected.value) {
+    clearSelection()
+    return
+  }
+  selectedIds.value = [...allVisibleIds.value]
+}
+
 function onClickHistory(chat: Chat) {
   emits('chatSelected', chat)
+}
+
+async function handleBulkDeleteSelected() {
+  if (!selectedIds.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      t('qa.selected_chats_delete_confirm', { msg: selectedIds.value.length }),
+      t('qa.clear_history'),
+      {
+        confirmButtonType: 'danger',
+        tip: t('common.proceed_with_caution'),
+        confirmButtonText: t('dashboard.delete'),
+        cancelButtonText: t('common.cancel'),
+        customClass: 'confirm-no_icon',
+        autofocus: false,
+      }
+    )
+  } catch {
+    return
+  }
+
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+
+  const chatMap = new Map<number, Chat>()
+  props.chatList.forEach((c: Chat) => {
+    if (c.id !== undefined) {
+      chatMap.set(c.id, c)
+    }
+  })
+
+  _loading.value = true
+  try {
+    await Promise.all(
+      ids.map((id) => {
+        const chat = chatMap.get(id)
+        return chatApi.deleteChat(id, chat?.brief)
+      })
+    )
+    ids.forEach((id) => emits('chatDeleted', id))
+    ElMessage({
+      type: 'success',
+      message: t('dashboard.delete_success'),
+    })
+  } catch (err: any) {
+    ElMessage({
+      type: 'error',
+      message: err?.message || '删除失败',
+    })
+  } finally {
+    _loading.value = false
+    clearSelection()
+  }
+}
+
+type ClearScope = 'before_today' | 'before_7_days' | 'all'
+
+/** 按范围生成清理请求的时间段（仅智能问数，不包含深度分析） */
+function getCleanParamsByScope(scope: ClearScope): { start_time?: string; end_time?: string } | undefined {
+  if (scope === 'all') return undefined
+  if (scope === 'before_today') {
+    const end = dayjs().format('YYYY-MM-DD') + 'T00:00:00'
+    return { end_time: end }
+  }
+  if (scope === 'before_7_days') {
+    const end = dayjs().subtract(7, 'day').format('YYYY-MM-DD') + 'T00:00:00'
+    return { end_time: end }
+  }
+  return undefined
+}
+
+async function handleClearByScope(scope: ClearScope) {
+  try {
+    await ElMessageBox.confirm(t('qa.clear_history_confirm'), t('qa.clear_history'), {
+      confirmButtonType: 'danger',
+      confirmButtonText: t('dashboard.delete'),
+      cancelButtonText: t('common.cancel'),
+      customClass: 'confirm-no_icon',
+      autofocus: false,
+    })
+  } catch {
+    return
+  }
+
+  _loading.value = true
+  try {
+    const params = getCleanParamsByScope(scope)
+    const res = await chatApi.cleanChats(params ?? {})
+    if (res.total_count === 0) {
+      ElMessage({ type: 'info', message: t('workspace.historical_dialogue') })
+    } else {
+      ElMessage({
+        type: 'success',
+        message: res.message || t('dashboard.delete_success'),
+      })
+      emits('chatListCleared')
+    }
+  } catch (err: any) {
+    ElMessage({
+      type: 'error',
+      message: err?.message || '删除失败',
+    })
+  } finally {
+    _loading.value = false
+    clearSelection()
+  }
 }
 
 function handleCommand(command: string | number | object, chat: Chat) {
@@ -201,6 +355,51 @@ const handleConfirmPassword = () => {
 <template>
   <el-scrollbar ref="chatListRef">
     <div class="chat-list-inner">
+      <div class="bulk-bar">
+        <div class="bulk-left">
+          <el-checkbox
+            :indeterminate="selectedIds.length > 0 && !allSelected"
+            :model-value="allSelected"
+            @change="toggleSelectAll"
+          >
+            {{ $t('datasource.select_all') }}
+          </el-checkbox>
+          <span v-if="hasSelection" class="bulk-selected">
+            {{ $t('user.selected_2_items', { msg: selectedIds.length }) }}
+          </span>
+        </div>
+        <div class="bulk-right">
+          <el-dropdown @command="handleClearByScope">
+            <span class="bulk-clear-link">
+              {{ $t('qa.clear_history') }}
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="before_today">
+                  {{ $t('qa.clear_history_before_today') }}
+                </el-dropdown-item>
+                <el-dropdown-item command="before_7_days">
+                  {{ $t('qa.clear_history_before_7_days') }}
+                </el-dropdown-item>
+                <el-dropdown-item command="all">
+                  {{ $t('qa.clear_history_all') }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button
+            v-if="hasSelection"
+            size="small"
+            type="danger"
+            text
+            class="bulk-delete-btn"
+            @click="handleBulkDeleteSelected"
+          >
+            {{ $t('dashboard.delete') }}
+          </el-button>
+        </div>
+      </div>
+
       <div v-for="group in computedChatList" :key="group.key" class="group">
         <div
           class="group-title"
@@ -218,6 +417,12 @@ const handleConfirmPassword = () => {
             :class="{ active: currentChatId === chat.id, hide: !expandMap[group.key] }"
             @click="onClickHistory(chat)"
           >
+            <el-checkbox
+              class="select-checkbox"
+              :model-value="isSelected(chat.id)"
+              @click.stop
+              @change="() => toggleSelect(chat)"
+            />
             <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
             <el-popover :teleported="false" popper-class="popover-card_chat" placement="bottom">
               <template #reference>
@@ -303,6 +508,38 @@ const handleConfirmPassword = () => {
 
   gap: 16px;
 
+  .bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    margin-top: 4px;
+    border-radius: 6px;
+
+    .bulk-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .bulk-selected {
+        font-size: 12px;
+        color: #646a73;
+      }
+    }
+
+    .bulk-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .bulk-clear-link {
+        font-size: 12px;
+        color: #646a73;
+        cursor: pointer;
+      }
+    }
+  }
+
   .group {
     display: flex;
     flex-direction: column;
@@ -339,6 +576,10 @@ const handleConfirmPassword = () => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+
+    .select-checkbox {
+      margin-right: 8px;
+    }
 
     .title {
       flex: 1;

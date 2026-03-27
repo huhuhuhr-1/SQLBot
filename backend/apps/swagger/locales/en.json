@@ -134,6 +134,7 @@
   "tr_api": "Table Relation",
   "tr_save": "Save Table Relation",
   "tr_get": "Get Table Relation",
+  "tr_infer": "Infer Table Relations",
 
   "data_qa": "Data Q&A",
   "get_chat_list": "Get Chat List",
@@ -174,6 +175,17 @@
   "export_term": "Export Terms",
   "excel_template_term": "Download Template",
   "upload_term": "Import Terms",
+
+  "dict_api": "Data Dictionary",
+  "get_dict_page": "Paginated dictionary list",
+  "get_dict_detail": "Dictionary detail with items",
+  "save_dict": "Create or update dictionary",
+  "delete_dict": "Delete dictionaries",
+  "enable_dict": "Enable or disable dictionary",
+  "list_dict_options": "Dictionary options for dropdown",
+  "get_dict_binding_page": "Paginated field bindings",
+  "save_dict_binding": "Create or update field binding",
+  "delete_dict_binding": "Delete field bindings",
 
   "custom_prompt_api": "Custom Prompts",
   "custom_prompt_page": "Pagination Query for Custom Prompts",

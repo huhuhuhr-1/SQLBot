@@ -313,9 +313,9 @@ const setLinkIcon = (linkWeb?: string) => {
   const link = document.querySelector('link[rel="icon"]') as HTMLLinkElement
   if (link) {
     if (linkWeb) {
-      link['href'] = baseUrl + linkWeb
+      link.href = baseUrl + linkWeb
     } else {
-      link['href'] = '/LOGO-fold.svg'
+      link.href = '/LOGO-fold.svg'
     }
   }
 }

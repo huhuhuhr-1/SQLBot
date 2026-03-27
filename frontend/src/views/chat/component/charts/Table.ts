@@ -20,14 +20,12 @@ const createSmartSortFunc = (sortMethod: string) => {
     const isNegA = a.startsWith('-')
     const isNegB = b.startsWith('-')
 
-    // 负数 < 正数
     if (isNegA && !isNegB) return -1
     if (!isNegA && isNegB) return 1
 
     const [intA, decA = ''] = isNegA ? a.slice(1).split('.') : a.split('.')
     const [intB, decB = ''] = isNegB ? b.slice(1).split('.') : b.split('.')
 
-    // 都是正数
     if (!isNegA && !isNegB) {
       if (intA.length !== intB.length) return intA.length - intB.length
       const intCmp = intA.localeCompare(intB)
@@ -36,7 +34,6 @@ const createSmartSortFunc = (sortMethod: string) => {
       return decA ? 1 : decB ? -1 : 0
     }
 
-    // 都是负数：绝对值大的实际值小，比较结果取反
     if (intA.length !== intB.length) return -(intA.length - intB.length)
     const intCmp = intA.localeCompare(intB)
     if (intCmp !== 0) return -intCmp
@@ -69,6 +66,17 @@ const createSmartSortFunc = (sortMethod: string) => {
   }
 }
 
+/** 表头高度 + 每行行高，用于按数据行数计算表格高度，使取数结果区域随表格大小自适应 */
+const TABLE_HEADER_HEIGHT = 40
+const TABLE_ROW_HEIGHT = 32
+const TABLE_HEIGHT_MIN = 80
+const TABLE_HEIGHT_MAX = 420
+
+function getTableHeightByRowCount(rowCount: number): number {
+  const h = TABLE_HEADER_HEIGHT + rowCount * TABLE_ROW_HEIGHT
+  return Math.min(TABLE_HEIGHT_MAX, Math.max(TABLE_HEIGHT_MIN, h))
+}
+
 export class Table extends BaseChart {
   table?: TableSheet = undefined
 
@@ -91,7 +99,10 @@ export class Table extends BaseChart {
 
     this.resizeObserver = new ResizeObserver(([entry] = []) => {
       const [size] = entry.borderBoxSize || []
-      this.debounceRender(size.inlineSize, size.blockSize)
+      const contentHeight = getTableHeightByRowCount(this.data?.length ?? 0)
+      const w = size.inlineSize
+      const h = Math.min(size.blockSize, contentHeight)
+      this.debounceRender(w, h)
     })
 
     if (this.container?.parentElement) {
@@ -151,9 +162,10 @@ export class Table extends BaseChart {
       }
     }
 
+    const tableHeight = getTableHeightByRowCount(this.data?.length ?? 0)
     const s2Options: S2Options = {
       width: 600,
-      height: 360,
+      height: tableHeight,
       showDefaultHeaderActionIcon: false,
       headerActionIcons: [
         {

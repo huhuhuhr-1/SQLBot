@@ -192,3 +192,43 @@ class PreviewResponse(BaseModel):
     fields: List | None = []
     data: List | None = []
     sql: str | None = ''
+
+
+# ---------- 数据源批量导入导出 ----------
+class ExportFieldItem(BaseModel):
+    """导出用字段项，保留 id 用于导入时表关系重映射"""
+    id: int = 0
+    field_name: str = ''
+    field_type: str = ''
+    field_comment: str = ''
+    custom_comment: str = ''
+    checked: bool = True
+    field_index: int = 0
+
+
+class ExportTableItem(BaseModel):
+    """导出用表项，保留 id 用于导入时表关系重映射"""
+    id: int = 0
+    table_name: str = ''
+    table_comment: str = ''
+    custom_comment: str = ''
+    checked: bool = True
+    fields: List[ExportFieldItem] = []
+
+
+class ExportDatasourceItem(BaseModel):
+    """单条数据源导出结构：基础信息 + 选中表 + 表映射关系 + 标准元数据"""
+    version: int = 1
+    datasource: dict = {}  # name, description, type, type_name, configuration, status, num, recommended_config
+    tables: List[ExportTableItem] = []
+    table_relation: List = []  # 与 CoreDatasource.table_relation 一致，含 source/target cell(表id) port(字段id)
+
+
+class DatasourceExportPayload(BaseModel):
+    """批量导出请求/响应"""
+    datasources: List[ExportDatasourceItem] = []
+
+
+class DatasourceImportPayload(BaseModel):
+    """批量导入请求体"""
+    datasources: List[ExportDatasourceItem] = []

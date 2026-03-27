@@ -7,6 +7,7 @@ import { computed, ref, unref } from 'vue'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import { dsTypeWithImg } from './js/ds-type'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
+import icon_copy_outlined from '@/assets/svg/icon_copy_outlined.svg'
 import icon_recommended_problem from '@/assets/svg/icon_recommended_problem.svg'
 import { datasourceApi } from '@/api/datasource.ts'
 
@@ -37,6 +38,7 @@ const emits = defineEmits([
   'recommendation',
   'startChecking',
   'endChecking',
+  'copy',
 ])
 const icon = computed(() => {
   return (dsTypeWithImg.find((ele) => props.type === ele.type) || {}).img
@@ -47,6 +49,10 @@ const handleEdit = () => {
 
 const handleRecommendation = () => {
   emits('recommendation')
+}
+
+const handleCopy = () => {
+  emits('copy')
 }
 
 const handleDel = () => {
@@ -133,7 +139,7 @@ const onClickOutside = () => {
           :virtual-ref="buttonRef"
           virtual-triggering
           trigger="click"
-          :teleported="false"
+          teleported
           popper-class="popover-card_ds"
           placement="bottom-end"
         >
@@ -149,6 +155,12 @@ const onClickOutside = () => {
                 <icon_recommended_problem></icon_recommended_problem>
               </el-icon>
               {{ $t('datasource.recommended_problem_configuration') }}
+            </div>
+            <div class="item" @click.stop="handleCopy">
+              <el-icon size="16">
+                <icon_copy_outlined></icon_copy_outlined>
+              </el-icon>
+              {{ $t('datasource.copy_data_source') }}
             </div>
             <div class="item" @click.stop="handleDel">
               <el-icon size="16">

@@ -1,24 +1,46 @@
 from fastapi import APIRouter
 
+from apps.openapi import openapi
 from apps.chat.api import chat
 from apps.dashboard.api import dashboard_api
 from apps.data_training.api import data_training
 from apps.datasource.api import datasource, table_relation, recommended_problem
 from apps.mcp import mcp
-from apps.system.api import login, user, aimodel, workspace, assistant, parameter, apikey, variable_api
+from apps.openapi.demo import demo
+from apps.system.api import (
+    login,
+    user,
+    authentication,
+    aimodel,
+    workspace,
+    assistant,
+    parameter,
+    apikey,
+    variable_api,
+    template_prompt,
+    custom_prompt,
+    statistics,
+)
 from apps.terminology.api import terminology
+from apps.metric.api import metric as metric_api
+from apps.dict.api.dict_api import router as dict_router
 from apps.settings.api import base
 #from audit.api import audit_api
 
 
 api_router = APIRouter()
+api_router.include_router(openapi.router)
+api_router.include_router(demo.router)
 api_router.include_router(login.router)
+api_router.include_router(authentication.router)
 api_router.include_router(user.router)
 api_router.include_router(workspace.router)
 api_router.include_router(assistant.router)
 api_router.include_router(aimodel.router)
 api_router.include_router(base.router)
 api_router.include_router(terminology.router)
+api_router.include_router(metric_api.router)
+api_router.include_router(dict_router)
 api_router.include_router(data_training.router)
 api_router.include_router(datasource.router)
 api_router.include_router(chat.router)
@@ -31,5 +53,8 @@ api_router.include_router(apikey.router)
 api_router.include_router(recommended_problem.router)
 
 api_router.include_router(variable_api.router)
+api_router.include_router(template_prompt.router)
+api_router.include_router(custom_prompt.router)
+api_router.include_router(statistics.router)
 
 #api_router.include_router(audit_api.router)
