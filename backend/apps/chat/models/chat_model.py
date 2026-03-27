@@ -165,9 +165,9 @@ class ChatRecordResult(BaseModel):
 
 
 class CreateChat(BaseModel):
-    id: int = None
-    question: str = None
-    datasource: int = None
+    id: Optional[int] = None
+    question: Optional[str] = None
+    datasource: Optional[int] = None
     origin: Optional[int] = 0  # 0是页面上，mcp是1，小助手是2
 
 
