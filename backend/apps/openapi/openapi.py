@@ -8,19 +8,32 @@ import os
 import threading
 import traceback
 import uuid
-from typing import Optional, List, Tuple
 
 import orjson
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from langchain_core.messages import HumanMessage, SystemMessage
 from starlette.responses import StreamingResponse
-from langchain_core.messages import SystemMessage, HumanMessage
 
 from apps.ai_model.model_factory import create_llm
-from apps.chat.curd.chat import get_chat_record_by_id, get_chat_chart_data, create_chat, list_deep_analysis_chats
-from apps.chat.models.chat_model import CreateChat, Chat
-from apps.datasource.crud.datasource import get_datasource_list_for_openapi, get_datasource_list_for_openapi_excels, \
-    create_ds, get_table_schema
-from apps.datasource.models.datasource import CoreDatasource, CreateDatasource, CoreTable, DatasourceConf
+from apps.chat.curd.chat import (
+    create_chat,
+    get_chat_chart_data,
+    get_chat_record_by_id,
+    list_deep_analysis_chats,
+)
+from apps.chat.models.chat_model import Chat, CreateChat
+from apps.datasource.crud.datasource import (
+    create_ds,
+    get_datasource_list_for_openapi,
+    get_datasource_list_for_openapi_excels,
+    get_table_schema,
+)
+from apps.datasource.models.datasource import (
+    CoreDatasource,
+    CoreTable,
+    CreateDatasource,
+    DatasourceConf,
+)
 from apps.datasource.utils.utils import aes_encrypt
 from apps.db.db import exec_sql
 from apps.openapi.agent.chat_agent import ChatAgent
@@ -28,22 +41,40 @@ from apps.openapi.agent.data_agent import DataAgentRunner
 from apps.openapi.agent.deep_analysis_graph import DeepAnalysisGraphRunner
 from apps.openapi.agent.plan_agent import PlanAgent
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id
-from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
-    OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, DeepAnalysisRequest, \
-    DatasourceResponse
-from apps.openapi.service.openapi_db import delete_ds, upload_excel_and_create_datasource_service
-from apps.openapi.service.openapi_llm import LLMService
-from apps.openapi.service.openapi_service import merge_streaming_chunks, create_access_token_with_expiry, \
-    _get_chats_to_clean, _create_clean_response, \
-    _execute_cleanup, \
-    _run_analysis_or_predict, is_safe_sql
+from apps.openapi.models.openapiModels import (
+    DataSourceRequest,
+    DataSourceRequestWithSql,
+    DatasourceResponse,
+    DbBindChat,
+    DeepAnalysisRequest,
+    OpenChat,
+    OpenChatQuestion,
+    OpenClean,
+    OpenToken,
+    SinglePgConfig,
+    TokenRequest,
+    common_headers,
+)
+from apps.openapi.service.openapi_db import (
+    delete_ds,
+    upload_excel_and_create_datasource_service,
+)
+from apps.openapi.service.openapi_llm import LLMService, get_lang_name
+from apps.openapi.service.openapi_service import (
+    _create_clean_response,
+    _execute_cleanup,
+    _get_chats_to_clean,
+    _run_analysis_or_predict,
+    create_access_token_with_expiry,
+    is_safe_sql,
+    merge_streaming_chunks,
+)
 from apps.system.crud.user import authenticate
 from apps.system.schemas.system_schema import BaseUserDTO
+from apps.template.template import get_base_template
 from common.core.config import settings
 from common.core.db import get_session
-from apps.template.template import get_base_template
-from apps.openapi.service.openapi_llm import get_lang_name
-from common.core.deps import SessionDep, CurrentUser, CurrentAssistant, Trans
+from common.core.deps import CurrentAssistant, CurrentUser, SessionDep, Trans
 from common.error import ParseSQLResultError, SQLBotDBError
 from common.utils.utils import SQLBotLogUtil
 
@@ -137,7 +168,7 @@ async def export_all_terminologies_by_datasource(session: SessionDep, current_us
 
 def _validate_and_resolve_openapi_sql_query(
     current_user: CurrentUser, request: DataSourceRequestWithSql
-) -> Tuple[CoreDatasource, str]:
+) -> tuple[CoreDatasource, str]:
     if not request.db_id:
         raise HTTPException(status_code=400, detail="db_id 参数不能为空")
     if not request.sql:
@@ -161,7 +192,7 @@ def _validate_and_resolve_openapi_sql_query(
     return datasource, sanitized_sql
 
 
-def _sql_result_to_csv_bytes(fields: List[str], rows: List[dict]) -> bytes:
+def _sql_result_to_csv_bytes(fields: list[str], rows: list[dict]) -> bytes:
     buf = io.StringIO()
     writer = csv.DictWriter(
         buf,
@@ -214,7 +245,7 @@ async def get_token(
     access_token, expire_time = create_access_token_with_expiry(user.to_dict())
 
     # 处理聊天会话创建请求
-    chat_id: Optional[int] = None
+    chat_id: int | None = None
     if request.create_chat:
         record = create_chat(session, user, CreateChat(origin=1), False)
         chat_id = record.id
@@ -271,15 +302,15 @@ async def get_data_source_by_id_or_name(
     ds = get_datasource_by_name_or_id(session=session, user=user, query=request)
     if not ds:
         raise HTTPException(status_code=404, detail="数据源未找到")
-    
+
     # 获取表结构
     from apps.datasource.crud.datasource import get_table_schema
     table_schema = get_table_schema(session=session, current_user=user, ds=ds, question="", embedding=False)
-    
+
     # 获取术语
     from apps.terminology.curd.terminology import get_terminology_template
     terminologies_str, _ = get_terminology_template(session=session, question="", oid=user.oid, datasource=ds.id)
-    
+
     # 构建响应
     res = DatasourceResponse.model_validate(ds.model_dump())
     res.table_schema = table_schema
@@ -519,7 +550,7 @@ async def bind_data_source(session: SessionDep, current_user: CurrentUser, db_bi
         )
 
 
-@router.get("/deep-analysis/sessions", response_model=List[Chat], summary="深度分析会话列表",
+@router.get("/deep-analysis/sessions", response_model=list[Chat], summary="深度分析会话列表",
             description="仅返回 origin=1 的深度分析会话，供深度分析页左侧列表使用",
             dependencies=[Depends(common_headers)])
 async def deep_analysis_sessions(session: SessionDep, current_user: CurrentUser):
@@ -714,7 +745,6 @@ async def deep_analysis(
                         session=thread_session,
                         current_user=user,
                         chat_question=question,
-                        current_assistant=assistant,
                         queue=acc,
                         max_steps=body.max_steps,
                     )
@@ -1020,7 +1050,7 @@ async def delete_excels(session: SessionDep, user: CurrentUser):
     """
 
     def inner():
-        ids: List[int] = get_datasource_list_for_openapi_excels(session, user)
+        ids: list[int] = get_datasource_list_for_openapi_excels(session, user)
         for id in ids:
             delete_ds(session, id)
 
