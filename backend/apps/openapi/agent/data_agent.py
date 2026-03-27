@@ -118,9 +118,9 @@ class DataAgentRunner:
             return str(ds_id)
         chat_id = self.chat_question.chat_id
         if chat_id:
-            from apps.chat.curd.chat import get_chat_by_id
+            from apps.chat.curd.chat import get_chat
 
-            chat = get_chat_by_id(self.session, chat_id)
+            chat = get_chat(self.session, chat_id)
             if chat and getattr(chat, "datasource", None):
                 return str(chat.datasource)
         return ""
