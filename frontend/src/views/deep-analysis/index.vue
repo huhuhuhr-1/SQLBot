@@ -192,22 +192,29 @@
                           <span v-else class="da-step-dot"></span>
                         </div>
                         <div class="da-step-body">
-                          <div class="da-step-header" @click="selectStep(idx, sIdx, step)">
-                            <span class="da-step-label">{{ getStepDisplayTitle(step) }}</span>
-                            <span v-if="step.detailsMd" class="da-step-detail-link"
+                          <div class="da-step-header">
+                            <span class="da-step-label" @click="step.expanded = !step.expanded">{{
+                              getStepDisplayTitle(step)
+                            }}</span>
+                            <span
+                              v-if="step.detailsMd"
+                              class="da-step-detail-link"
+                              @click="selectStep(idx, sIdx, step)"
                               >查看详情 &rsaquo;</span
                             >
                           </div>
                           <div v-if="getStepDesc(step)" class="da-step-desc">
                             {{ getStepDesc(step) }}
                           </div>
+                          <!-- 子流程指示 -->
                           <div
                             v-if="step.status === 'done' && step.detailsMd"
                             class="da-step-substeps"
                           >
-                            <span class="da-substep-item da-substep-done">开始执行</span>
-                            <span class="da-substep-divider">›</span>
-                            <span class="da-substep-item da-substep-done">执行结束</span>
+                            <template v-for="(sub, subIdx) in getSubSteps(step)" :key="subIdx">
+                              <span v-if="subIdx > 0" class="da-substep-divider">›</span>
+                              <span class="da-substep-item da-substep-done">{{ sub }}</span>
+                            </template>
                           </div>
                           <div v-else-if="step.status === 'running'" class="da-step-substeps">
                             <span class="da-substep-item da-substep-done">开始执行</span>
@@ -217,6 +224,12 @@
                               执行中...
                             </span>
                           </div>
+                          <!-- 内联展开详情 -->
+                          <div
+                            v-if="step.expanded && step.details"
+                            class="da-step-inline-detail markdown-body"
+                            v-html="step.details"
+                          ></div>
                         </div>
                       </div>
                     </div>
@@ -635,16 +648,22 @@ function getStepDisplayTitle(step: StepItem): string {
 function getStepDesc(step: StepItem): string {
   const t = step.title
   const colonIdx = t.indexOf('：')
-  if (colonIdx > 0 && colonIdx < 8) {
-    const desc = t.slice(colonIdx + 1).trim()
-    return desc.length > 100 ? desc.slice(0, 100) + '...' : desc
-  }
+  if (colonIdx > 0 && colonIdx < 8) return t.slice(colonIdx + 1).trim()
   const colonIdx2 = t.indexOf(': ')
-  if (colonIdx2 > 0 && colonIdx2 < 8) {
-    const desc = t.slice(colonIdx2 + 2).trim()
-    return desc.length > 100 ? desc.slice(0, 100) + '...' : desc
-  }
+  if (colonIdx2 > 0 && colonIdx2 < 8) return t.slice(colonIdx2 + 2).trim()
   return ''
+}
+
+function getSubSteps(step: StepItem): string[] {
+  if (!step.detailsMd) return []
+  const subs: string[] = []
+  const md = step.detailsMd
+  if (md.includes('开始执行')) subs.push('开始执行')
+  if (/调用工具|调用模型/.test(md)) subs.push('调用工具')
+  if (/```sql/i.test(md) || /生成.*SQL/i.test(md)) subs.push('生成SQL')
+  if (/执行.*SQL|SQL.*执行/i.test(md)) subs.push('执行SQL')
+  if (/执行结束|执行.*结果/.test(md)) subs.push('执行结束')
+  return subs.length ? subs : ['执行']
 }
 
 function getLastRunningStep(msg: ChatMessage): StepItem | null {
@@ -1714,6 +1733,10 @@ onMounted(async () => {
   font-weight: 500;
   color: #1f2329;
   transition: color 0.15s;
+  cursor: pointer;
+}
+.da-step-label:hover {
+  color: var(--ed-color-primary, #1cba90);
 }
 .da-step-done .da-step-label {
   color: #1f2329;
@@ -1766,6 +1789,36 @@ onMounted(async () => {
 .da-substep-divider {
   color: #c0c4cc;
   font-size: 12px;
+}
+
+/* Inline step detail — expanded content below step */
+.da-step-inline-detail {
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: #f7f8fa;
+  border-radius: 8px;
+  border: 1px solid #e8e9eb;
+  font-size: 13px;
+  line-height: 1.6;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.da-step-inline-detail :deep(pre) {
+  background: #fff;
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.da-step-inline-detail :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.da-step-inline-detail :deep(th),
+.da-step-inline-detail :deep(td) {
+  border: 1px solid #dee0e3;
+  padding: 4px 8px;
 }
 
 /* Stream block — realtime agent output */
