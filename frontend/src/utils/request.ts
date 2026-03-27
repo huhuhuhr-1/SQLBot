@@ -219,7 +219,9 @@ class HttpService {
           break
         case 401:
           errorMessage = error.response?.data
-            ? error.response.data.toString()
+            ? typeof error.response.data === 'object'
+              ? error.response.data.message || error.response.data.detail || JSON.stringify(error.response.data)
+              : String(error.response.data)
             : 'Unauthorized, please login again'
           // Redirect to login page if needed
           if (assistantStore.getAssistant) {
@@ -255,7 +257,10 @@ class HttpService {
           errorMessage = `Server responded with error: ${error.response.status}`
       }
       if (error?.response?.data) {
-        errorMessage = error.response.data.toString()
+        errorMessage =
+          typeof error.response.data === 'object'
+            ? error.response.data.message || error.response.data.detail || JSON.stringify(error.response.data)
+            : String(error.response.data)
       }
     } else if (error.request) {
       errorMessage = 'No response from server'
@@ -332,6 +337,11 @@ class HttpService {
       if (!assistantStore.getType || assistantStore.getType === 2) {
         heads['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
       }
+    }
+
+    const locale = getLocale()
+    if (locale) {
+      heads['Accept-Language'] = locale
     }
 
     /* try {

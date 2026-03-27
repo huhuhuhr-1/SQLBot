@@ -4,7 +4,7 @@ import { chatApi, ChatInfo } from '@/api/chat'
 import { useCache } from '@/utils/useCache'
 
 const { wsCache } = useCache()
-const flagKey = 'sqlbit-assistant-flag'
+const flagKey = 'sqlbot-assistant-flag'
 type Resolver<T = any> = (value: T | PromiseLike<T>) => void
 type Rejecter = (reason?: any) => void
 interface PendingRequest<T = any> {

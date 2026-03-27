@@ -601,8 +601,9 @@ class LLMService:
                 else:
                     _ds = _session.get(CoreDatasource, _datasource)
                     if not _ds:
+                        missing_id = _datasource
                         _datasource = None
-                        raise SingleMessageError(f"Datasource configuration with id {_datasource} not found")
+                        raise SingleMessageError(f"Datasource configuration with id {missing_id} not found")
                     self.ds = CoreDatasource(**_ds.model_dump())
                     self.chat_question.engine = (_ds.type_name if _ds.type != 'excel' else 'PostgreSQL') + get_version(
                         self.ds)
@@ -621,7 +622,7 @@ class LLMService:
                         _session.rollback()
                         raise e
 
-            elif data['fail']:
+            elif data.get('fail'):
                 raise SingleMessageError(data['fail'])
             else:
                 raise SingleMessageError('No available datasource configuration found')
@@ -938,10 +939,12 @@ class LLMService:
                 chart = data
                 if chart.get('columns'):
                     for v in chart.get('columns'):
-                        v['value'] = v.get('value').lower()
+                        if v.get('value'):
+                            v['value'] = v['value'].lower()
                 if chart.get('axis'):
-                    if chart.get('axis').get('x'):
-                        chart.get('axis').get('x')['value'] = chart.get('axis').get('x').get('value').lower()
+                    x_axis = chart.get('axis').get('x')
+                    if x_axis and x_axis.get('value'):
+                        x_axis['value'] = x_axis['value'].lower()
                     y_axis = chart.get('axis').get('y')
                     if y_axis:
                         if isinstance(y_axis, list):
@@ -952,8 +955,9 @@ class LLMService:
                         elif isinstance(y_axis, dict) and y_axis.get('value'):
                             # 旧格式: y: {name, value}
                             y_axis['value'] = y_axis['value'].lower()
-                    if chart.get('axis').get('series'):
-                        chart.get('axis').get('series')['value'] = chart.get('axis').get('series').get('value').lower()
+                    series_axis = chart.get('axis').get('series')
+                    if series_axis and series_axis.get('value'):
+                        series_axis['value'] = series_axis['value'].lower()
                 if chart.get('axis') and chart['axis'].get('multi-quota'):
                     multi_quota = chart['axis']['multi-quota']
                     if multi_quota.get('value'):
@@ -1129,7 +1133,7 @@ class LLMService:
             sql_res = self.generate_sql(_session)
             full_sql_text = ''
             for chunk in sql_res:
-                full_sql_text += chunk.get('content')
+                full_sql_text += chunk.get('content') or ''
                 if in_chat:
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
@@ -1273,7 +1277,7 @@ class LLMService:
             chart_res = self.generate_chart(_session, chart_type, used_tables_schema)
             full_chart_text = ''
             for chunk in chart_res:
-                full_chart_text += chunk.get('content')
+                full_chart_text += chunk.get('content') or ''
                 if in_chat:
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
@@ -1423,14 +1427,14 @@ class LLMService:
                 analysis_res = self.generate_analysis(_session)
                 full_text = ''
                 for chunk in analysis_res:
-                    full_text += chunk.get('content')
+                    full_text += chunk.get('content') or ''
                     if in_chat:
                         yield 'data:' + orjson.dumps(
                             {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                              'type': 'analysis-result'}).decode() + '\n\n'
                     else:
                         if stream:
-                            yield chunk.get('content')
+                            yield chunk.get('content') or ''
                 if in_chat:
                     yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
                     yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
@@ -1445,7 +1449,7 @@ class LLMService:
                 analysis_res = self.generate_predict(_session)
                 full_text = ''
                 for chunk in analysis_res:
-                    full_text += chunk.get('content')
+                    full_text += chunk.get('content') or ''
                     if in_chat:
                         yield 'data:' + orjson.dumps(
                             {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
