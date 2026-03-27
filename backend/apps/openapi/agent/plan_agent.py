@@ -10,9 +10,8 @@ import json
 import re
 from typing import Any, Optional
 
-from langchain.agents import AgentExecutor
-from langchain.agents import create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
+from langchain_core.messages import AIMessage, HumanMessage as HM
 from sqlmodel import Session
 
 from apps.openapi.agent.analysis_componet.analysis_tool import GetDataTool, InsightTool, SaveInsightTool, DataTransTool, \
@@ -380,31 +379,13 @@ class PlanAgent:
                 FinalAnswerTool(context=self.context, session=self.session),
             ]
 
-            # 使用自定义提示词
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", self.chat_question.plan_prompt()),
-                # ("placeholder", "{chat_history}"),
-                ("human", "{input}"),
-                MessagesPlaceholder(variable_name="agent_scratchpad"),
-            ])
-
-            # 创建agent
-            agent = create_tool_calling_agent(llm=self.llm,
-                                              tools=tools,
-                                              prompt=prompt)
-
-            # 创建executor
-            agent_executor = AgentExecutor(
-                agent=agent,
+            inner_agent = create_agent(
+                model=self.llm,
                 tools=tools,
-                verbose=True,
-                max_iterations=self.max_steps,
-                early_stopping_method="force",
-                return_intermediate_steps=True,
-                handle_parsing_errors="工具调用失败，请重新调用工具并返回纯文本结果"
+                system_prompt=self.chat_question.plan_prompt(),
             )
 
-            await self.analysis(agent_executor)
+            await self.analysis(inner_agent)
 
             await self.queue.put({
                 **self.create_result(message_type="finish"),
@@ -469,8 +450,7 @@ class PlanAgent:
                 "content": content,
                 "type": message_type}
 
-    async def analysis(self, agent_executor):
-        # 对用户仅推送「过程」类片段（默认 UI 收起）；不再逐步推送「分析步骤 1…N」
+    async def analysis(self, inner_agent):
         await self.queue.put(self.create_result(
             content=(
                 f"**分析意图**：{self.question}\n\n"
@@ -481,16 +461,23 @@ class PlanAgent:
             message_type="process",
         ))
 
-        async for chunk in agent_executor.astream({"input": self.question}):
-            if "steps" in chunk.keys():
-                continue
-            elif "actions" in chunk.keys():
-                content = self.get_message_content(chunk)
-                if len(content) != 0:
-                    await self.queue.put(self.create_result(content=content, message_type="process"))
-            elif "output" in chunk.keys():
-                content = self.get_message_content(chunk)
-                if len(content) != 0:
-                    await self.queue.put(self.create_result(content=content, message_type="process"))
-            else:
-                continue
+        steps = 0
+        async for event in inner_agent.astream_events(
+            {"messages": [HM(content=self.question)]},
+            version="v2",
+        ):
+            kind = event.get("event", "")
+            data = event.get("data", {})
+
+            if kind == "on_tool_end":
+                steps += 1
+
+            if kind == "on_chat_model_stream":
+                chunk = data.get("chunk")
+                if chunk and isinstance(chunk, AIMessage):
+                    text = chunk.content
+                    if isinstance(text, str) and text.strip():
+                        await self.queue.put(self.create_result(content=text, message_type="process"))
+
+            if steps >= self.max_steps:
+                break

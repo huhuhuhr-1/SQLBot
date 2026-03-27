@@ -1,0 +1,29 @@
+engine: postgresql
+dialect_notes:
+  casting: "使用 ::type 语法 (如 column::integer, column::text)"
+  date_extract: "EXTRACT(part FROM column) 或 DATE_TRUNC('part', column)"
+  date_math: "column + INTERVAL '1 day'"
+  string_concat: "|| 运算符 或 CONCAT()"
+  limit: "LIMIT n OFFSET m"
+  identifier_quote: "双引号 (\"table_name\")"
+  ilike: "支持 ILIKE 做大小写不敏感匹配"
+  window_functions: "完整支持 ROW_NUMBER(), RANK(), LAG(), LEAD(), NTILE()"
+  cte: "完整支持 WITH ... AS (...)"
+  json: "支持 ->>, ->, jsonb_array_elements() 等"
+  array: "支持 ARRAY[], unnest(), ANY()"
+common_patterns:
+  top_n: |
+    SELECT * FROM table ORDER BY metric DESC LIMIT 10
+  year_over_year: |
+    SELECT
+      period,
+      metric,
+      LAG(metric) OVER (ORDER BY period) AS prev_metric,
+      metric - LAG(metric) OVER (ORDER BY period) AS delta
+    FROM aggregated_data
+  date_series: |
+    SELECT generate_series(
+      '2024-01-01'::date,
+      '2024-12-31'::date,
+      '1 month'::interval
+    )::date AS month

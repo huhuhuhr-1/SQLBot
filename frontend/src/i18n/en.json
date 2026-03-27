@@ -1,7 +1,7 @@
 {
   "menu": {
     "add_interface_credentials": "Please add interface credentials",
-    "deep_analysis": "Deep Analysis",
+    "deep_analysis": "Data Agent",
     "Data Q&A": "Data Q&A",
     "statistics": "Statistical Analysis",
     "Data Connections": "Data Sources",

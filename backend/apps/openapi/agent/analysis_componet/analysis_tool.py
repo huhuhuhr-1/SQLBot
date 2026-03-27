@@ -12,7 +12,7 @@ from typing import Type
 import numpy as np
 import pandas as pd
 from langchain.tools import BaseTool
-from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 
 from apps.openapi.agent.analysis_componet.data_model import (
     DataModel,

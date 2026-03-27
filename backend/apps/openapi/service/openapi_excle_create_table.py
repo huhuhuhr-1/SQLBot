@@ -8,8 +8,8 @@ import pandas as pd
 from sqlalchemy import text
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
-from langchain.prompts import ChatPromptTemplate
-from langchain.output_parsers import PydanticOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
 
 from dateutil import parser as dtparser
 import datetime as _dt

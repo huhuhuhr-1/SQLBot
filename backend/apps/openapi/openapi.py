@@ -24,8 +24,9 @@ from apps.datasource.models.datasource import CoreDatasource, CreateDatasource, 
 from apps.datasource.utils.utils import aes_encrypt
 from apps.db.db import exec_sql
 from apps.openapi.agent.chat_agent import ChatAgent
-from apps.openapi.agent.plan_agent import PlanAgent
+from apps.openapi.agent.data_agent import DataAgentRunner
 from apps.openapi.agent.deep_analysis_graph import DeepAnalysisGraphRunner
+from apps.openapi.agent.plan_agent import PlanAgent
 from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id
 from apps.openapi.models.openapiModels import TokenRequest, OpenToken, DataSourceRequest, OpenChatQuestion, \
     OpenChat, OpenClean, common_headers, DbBindChat, SinglePgConfig, DataSourceRequestWithSql, DeepAnalysisRequest, \
@@ -704,8 +705,20 @@ async def deep_analysis(
                 acc = DeepAnalysisAccumulator(
                     q, thread_session, user.id, question.chat_id, question.question, config=config,
                 )
+                use_data_agent = getattr(settings, "DATA_AGENT_ENABLED", False)
                 use_langgraph = getattr(settings, "DEEP_ANALYSIS_USE_LANGGRAPH", True)
-                if use_langgraph:
+
+                if use_data_agent:
+                    runner = DataAgentRunner(
+                        session=thread_session,
+                        current_user=user,
+                        chat_question=question,
+                        current_assistant=assistant,
+                        queue=acc,
+                        max_steps=body.max_steps,
+                    )
+                    context.run(lambda: asyncio.run(runner.run()))
+                elif use_langgraph:
                     runner = DeepAnalysisGraphRunner(
                         session=thread_session,
                         current_user=user,

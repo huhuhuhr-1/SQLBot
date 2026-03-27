@@ -1,7 +1,7 @@
 {
   "menu": {
     "add_interface_credentials": "인터페이스 자격 증명을 추가하십시오",
-    "deep_analysis": "심층 분석",
+    "deep_analysis": "Data Agent",
     "Data Q&A": "스마트 데이터 조회",
     "statistics": "통계 분석",
     "Data Connections": "데이터 소스",

@@ -1,7 +1,7 @@
 {
   "menu": {
     "add_interface_credentials": "请添加接口凭证",
-    "deep_analysis": "深度分析",
+    "deep_analysis": "Data Agent",
     "Data Q&A": "智能问数",
     "statistics": "统计分析",
     "Data Connections": "数据源",
@@ -10,7 +10,7 @@
     "Details": "详情"
   },
   "deep_analysis": {
-    "desc": "按六节结构输出综合分析报告；取数与推理过程默认收起。",
+    "desc": "Data Agent 模式：自主规划、bash 执行、技能加载，输出综合分析报告。",
     "datasource": "数据源",
     "select_datasource": "请选择数据源",
     "question": "分析意图 / 问题",
@@ -36,10 +36,10 @@
     "task_plan": "任务拆解",
     "current_stage": "当前阶段",
     "workspace_label": "分析工作台",
-    "starter_title": "让复杂问题形成可追溯的分析报告",
-    "starter_desc": "选择数据源后输入分析目标，系统会先拆解任务，再分步取数、推理并生成结构化结论。",
-    "capability_plan": "先规划分析路径，再执行数据探索与验证",
-    "capability_trace": "完整保留取数与推理过程，便于复盘和核验",
+    "starter_title": "Data Agent — 让数据分析像对话一样自然",
+    "starter_desc": "选择数据源后输入分析目标，Data Agent 将自主规划、取数、执行脚本、分析并生成报告。",
+    "capability_plan": "自主规划分析路径，支持 bash 执行与本地技能加载",
+    "capability_trace": "完整保留取数、工具调用与推理过程，便于复盘和核验",
     "capability_report": "输出可导出、可沉淀的综合分析报告",
     "examples": "试试这些分析目标",
     "recommend_loading": "加载推荐中…",

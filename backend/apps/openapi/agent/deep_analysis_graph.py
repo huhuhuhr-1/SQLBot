@@ -235,8 +235,8 @@ class DeepAnalysisGraphRunner:
         为了与现有行为兼容，这里仍然使用 LangChain Agent + tools，
         但通过 LangGraph 的 state 显式记录 steps_used 与错误信息。
         """
-        from langchain.agents import AgentExecutor, create_tool_calling_agent
-        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+        from langchain.agents import create_agent
+        from langchain_core.messages import AIMessage, HumanMessage as HM
 
         if self.llm_service is None or self.context is None:
             await self._init_llm_service()
@@ -257,28 +257,10 @@ class DeepAnalysisGraphRunner:
 
         llm = await create_llm()
 
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", self.chat_question.plan_prompt()),
-                ("human", "{input}"),
-                MessagesPlaceholder(variable_name="agent_scratchpad"),
-            ]
-        )
-
-        agent = create_tool_calling_agent(
-            llm=llm,
+        inner_agent = create_agent(
+            model=llm,
             tools=self.tools,
-            prompt=prompt,
-        )
-
-        agent_executor = AgentExecutor(
-            agent=agent,
-            tools=self.tools,
-            verbose=True,
-            max_iterations=max_iterations_this_turn,
-            early_stopping_method="force",
-            return_intermediate_steps=True,
-            handle_parsing_errors="工具调用失败，请重新调用工具并返回纯文本结果",
+            system_prompt=self.chat_question.plan_prompt(),
         )
 
         # 向前端推送一条“执行模式/子任务”说明，保持与旧实现体验一致，并显式标注当前子任务
@@ -324,26 +306,31 @@ class DeepAnalysisGraphRunner:
             else:
                 user_input = self.chat_question.question
 
-            async for chunk in agent_executor.astream({"input": user_input}):
-                if "steps" in chunk:
-                    # 仅用于调试，不推给前端
-                    continue
-                if "actions" in chunk or "output" in chunk:
-                    # 简单计为一步
+            iteration_count = 0
+            async for event in inner_agent.astream_events(
+                {"messages": [HM(content=user_input)]},
+                version="v2",
+            ):
+                kind = event.get("event", "")
+                data = event.get("data", {})
+
+                if kind == "on_tool_end":
                     steps_used += 1
-                    content = ""
-                    try:
-                        content = chunk["messages"][0].content
-                    except Exception:  # noqa: BLE001
-                        content = ""
-                    if content and self.context is not None:
-                        await self.queue.put(
-                            self.context.create_result(
-                                content=content,
-                                message_type="process",
+                    iteration_count += 1
+
+                if kind == "on_chat_model_stream":
+                    chunk = data.get("chunk")
+                    if chunk and isinstance(chunk, AIMessage):
+                        text = chunk.content
+                        if isinstance(text, str) and text.strip() and self.context is not None:
+                            await self.queue.put(
+                                self.context.create_result(
+                                    content=text,
+                                    message_type="process",
+                                )
                             )
-                        )
-                if steps_used >= max_steps:
+
+                if steps_used >= max_steps or iteration_count >= max_iterations_this_turn:
                     break
 
             state["steps_used"] = steps_used

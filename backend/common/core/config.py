@@ -137,6 +137,10 @@ class Settings(BaseSettings):
     # 深度分析：是否使用 LangGraph 执行引擎（False 时回退到原 PlanAgent）
     DEEP_ANALYSIS_USE_LANGGRAPH: bool = True
 
+    # Data Agent：是否使用 DeepAgents 框架的 Data Agent 模式
+    # 开启后深度分析将使用 DeepAgents（bash + skills + agentic），替代 LangGraph 引擎
+    DATA_AGENT_ENABLED: bool = False
+
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'GENERATE_SQL_QUERY_LIMIT_ENABLED',
@@ -144,6 +148,7 @@ class Settings(BaseSettings):
                      'PG_POOL_PRE_PING',
                      'TABLE_EMBEDDING_ENABLED',
                      'DEEP_ANALYSIS_USE_LANGGRAPH',
+                     'DATA_AGENT_ENABLED',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:

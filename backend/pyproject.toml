@@ -54,7 +54,8 @@ dependencies = [
     "tiktoken>=0.11.0",
     "ldap3>=2.9.1",
     "sqlglot>=28.6.0",
-    "numpy==2.3.5"
+    "numpy==2.3.5",
+    "deepagents>=0.4.12",
 ]
 
 [project.optional-dependencies]
