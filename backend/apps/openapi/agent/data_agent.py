@@ -256,7 +256,7 @@ class DataAgentRunner:
             async for event in agent.astream_events(
                 {"messages": [{"role": "user", "content": user_input}]},
                 version="v2",
-                config={"recursion_limit": 150},
+                config={"recursion_limit": 15000},
             ):
                 kind = event.get("event", "")
                 data = event.get("data", {})

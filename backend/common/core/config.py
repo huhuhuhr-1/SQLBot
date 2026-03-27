@@ -139,7 +139,7 @@ class Settings(BaseSettings):
 
     # Data Agent：是否使用 DeepAgents 框架的 Data Agent 模式
     # 开启后深度分析将使用 DeepAgents（bash + skills + agentic），替代 LangGraph 引擎
-    DATA_AGENT_ENABLED: bool = False
+    DATA_AGENT_ENABLED: bool = True
 
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
