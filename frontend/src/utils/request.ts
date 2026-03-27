@@ -220,7 +220,9 @@ class HttpService {
         case 401:
           errorMessage = error.response?.data
             ? typeof error.response.data === 'object'
-              ? error.response.data.message || error.response.data.detail || JSON.stringify(error.response.data)
+              ? (error.response.data as any).message ||
+                (error.response.data as any).detail ||
+                JSON.stringify(error.response.data)
               : String(error.response.data)
             : 'Unauthorized, please login again'
           // Redirect to login page if needed
@@ -259,7 +261,9 @@ class HttpService {
       if (error?.response?.data) {
         errorMessage =
           typeof error.response.data === 'object'
-            ? error.response.data.message || error.response.data.detail || JSON.stringify(error.response.data)
+            ? (error.response.data as any).message ||
+              (error.response.data as any).detail ||
+              JSON.stringify(error.response.data)
             : String(error.response.data)
       }
     } else if (error.request) {
