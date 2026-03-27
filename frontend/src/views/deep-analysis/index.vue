@@ -104,21 +104,46 @@
                 <!-- Agent 消息 -->
                 <div v-else class="da-msg da-msg-agent">
                   <div class="da-msg-bubble da-bubble-agent">
-                    <!-- 阶段标签 -->
-                    <div v-if="msg.stage" class="da-stage-tag">
-                      <el-icon v-if="msg.loading" class="is-loading"><Loading /></el-icon>
-                      {{ msg.stage }}
-                    </div>
-                    <!-- 过程（可折叠） -->
-                    <div v-if="msg.processHtml" class="da-process-block">
-                      <el-collapse>
-                        <el-collapse-item :title="t('deep_analysis.thinking_process')">
-                          <div
-                            class="markdown-body da-process-content"
-                            v-html="msg.processHtml"
-                          ></div>
-                        </el-collapse-item>
-                      </el-collapse>
+                    <!-- 步骤时间线 -->
+                    <div v-if="msg.steps && msg.steps.length" class="da-steps-timeline">
+                      <div
+                        v-for="(step, sIdx) in msg.steps"
+                        :key="sIdx"
+                        class="da-step-item"
+                        :class="{
+                          'da-step-active': step.status === 'running',
+                          'da-step-done': step.status === 'done',
+                        }"
+                      >
+                        <div class="da-step-indicator">
+                          <el-icon
+                            v-if="step.status === 'running'"
+                            class="is-loading da-step-icon-loading"
+                            ><Loading
+                          /></el-icon>
+                          <span v-else-if="step.status === 'done'" class="da-step-check">✓</span>
+                          <span v-else class="da-step-dot"></span>
+                        </div>
+                        <div class="da-step-body">
+                          <div class="da-step-title" @click="step.expanded = !step.expanded">
+                            <span class="da-step-label">{{ step.title }}</span>
+                            <el-icon
+                              v-if="step.details"
+                              class="da-step-toggle"
+                              :class="{ 'da-step-toggle-open': step.expanded }"
+                              size="12"
+                              ><ArrowRight
+                            /></el-icon>
+                          </div>
+                          <transition name="da-step-expand">
+                            <div
+                              v-if="step.expanded && step.details"
+                              class="da-step-details markdown-body"
+                              v-html="step.details"
+                            ></div>
+                          </transition>
+                        </div>
+                      </div>
                     </div>
                     <!-- 主文本 -->
                     <div
@@ -241,6 +266,14 @@ import 'github-markdown-css/github-markdown-light.css'
 const { t } = useI18n()
 
 // ===== Types =====
+interface StepItem {
+  title: string
+  status: 'pending' | 'running' | 'done'
+  details: string
+  detailsMd: string
+  expanded: boolean
+}
+
 interface ChatMessage {
   role: 'user' | 'agent'
   content: string
@@ -250,6 +283,7 @@ interface ChatMessage {
   reportMd?: string
   stage?: string
   loading?: boolean
+  steps?: StepItem[]
 }
 
 // ===== State =====
@@ -342,6 +376,66 @@ function selectSession(item: ChatInfo) {
   if (item.id != null) loadHistory(item.id)
 }
 
+function buildStepsFromHistory(plan?: string, process?: any[], report?: string): StepItem[] {
+  const steps: StepItem[] = []
+
+  if (plan) {
+    const planStep: StepItem = {
+      title: '任务规划',
+      status: 'done',
+      detailsMd: plan,
+      details: renderMd(plan),
+      expanded: false,
+    }
+    steps.push(planStep)
+  }
+
+  if (process && Array.isArray(process)) {
+    let currentStep: StepItem | null = null
+    for (const item of process) {
+      const t = item?.type || 'process'
+      const c = item?.content || ''
+      if (!c) continue
+
+      if (t === 'stage') {
+        if (currentStep) currentStep.details = renderMd(currentStep.detailsMd)
+        const title = classifyStageTitle(c)
+        currentStep = { title, status: 'done', detailsMd: '', details: '', expanded: false }
+        steps.push(currentStep)
+        continue
+      }
+
+      if (currentStep) {
+        currentStep.detailsMd += c
+      } else {
+        currentStep = {
+          title: '执行过程',
+          status: 'done',
+          detailsMd: c,
+          details: '',
+          expanded: false,
+        }
+        steps.push(currentStep)
+      }
+    }
+    if (currentStep && !currentStep.details) {
+      currentStep.details = renderMd(currentStep.detailsMd)
+    }
+  }
+
+  if (report) {
+    steps.push({
+      title: '生成报告',
+      status: 'done',
+      detailsMd: '报告已生成，点击下方卡片查看。',
+      details: renderMd('报告已生成，点击下方卡片查看。'),
+      expanded: false,
+    })
+  }
+
+  return steps
+}
+
 async function loadHistory(chatId: number) {
   try {
     const res = await chatApi.get(chatId)
@@ -353,19 +447,16 @@ async function loadHistory(chatId: number) {
       try {
         const data = JSON.parse(r.analysis)
         if (typeof data !== 'object' || (!data.plan && !data.report)) continue
-        // User message
         if (data.config?.question) {
           msgs.push({ role: 'user', content: data.config.question })
         }
-        // Agent response
         const agentMsg: ChatMessage = { role: 'agent', content: '' }
-        if (data.plan) {
-          agentMsg.processHtml = renderMd(data.plan)
-        }
+        agentMsg.steps = buildStepsFromHistory(data.plan, data.process, data.report)
         if (data.report) {
           agentMsg.reportHtml = renderMd(data.report)
           agentMsg.reportMd = data.report
           agentMsg.content = '分析完成，点击查看报告 👇'
+          agentMsg.contentHtml = renderMd('**分析完成** — 点击下方卡片查看完整报告')
         }
         msgs.push(agentMsg)
       } catch {
@@ -399,24 +490,50 @@ function exportReport() {
   ElMessage.success(t('deep_analysis.export_success'))
 }
 
+function createStep(title: string, status: StepItem['status'] = 'running'): StepItem {
+  return { title, status, details: '', detailsMd: '', expanded: false }
+}
+
+function finalizeStep(step: StepItem) {
+  step.status = 'done'
+  if (step.detailsMd) {
+    step.details = renderMd(step.detailsMd)
+  }
+}
+
+function appendToStep(step: StepItem, text: string) {
+  step.detailsMd += text
+  step.details = renderMd(step.detailsMd)
+}
+
+function classifyStageTitle(raw: string): string {
+  const s = raw.replace(/^当前阶段：/, '').trim()
+  if (/任务拆解|plan/i.test(s)) return '任务规划'
+  if (/智能取数/i.test(s)) return '智能取数'
+  if (/分析洞察|insight/i.test(s)) return '分析洞察'
+  if (/沉淀结论|save/i.test(s)) return '沉淀结论'
+  if (/数据变换/i.test(s)) return '数据变换'
+  if (/汇总报告|report/i.test(s)) return '生成报告'
+  return s || '执行中'
+}
+
 async function sendMessage() {
   const q = question.value.trim()
   if (!q || loading.value) return
 
-  // Add user message
   messages.value.push({ role: 'user', content: q })
   question.value = ''
   scrollToBottom()
 
-  // Start loading
   loading.value = true
   currentStage.value = ''
   abortController = new AbortController()
 
-  // Accumulate agent response
-  let planMd = ''
+  const agentMsg: ChatMessage = { role: 'agent', content: '', steps: [] }
+  messages.value.push(agentMsg)
+
   let reportMd = ''
-  let processParts: string[] = []
+  let currentStep: StepItem | null = null
 
   try {
     const response = await request.fetchStream(
@@ -432,7 +549,7 @@ async function sendMessage() {
     )
 
     if (!response.ok || !response.body) {
-      messages.value.push({ role: 'agent', content: response.statusText || '请求失败' })
+      agentMsg.content = response.statusText || '请求失败'
       loading.value = false
       return
     }
@@ -457,30 +574,69 @@ async function sendMessage() {
           const c = typeof data.content === 'string' ? data.content : ''
 
           if (data.type === 'error') {
-            messages.value.push({ role: 'agent', content: `❌ ${c || '未知错误'}` })
+            if (currentStep) finalizeStep(currentStep)
+            const errStep = createStep('错误', 'done')
+            errStep.detailsMd = c || '未知错误'
+            errStep.details = renderMd(errStep.detailsMd)
+            agentMsg.steps!.push(errStep)
+            agentMsg.content = `❌ ${c || '未知错误'}`
             break
           }
+
           if (data.type === 'start' && data.chat_id) {
             currentSessionId.value = data.chat_id
             sessionStorage.setItem('da_session', String(data.chat_id))
             await loadSessions()
             continue
           }
+
           if (data.type === 'finish') {
+            if (currentStep) finalizeStep(currentStep)
             if (data.chat_id) {
               currentSessionId.value = data.chat_id
               await loadSessions()
             }
             break
           }
+
           if (data.type === 'plan' && c) {
-            planMd = c
-          } else if (data.type === 'stage' && c) {
-            currentStage.value = c.replace(/^当前阶段：/, '').trim()
-          } else if (data.type === 'report' && c) {
-            reportMd = c
-          } else if (c) {
-            processParts.push(c)
+            if (currentStep) finalizeStep(currentStep)
+            currentStep = createStep('任务规划')
+            currentStep.detailsMd = c
+            currentStep.details = renderMd(c)
+            currentStep.expanded = false
+            agentMsg.steps!.push(currentStep)
+            scrollToBottom()
+            continue
+          }
+
+          if (data.type === 'stage' && c) {
+            const stageTitle = classifyStageTitle(c)
+            currentStage.value = stageTitle
+
+            if (currentStep && currentStep.status === 'running') {
+              finalizeStep(currentStep)
+            }
+            currentStep = createStep(stageTitle)
+            agentMsg.steps!.push(currentStep)
+            scrollToBottom()
+            continue
+          }
+
+          if (data.type === 'report' && c) {
+            reportMd += c
+            continue
+          }
+
+          if (c && data.type !== 'report') {
+            if (currentStep) {
+              appendToStep(currentStep, c)
+            } else {
+              currentStep = createStep('分析中')
+              agentMsg.steps!.push(currentStep)
+              appendToStep(currentStep, c)
+            }
+            scrollToBottom()
           }
         } catch {
           continue
@@ -488,27 +644,27 @@ async function sendMessage() {
       }
     }
 
-    // Build final agent message
-    const agentMsg: ChatMessage = { role: 'agent', content: '' }
-    const processAll = processParts.join('')
-    if (planMd || processAll) {
-      agentMsg.processHtml = renderMd(planMd + '\n\n' + processAll)
+    if (currentStep && currentStep.status === 'running') {
+      finalizeStep(currentStep)
     }
+
     if (reportMd) {
+      const reportStep = createStep('生成报告', 'done')
+      reportStep.detailsMd = '报告已生成，点击下方卡片查看完整报告。'
+      reportStep.details = renderMd(reportStep.detailsMd)
+      agentMsg.steps!.push(reportStep)
+
       agentMsg.reportHtml = renderMd(reportMd)
       agentMsg.reportMd = reportMd
       agentMsg.content = '分析完成，点击查看报告 👇'
       agentMsg.contentHtml = renderMd('**分析完成** — 点击下方卡片查看完整报告')
-    } else if (processAll) {
-      agentMsg.content = processAll
-      agentMsg.contentHtml = renderMd(processAll)
     } else {
       agentMsg.content = '分析完成'
+      agentMsg.contentHtml = renderMd('**分析完成**')
     }
-    messages.value.push(agentMsg)
   } catch (e: any) {
     if (e?.name !== 'AbortError') {
-      messages.value.push({ role: 'agent', content: `❌ ${e?.message || String(e)}` })
+      agentMsg.content = `❌ ${e?.message || String(e)}`
     }
   } finally {
     loading.value = false
@@ -784,27 +940,131 @@ onMounted(async () => {
   color: #8f959e;
 }
 
-/* Stage tag */
-.da-stage-tag {
-  display: inline-flex;
+/* Steps timeline */
+.da-steps-timeline {
+  margin-bottom: 12px;
+}
+.da-step-item {
+  display: flex;
+  gap: 10px;
+  position: relative;
+  padding-bottom: 4px;
+}
+.da-step-item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 24px;
+  bottom: 0;
+  width: 1.5px;
+  background: #e4e7ed;
+}
+.da-step-item.da-step-done:not(:last-child)::before {
+  background: var(--ed-color-primary, #1cba90);
+}
+.da-step-indicator {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  z-index: 1;
+}
+.da-step-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ed-color-primary, #1cba90);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.da-step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #dcdfe6;
+}
+.da-step-icon-loading {
+  color: var(--ed-color-primary, #1cba90);
+  font-size: 18px;
+}
+.da-step-body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 8px;
+}
+.da-step-title {
+  display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(28, 186, 144, 0.1);
-  color: var(--ed-color-primary);
-  font-size: 12px;
-  padding: 2px 10px;
-  border-radius: 99px;
-  margin-bottom: 8px;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
 }
-
-/* Process block */
-.da-process-block {
-  margin-bottom: 8px;
+.da-step-title:hover .da-step-label {
+  color: var(--ed-color-primary, #1cba90);
 }
-.da-process-content {
+.da-step-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2329;
+  transition: color 0.15s;
+}
+.da-step-done .da-step-label {
+  color: #1f2329;
+}
+.da-step-active .da-step-label {
+  color: var(--ed-color-primary, #1cba90);
+}
+.da-step-toggle {
+  color: #8f959e;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.da-step-toggle-open {
+  transform: rotate(90deg);
+}
+.da-step-details {
   font-size: 13px;
+  color: #4e5969;
+  padding: 6px 0 2px;
+  line-height: 1.6;
   max-height: 400px;
   overflow-y: auto;
+}
+.da-step-details :deep(pre) {
+  background: #fff;
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.da-step-details :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 6px 0;
+  font-size: 12px;
+}
+.da-step-details :deep(th),
+.da-step-details :deep(td) {
+  border: 1px solid #dee0e3;
+  padding: 4px 8px;
+}
+.da-step-expand-enter-active,
+.da-step-expand-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.da-step-expand-enter-from,
+.da-step-expand-leave-to {
+  opacity: 0;
+  max-height: 0;
 }
 
 /* Agent text */
