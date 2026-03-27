@@ -128,12 +128,16 @@ class DataAgentRunner:
 
     async def _pre_init_user_space(self) -> None:
         """在启动 Agent 前，初始化 .sqlbot 缓存并自动拉取所有可用数据源的元数据。"""
+        _log = SQLBotLogUtil
         uid = str(self.current_user.id)
         api_url = self._get_api_url()
         token = self._get_user_token()
         script = str(SKILL_DIR / "scripts" / "run.sh")
+        _log.info(f"  pre_init: uid={uid}, api_url={api_url}, script={script}")
+        _log.info(f"  pre_init: SKILL_DIR={SKILL_DIR}, exists={SKILL_DIR.exists()}")
 
         async def _run(cmd: list[str]) -> tuple[int, str, str]:
+            _log.info(f"  pre_init _run: {' '.join(cmd[:4])}...")
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -141,26 +145,29 @@ class DataAgentRunner:
                 cwd=str(SKILL_DIR),
             )
             out, err = await proc.communicate()
-            return proc.returncode, out.decode(), err.decode()
+            rc = proc.returncode
+            if rc != 0:
+                _log.warning(f"  pre_init _run rc={rc}, stderr={err.decode()[:200]}")
+            return rc, out.decode(), err.decode()
 
-        rc, _, err = await _run(["bash", script, "init", uid, api_url, token])
+        rc, out, err = await _run(["bash", script, "init", uid, api_url, token])
         if rc != 0:
-            SQLBotLogUtil.error(f"init user space failed: {err}")
+            _log.error(f"init user space failed (rc={rc}): {err[:300]}")
             return
+        _log.info(f"  pre_init: init OK, stdout={out[:100]}")
 
-        # 拉取权限（可用数据源列表）
-        await _run(["bash", script, "pull-permissions", uid])
+        rc, out, err = await _run(["bash", script, "pull-permissions", uid])
+        _log.info(f"  pre_init: pull-permissions rc={rc}")
 
-        # 自动拉取所有数据源的 schema 索引和术语
         from apps.datasource.crud.datasource import get_datasource_list_for_openapi
 
         ds_list = get_datasource_list_for_openapi(session=self.session, user=self.current_user)
+        _log.info(f"  pre_init: 发现 {len(ds_list)} 个数据源，开始拉取 schema/semantic...")
         for ds in ds_list:
             ds_id = str(ds.id)
-            # 拉取 L1/L2 schema 索引
             await _run(["bash", script, "pull-index", uid, ds_id])
-            # 拉取术语口径
             await _run(["bash", script, "pull-semantic", uid, ds_id])
+        _log.info("  pre_init: 所有数据源元数据拉取完成")
 
     async def _build_agent(self):
         from deepagents import create_deep_agent
@@ -208,11 +215,19 @@ class DataAgentRunner:
         return agent
 
     async def run(self) -> None:
+        _log = SQLBotLogUtil
         try:
+            _log.info("========== Data Agent 开始运行 ==========")
+            _log.info(f"用户: {self.current_user.id}, 问题: {self.chat_question.question[:100]}")
+            _log.info(f"chat_id: {self.chat_question.chat_id}, max_steps: {self.max_steps}")
+
+            _log.info("[1/4] 初始化用户空间 (pre_init_user_space)...")
             await self._pre_init_user_space()
+            _log.info("[1/4] 用户空间初始化完成")
 
             uid = str(self.current_user.id)
 
+            _log.info("[2/4] 发送 plan 事件到前端...")
             await self.queue.put(
                 {
                     "type": "plan",
@@ -246,13 +261,19 @@ class DataAgentRunner:
                     "stage": "agent",
                 }
             )
+            _log.info("[2/4] plan/stage 事件已入队")
 
+            _log.info("[3/4] 构建 DeepAgent...")
             agent = await self._build_agent()
+            _log.info("[3/4] DeepAgent 构建完成")
 
             user_input = self.chat_question.question
 
             report_content = ""
+            event_count = 0
+            tool_call_count = 0
 
+            _log.info(f"[4/4] 开始 astream_events, 输入: {user_input[:80]}...")
             async for event in agent.astream_events(
                 {"messages": [{"role": "user", "content": user_input}]},
                 version="v2",
@@ -260,6 +281,10 @@ class DataAgentRunner:
             ):
                 kind = event.get("event", "")
                 data = event.get("data", {})
+                event_count += 1
+
+                if event_count <= 5 or event_count % 20 == 0:
+                    _log.info(f"  event#{event_count}: kind={kind}, keys={list(data.keys())}")
 
                 if kind == "on_chat_model_stream":
                     chunk = data.get("chunk")
@@ -278,11 +303,14 @@ class DataAgentRunner:
                 elif kind == "on_tool_start":
                     tool_name = event.get("name", "unknown")
                     tool_input = data.get("input", {})
+                    tool_call_count += 1
                     input_preview = ""
                     if isinstance(tool_input, dict):
                         input_preview = json.dumps(tool_input, ensure_ascii=False)[:300]
                     elif isinstance(tool_input, str):
                         input_preview = tool_input[:300]
+
+                    _log.info(f"  🔧 tool_start #{tool_call_count}: {tool_name} | input: {input_preview[:120]}")
 
                     stage_map = {
                         "execute": ("执行命令", "execute"),
@@ -316,6 +344,7 @@ class DataAgentRunner:
                     tool_name = event.get("name", "")
                     output = data.get("output", "")
                     output_preview = str(output)[:500] if output else ""
+                    _log.info(f"  ✅ tool_end: {tool_name} | output_len={len(str(output))}, preview: {str(output)[:80]}")
                     if output_preview:
                         await self.queue.put(
                             {
@@ -325,8 +354,10 @@ class DataAgentRunner:
                             }
                         )
 
-            # Agent 完成后，发送报告（从 agent 的最终输出中提取）
+            _log.info(f"astream_events 结束: 共 {event_count} 个事件, {tool_call_count} 次工具调用, report_len={len(report_content)}")
+
             if report_content:
+                _log.info("发送 report 事件...")
                 await self.queue.put(
                     {
                         "type": "stage",
@@ -341,7 +372,10 @@ class DataAgentRunner:
                         "type": "report",
                     }
                 )
+            else:
+                _log.warning("Data Agent 未产出 report_content（report 为空）")
 
+            _log.info("发送 finish 事件...")
             await self.queue.put(
                 {
                     "reasoning_content": "",
@@ -350,10 +384,10 @@ class DataAgentRunner:
                     "chat_id": self.chat_question.chat_id,
                 }
             )
+            _log.info("========== Data Agent 运行结束 ==========")
 
         except Exception as e:
-            SQLBotLogUtil.error(e)
-            SQLBotLogUtil.error("Data Agent 执行出错")
+            _log.error(f"Data Agent 执行出错: {e}")
             import traceback
 
             traceback.print_exc()
