@@ -85,7 +85,7 @@ docker run -d \
 
 ```bash
 cd backend
-uv sync                                    # 安装依赖
+uv sync --extra cpu                        # 安装依赖（CPU 版 PyTorch）
 cp .env.example ../.env                    # 配置环境变量（需修改数据库连接）
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```

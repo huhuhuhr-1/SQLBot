@@ -50,6 +50,90 @@ router = APIRouter(tags=["openapi"], prefix="/openapi")
 path = settings.EXCEL_PATH
 
 
+@router.get("/getAllTerminologiesByDataSource", summary="获取所有数据源的全部术语（按数据源分组）",
+            description="返回：可见数据源列表 + 每个数据源的术语全量（不基于 question 命中）。",
+            dependencies=[Depends(common_headers)])
+async def get_all_terminologies_by_datasource(session: SessionDep, current_user: CurrentUser):
+    from apps.datasource.crud.datasource import get_datasource_list_for_openapi
+    from apps.terminology.curd.terminology import get_all_terminology_by_dslist
+
+    datasources = get_datasource_list_for_openapi(session=session, user=current_user)
+
+    terminologies_by_ds: dict[str, list[dict]] = {}
+    for ds in datasources:
+        terms = get_all_terminology_by_dslist(
+            session=session,
+            name=None,
+            oid=current_user.oid if current_user.oid is not None else 1,
+            dslist=[int(ds.id)],
+        )
+        terminologies_by_ds[str(ds.id)] = [t.model_dump() for t in terms]
+
+    return {
+        "data": {
+            "datasources": [ds.model_dump() for ds in datasources],
+            "terminologies_by_datasource": terminologies_by_ds,
+        },
+        "msg": None,
+        "code": 0,
+    }
+
+
+@router.get("/exportAllTerminologiesByDataSource", summary="导出所有数据源术语（CSV）",
+            description="将所有数据源的术语导出为一个 CSV 文件。",
+            dependencies=[Depends(common_headers)])
+async def export_all_terminologies_by_datasource(session: SessionDep, current_user: CurrentUser):
+    from apps.datasource.crud.datasource import get_datasource_list_for_openapi
+    from apps.terminology.curd.terminology import get_all_terminology_by_dslist
+
+    datasources = get_datasource_list_for_openapi(session=session, user=current_user)
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(
+        buf,
+        fieldnames=[
+            "datasource_id",
+            "datasource_name",
+            "word",
+            "description",
+            "other_words",
+            "specific_ds",
+            "datasource_ids",
+            "enabled",
+        ],
+        extrasaction="ignore",
+        lineterminator="\n",
+    )
+    writer.writeheader()
+
+    for ds in datasources:
+        terms = get_all_terminology_by_dslist(
+            session=session,
+            name=None,
+            oid=current_user.oid if current_user.oid is not None else 1,
+            dslist=[int(ds.id)],
+        )
+        for t in terms:
+            writer.writerow({
+                "datasource_id": ds.id,
+                "datasource_name": ds.name,
+                "word": t.word,
+                "description": t.description,
+                "other_words": ",".join(t.other_words or []),
+                "specific_ds": t.specific_ds,
+                "datasource_ids": ",".join(map(str, t.datasource_ids or [])),
+                "enabled": t.enabled,
+            })
+
+    csv_bytes = buf.getvalue().encode("utf-8-sig")
+    filename = "terminologies_by_datasource.csv"
+    return StreamingResponse(
+        iter([csv_bytes]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def _validate_and_resolve_openapi_sql_query(
     current_user: CurrentUser, request: DataSourceRequestWithSql
 ) -> Tuple[CoreDatasource, str]:
