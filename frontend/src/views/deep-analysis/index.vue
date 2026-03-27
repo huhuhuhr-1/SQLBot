@@ -142,12 +142,26 @@
                       </span>
                     </div>
 
-                    <!-- 计划内容直接展示 -->
-                    <div
-                      v-if="msg.planHtml"
-                      class="da-plan-block markdown-body"
-                      v-html="msg.planHtml"
-                    ></div>
+                    <!-- 计划 — 可展开的思考区块 -->
+                    <div v-if="msg.planHtml" class="da-plan-wrapper">
+                      <div class="da-plan-toggle" @click="msg.planExpanded = !msg.planExpanded">
+                        <el-icon v-if="msg.loading" class="is-loading" size="14">
+                          <Loading />
+                        </el-icon>
+                        <el-icon v-else size="14" color="#1cba90">
+                          <CircleCheckFilled />
+                        </el-icon>
+                        <span class="da-plan-toggle-text">
+                          {{ msg.loading ? 'Agent 正在规划...' : '执行计划' }}
+                        </span>
+                        <span v-if="!msg.loading" class="da-plan-toggle-link">{{
+                          msg.planExpanded ? '收起' : '查看详情'
+                        }}</span>
+                      </div>
+                      <div v-if="msg.planExpanded" class="da-plan-block markdown-body">
+                        <div v-html="msg.planHtml"></div>
+                      </div>
+                    </div>
 
                     <!-- 步骤时间线 -->
                     <div v-if="msg.steps && msg.steps.length" class="da-steps-timeline">
@@ -161,7 +175,6 @@
                           'da-step-error': step.status === 'error',
                           'da-step-selected': isStepSelected(idx, sIdx),
                         }"
-                        @click="selectStep(idx, sIdx, step)"
                       >
                         <div class="da-step-indicator">
                           <el-icon
@@ -179,25 +192,38 @@
                           <span v-else class="da-step-dot"></span>
                         </div>
                         <div class="da-step-body">
-                          <span class="da-step-label">{{ step.title }}</span>
-                          <el-icon
-                            v-if="step.details || step.detailsMd"
-                            class="da-step-arrow"
-                            size="12"
-                            ><ArrowRight
-                          /></el-icon>
+                          <div class="da-step-header" @click="selectStep(idx, sIdx, step)">
+                            <span class="da-step-label">{{ step.title }}</span>
+                            <span v-if="step.detailsMd" class="da-step-detail-link"
+                              >查看详情 &rsaquo;</span
+                            >
+                          </div>
+                          <!-- 步骤摘要 — 显示前 2 行文字 -->
+                          <div
+                            v-if="step.detailsMd && step.status === 'done'"
+                            class="da-step-summary"
+                          >
+                            {{ getStepSummary(step) }}
+                          </div>
                         </div>
                       </div>
                     </div>
 
+                    <!-- Agent 流式文本 — 正在输出时展示当前 step 的内容 -->
+                    <div
+                      v-if="msg.loading && getLastRunningStep(msg)"
+                      class="da-stream-block markdown-body"
+                      v-html="getLastRunningStep(msg)!.details"
+                    ></div>
+
                     <!-- 主文本（简短总结） -->
                     <div
-                      v-if="msg.contentHtml"
+                      v-if="!msg.loading && msg.contentHtml"
                       class="markdown-body da-agent-text"
                       v-html="msg.contentHtml"
                     ></div>
                     <div
-                      v-else-if="msg.content && !msg.planHtml && !msg.steps?.length"
+                      v-else-if="!msg.loading && msg.content && !msg.planHtml && !msg.steps?.length"
                       class="da-agent-text"
                     >
                       {{ msg.content }}
@@ -380,12 +406,27 @@
                   </transition>
                 </div>
 
-                <!-- 无事件时展示原始 markdown -->
+                <!-- 无事件时展示完整 markdown -->
                 <div
                   v-if="!activeStepEvents.length && activeStepDetail?.details"
-                  class="markdown-body da-detail-body"
+                  class="markdown-body da-detail-body da-detail-fallback"
                   v-html="activeStepDetail.details"
                 ></div>
+                <!-- 始终在事件卡片下方展示完整原始内容 -->
+                <div
+                  v-if="activeStepEvents.length && activeStepDetail?.details"
+                  class="da-detail-raw"
+                >
+                  <div class="da-detail-raw-toggle" @click="detailRawExpanded = !detailRawExpanded">
+                    <el-icon size="12"><ArrowRight /></el-icon>
+                    {{ detailRawExpanded ? '收起原始输出' : '查看原始输出' }}
+                  </div>
+                  <div
+                    v-if="detailRawExpanded"
+                    class="markdown-body da-detail-body"
+                    v-html="activeStepDetail.details"
+                  ></div>
+                </div>
               </div>
             </el-scrollbar>
           </template>
@@ -487,6 +528,7 @@ interface ChatMessage {
   contentHtml?: string
   planHtml?: string
   planMd?: string
+  planExpanded?: boolean
   reportHtml?: string
   reportMd?: string
   stage?: string
@@ -522,6 +564,7 @@ const activeStepDetail = shallowRef<StepItem | null>(null)
 const activeStepEvents = ref<EventItem[]>([])
 const selectedMsgIdx = ref(-1)
 const selectedStepIdx = ref(-1)
+const detailRawExpanded = ref(false)
 
 // Rename
 const renameVisible = ref(false)
@@ -568,6 +611,27 @@ function scrollToBottom() {
   })
 }
 
+function getStepSummary(step: StepItem): string {
+  if (!step.detailsMd) return ''
+  const clean = step.detailsMd
+    .replace(/```[\s\S]*?```/g, '[代码]')
+    .replace(/#{1,3}\s+/g, '')
+    .replace(/\*\*/g, '')
+    .replace(/\n+/g, ' ')
+    .trim()
+  return clean.length > 120 ? clean.slice(0, 120) + '...' : clean
+}
+
+function getLastRunningStep(msg: ChatMessage): StepItem | null {
+  if (!msg.steps?.length) return null
+  for (let i = msg.steps.length - 1; i >= 0; i--) {
+    if (msg.steps[i].status === 'running' && msg.steps[i].details) {
+      return msg.steps[i]
+    }
+  }
+  return null
+}
+
 function isStepSelected(msgIdx: number, stepIdx: number): boolean {
   return selectedMsgIdx.value === msgIdx && selectedStepIdx.value === stepIdx
 }
@@ -579,6 +643,7 @@ function selectStep(msgIdx: number, stepIdx: number, step: StepItem) {
   activeStepEvents.value = step.events.length ? step.events : buildEventsFromMd(step)
   detailMode.value = 'step'
   detailPanelOpen.value = true
+  detailRawExpanded.value = false
 }
 
 function getEventIcon(type: string): Component {
@@ -1481,15 +1546,47 @@ onMounted(async () => {
   color: #1cba90;
 }
 
-/* Plan block */
+/* Plan wrapper — collapsible thinking block */
+.da-plan-wrapper {
+  margin-bottom: 12px;
+}
+.da-plan-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #f7f8fa;
+  border: 1px solid #e8e9eb;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #646a73;
+  transition: background 0.15s;
+}
+.da-plan-toggle:hover {
+  background: #f0f1f3;
+}
+.da-plan-toggle-text {
+  flex: 1;
+  font-weight: 500;
+  color: #1f2329;
+}
+.da-plan-toggle-link {
+  font-size: 12px;
+  color: var(--ed-color-primary, #1cba90);
+  font-weight: 500;
+}
 .da-plan-block {
   background: #f7f8fa;
-  border-radius: 12px;
+  border-radius: 0 0 12px 12px;
+  border: 1px solid #e8e9eb;
+  border-top: none;
   padding: 16px;
-  margin-bottom: 12px;
+  margin-top: -1px;
   font-size: 14px;
   line-height: 1.7;
-  border: 1px solid #e8e9eb;
+  max-height: 400px;
+  overflow-y: auto;
 }
 .da-plan-block :deep(h1),
 .da-plan-block :deep(h2),
@@ -1575,10 +1672,16 @@ onMounted(async () => {
 .da-step-body {
   flex: 1;
   min-width: 0;
+  padding: 1px 0;
+}
+.da-step-header {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 1px 0;
+  cursor: pointer;
+}
+.da-step-header:hover .da-step-detail-link {
+  opacity: 1;
 }
 .da-step-label {
   font-size: 14px;
@@ -1595,13 +1698,53 @@ onMounted(async () => {
 .da-step-error .da-step-label {
   color: #f56c6c;
 }
-.da-step-arrow {
-  color: #c0c4cc;
-  flex-shrink: 0;
-  transition: color 0.15s;
-}
-.da-step-item:hover .da-step-arrow {
+.da-step-detail-link {
+  font-size: 12px;
   color: var(--ed-color-primary, #1cba90);
+  opacity: 0;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.da-step-summary {
+  font-size: 12px;
+  color: #8f959e;
+  line-height: 1.5;
+  margin-top: 2px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Stream block — realtime agent output */
+.da-stream-block {
+  background: #f7f8fa;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e8e9eb;
+}
+.da-stream-block :deep(pre) {
+  background: #fff;
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.da-stream-block :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.da-stream-block :deep(th),
+.da-stream-block :deep(td) {
+  border: 1px solid #dee0e3;
+  padding: 4px 8px;
 }
 
 /* Agent text */
@@ -1937,6 +2080,27 @@ onMounted(async () => {
 .da-evt-text {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Detail raw toggle */
+.da-detail-raw {
+  padding: 0 12px 12px;
+}
+.da-detail-raw-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ed-color-primary, #1cba90);
+  cursor: pointer;
+  padding: 6px 0;
+  user-select: none;
+}
+.da-detail-raw-toggle:hover {
+  text-decoration: underline;
+}
+.da-detail-fallback {
+  padding: 16px;
 }
 
 /* Animations */
