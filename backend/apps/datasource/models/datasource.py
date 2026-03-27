@@ -216,8 +216,19 @@ class ExportTableItem(BaseModel):
 
 class ExportDatasourceItem(BaseModel):
     """单条数据源导出结构：基础信息 + 选中表 + 表映射关系 + 标准元数据"""
+    class DatasourceMeta(BaseModel):
+        """导入导出元数据：显式不包含 id，避免污染 GENERATED ALWAYS 主键。"""
+        name: str = ''
+        description: str = ''
+        type: str = ''
+        type_name: str = ''
+        configuration: str = ''
+        status: str = ''
+        num: str = ''
+        recommended_config: int = 1
+
     version: int = 1
-    datasource: dict = {}  # name, description, type, type_name, configuration, status, num, recommended_config
+    datasource: DatasourceMeta = DatasourceMeta()
     tables: List[ExportTableItem] = []
     table_relation: List = []  # 与 CoreDatasource.table_relation 一致，含 source/target cell(表id) port(字段id)
 

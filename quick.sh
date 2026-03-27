@@ -9,10 +9,11 @@ echo "🚀 快速构建 SQLBot..."
 export DOCKER_BUILDKIT=1
 echo "🔨 使用 BuildKit 构建引擎..."
 
-# 优先使用 buildx，否则回退到标准构建
+# 优先使用标准 Docker 构建（自动使用本地镜像缓存）
+# buildx 的 docker-container 构建器不会自动使用本地缓存
 if docker buildx version >/dev/null 2>&1; then
-    echo "🚀 使用 buildx 构建..."
-    docker buildx build --load -t zf-sqlbot:latest .
+    echo "🚀 使用 Docker 构建（启用本地缓存）..."
+    docker build -t zf-sqlbot:latest .
 else
     echo "🏗️  使用标准 Docker 构建..."
     docker build -t zf-sqlbot:latest .

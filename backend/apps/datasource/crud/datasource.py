@@ -134,6 +134,8 @@ def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDat
 async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create_ds: CreateDatasource):
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
+    # core_datasource.id is GENERATED ALWAYS in PostgreSQL; never accept external id.
+    ds.id = None
     check_name(session, trans, user, ds)
     ds.create_time = datetime.datetime.now()
     # status = check_status(session, ds)
@@ -743,16 +745,16 @@ def export_datasources(
                     fields=field_items,
                 )
             )
-        ds_dict = {
-            "name": ds.name,
-            "description": ds.description or "",
-            "type": ds.type,
-            "type_name": ds.type_name or "",
-            "configuration": ds.configuration,
-            "status": ds.status or "Success",
-            "num": ds.num or "0/0",
-            "recommended_config": ds.recommended_config or 1,
-        }
+        ds_dict = ExportDatasourceItem.DatasourceMeta(
+            name=ds.name,
+            description=ds.description or "",
+            type=ds.type,
+            type_name=ds.type_name or "",
+            configuration=ds.configuration,
+            status=ds.status or "Success",
+            num=ds.num or "0/0",
+            recommended_config=ds.recommended_config or 1,
+        )
         items.append(
             ExportDatasourceItem(
                 version=1,
@@ -816,9 +818,10 @@ async def import_datasources(
     current_oid = user.oid if user.oid is not None else 1
     result = []
     for item in payload.datasources:
-        if not item.datasource or not item.datasource.get("name"):
+        ds_dict = item.datasource.model_dump(exclude_unset=True)
+        ds_dict.pop("id", None)  # back-compat: drop id from historical export packages
+        if not ds_dict or not ds_dict.get("name"):
             continue
-        ds_dict = item.datasource
         name = ds_dict["name"]
         tables_payload = [
             CoreTable(
@@ -852,6 +855,7 @@ async def import_datasources(
                 session.refresh(existing)
                 result.append(existing)
             except Exception as e:
+                session.rollback()
                 SQLBotLogUtil.warning(f"import_datasources merge ds {name}: {e}")
                 continue
         else:
@@ -871,6 +875,7 @@ async def import_datasources(
                 session.refresh(new_ds)
                 result.append(new_ds)
             except Exception as e:
+                session.rollback()
                 SQLBotLogUtil.warning(f"import_datasources create ds {name}: {e}")
                 continue
     return result

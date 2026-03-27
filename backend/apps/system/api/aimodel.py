@@ -202,6 +202,7 @@ async def import_aimodels(
                 session.refresh(detail)
                 result.append(detail)
         except Exception as e:
+            session.rollback()
             SQLBotLogUtil.warning(f"import_aimodels skip {item.name}: {e}")
             continue
     return result
