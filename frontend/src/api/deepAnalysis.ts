@@ -6,16 +6,17 @@ import { chatApi, type ChatInfo } from '@/api/chat'
  */
 export const deepAnalysisApi = {
   /**
-   * 绑定数据源并创建一条深度分析 session（origin=1），用于「新建分析」弹层确认后立即插表
+   * 创建一条 Data Agent session（origin=1）
+   * datasourceId 可选，不传则 Agent 自动发现所有数据源
    */
-  startSession: (datasourceId: number): Promise<ChatInfo> => {
-    return request
-      .post('/chat/start', { datasource: datasourceId, origin: 1, question: '' })
-      .then((res: any) => {
-        const chat = chatApi.toChatInfo(res)
-        if (!chat) throw new Error('Create session failed')
-        return chat
-      })
+  startSession: (datasourceId?: number): Promise<ChatInfo> => {
+    const body: Record<string, any> = { origin: 1, question: '' }
+    if (datasourceId != null) body.datasource = datasourceId
+    return request.post('/chat/start', body).then((res: any) => {
+      const chat = chatApi.toChatInfo(res)
+      if (!chat) throw new Error('Create session failed')
+      return chat
+    })
   },
 
   sessions: (): Promise<ChatInfo[]> => {
@@ -28,10 +29,12 @@ export const deepAnalysisApi = {
    * 根据数据源库表 + LLM 推荐深度分析目标（用于「试试这些分析目标」）
    */
   recommendQuestions: (datasourceId: number): Promise<{ questions: string[] }> => {
-    return request.get('/openapi/deep-analysis/recommend-questions', {
-      params: { datasource_id: datasourceId },
-    }).then((res: any) => ({
-      questions: Array.isArray(res?.questions) ? res.questions : [],
-    }))
+    return request
+      .get('/openapi/deep-analysis/recommend-questions', {
+        params: { datasource_id: datasourceId },
+      })
+      .then((res: any) => ({
+        questions: Array.isArray(res?.questions) ? res.questions : [],
+      }))
   },
 }
