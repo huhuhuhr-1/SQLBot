@@ -948,6 +948,10 @@ function appendToStep(step: StepItem, text: string) {
 }
 
 // ===== Send Message =====
+function getAgentMsg(): ChatMessage {
+  return messages.value[messages.value.length - 1]
+}
+
 async function sendMessage() {
   const q = question.value.trim()
   if (!q || loading.value) return
@@ -960,13 +964,12 @@ async function sendMessage() {
   currentStage.value = ''
   abortController = new AbortController()
 
-  const agentMsg: ChatMessage = {
+  messages.value.push({
     role: 'agent',
     content: '',
     loading: true,
     steps: [],
-  }
-  messages.value.push(agentMsg)
+  })
 
   let reportMd = ''
   let currentStep: StepItem | null = null
@@ -985,8 +988,9 @@ async function sendMessage() {
     )
 
     if (!response.ok || !response.body) {
-      agentMsg.content = response.statusText || '请求失败'
-      agentMsg.loading = false
+      const amBad = getAgentMsg()
+      amBad.content = response.statusText || '请求失败'
+      amBad.loading = false
       loading.value = false
       return
     }
@@ -1018,9 +1022,10 @@ async function sendMessage() {
             errStep.events = [
               { type: 'error', title: '执行错误', content: c || '未知错误', expanded: true },
             ]
-            agentMsg.steps!.push(errStep)
-            agentMsg.content = `${c || '未知错误'}`
-            agentMsg.thinkingLabel = '执行失败'
+            const am = getAgentMsg()
+            am.steps!.push(errStep)
+            am.content = `${c || '未知错误'}`
+            am.thinkingLabel = '执行失败'
             break
           }
 
@@ -1030,12 +1035,11 @@ async function sendMessage() {
             await loadSessions()
 
             if (!currentStep) {
-              currentStep = createStep('Data Agent 启动', 'done', 'start')
-              currentStep.events = [
+              const startStep = createStep('Data Agent 启动', 'done', 'start')
+              startStep.events = [
                 { type: 'info', title: 'Data Agent 启动', content: '会话已创建', expanded: true },
               ]
-              agentMsg.steps!.push(currentStep)
-              currentStep = null
+              getAgentMsg().steps!.push(startStep)
             }
             continue
           }
@@ -1057,9 +1061,10 @@ async function sendMessage() {
             currentStep.events = [
               { type: 'info', title: '任务规划', contentHtml: renderMd(c), expanded: true },
             ]
-            agentMsg.steps!.push(currentStep)
-            agentMsg.planHtml = renderMd(c)
-            agentMsg.planMd = c
+            const am = getAgentMsg()
+            am.steps!.push(currentStep)
+            am.planHtml = renderMd(c)
+            am.planMd = c
             currentStep = null
             scrollToBottom()
             continue
@@ -1073,7 +1078,7 @@ async function sendMessage() {
               finalizeStep(currentStep)
             }
             currentStep = createStep(stageTitle, 'running', c)
-            agentMsg.steps!.push(currentStep)
+            getAgentMsg().steps!.push(currentStep)
             scrollToBottom()
             continue
           }
@@ -1088,11 +1093,12 @@ async function sendMessage() {
               appendToStep(currentStep, c)
             } else {
               currentStep = createStep('分析中', 'running', 'process')
-              agentMsg.steps!.push(currentStep)
+              getAgentMsg().steps!.push(currentStep)
               appendToStep(currentStep, c)
             }
 
-            if (isStepSelected(messages.value.length - 1, agentMsg.steps!.length - 1)) {
+            const am = getAgentMsg()
+            if (isStepSelected(messages.value.length - 1, am.steps!.length - 1)) {
               activeStepEvents.value = parseProcessContent(
                 currentStep.detailsMd,
                 currentStep.stepType
@@ -1110,6 +1116,7 @@ async function sendMessage() {
       finalizeStep(currentStep)
     }
 
+    const amFinal = getAgentMsg()
     if (reportMd) {
       const reportStep = createStep('生成报告', 'done', 'report')
       reportStep.detailsMd = '报告已生成，点击下方卡片查看完整报告。'
@@ -1117,22 +1124,23 @@ async function sendMessage() {
       reportStep.events = [
         { type: 'info', title: '生成报告', content: '报告已生成', expanded: true },
       ]
-      agentMsg.steps!.push(reportStep)
+      amFinal.steps!.push(reportStep)
 
-      agentMsg.reportHtml = renderMd(reportMd)
-      agentMsg.reportMd = reportMd
-      agentMsg.contentHtml = renderMd('**分析完成** — 点击下方卡片查看完整报告')
-      agentMsg.thinkingLabel = '分析完成'
+      amFinal.reportHtml = renderMd(reportMd)
+      amFinal.reportMd = reportMd
+      amFinal.contentHtml = renderMd('**分析完成** — 点击下方卡片查看完整报告')
+      amFinal.thinkingLabel = '分析完成'
     } else {
-      agentMsg.thinkingLabel = '分析完成'
+      amFinal.thinkingLabel = '分析完成'
     }
   } catch (e: any) {
     if (e?.name !== 'AbortError') {
-      agentMsg.content = `${e?.message || String(e)}`
-      agentMsg.thinkingLabel = '执行异常'
+      const amErr = getAgentMsg()
+      amErr.content = `${e?.message || String(e)}`
+      amErr.thinkingLabel = '执行异常'
     }
   } finally {
-    agentMsg.loading = false
+    getAgentMsg().loading = false
     loading.value = false
     abortController = null
     scrollToBottom()
