@@ -20,12 +20,12 @@ SKILL_DIR = Path(__file__).parent / "skills" / "data-explorer"
 class DataAgentRunner:
 
     def __init__(
-        self,
-        session: Session,
-        current_user: CurrentUser,
-        chat_question: OpenChatQuestion,
-        queue: asyncio.Queue,
-        max_steps: int | None = None,
+            self,
+            session: Session,
+            current_user: CurrentUser,
+            chat_question: OpenChatQuestion,
+            queue: asyncio.Queue,
+            max_steps: int | None = None,
     ) -> None:
         self.session = session
         self.current_user = current_user
@@ -85,7 +85,8 @@ class DataAgentRunner:
             ),
             backend=LocalShellBackend(
                 root_dir=str(SKILL_DIR), timeout=120,
-                env={"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": os.environ.get("HOME", "/root"), "SQLBOT_URL": api_url},
+                env={"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": os.environ.get("HOME", "/root"),
+                     "SQLBOT_URL": api_url},
                 inherit_env=False,
             ),
             skills=[str(SKILL_DIR.parent) + "/"] if os.path.isdir(SKILL_DIR.parent) else None,
@@ -137,9 +138,10 @@ class DataAgentRunner:
             tc = 0
 
             async for event in agent.astream_events(
-                {"messages": [{"role": "user", "content": self.chat_question.question}]},
-                version="v2",
-                config={"configurable": {"thread_id": str(self.chat_question.chat_id or f"da-{uid}")}, "recursion_limit": self.max_steps * 50},
+                    {"messages": [{"role": "user", "content": self.chat_question.question}]},
+                    version="v2",
+                    config={"configurable": {"thread_id": str(self.chat_question.chat_id or f"da-{uid}")},
+                            "recursion_limit": self.max_steps * 50},
             ):
                 kind = event.get("event", "")
                 data = event.get("data", {})
@@ -159,19 +161,23 @@ class DataAgentRunner:
                     label = self._stage_label(name, inp)
                     _log.info(f"  🔧 #{tc}: {name}")
                     await self.queue.put({"type": "stage", "content": label, "stage": name, "tool": name})
-                    await self.queue.put({"reasoning_content": "", "content": f"开始执行：{label}\n\n", "type": "process"})
+                    await self.queue.put(
+                        {"reasoning_content": "", "content": f"开始执行：{label}\n\n", "type": "process"})
 
                 elif kind == "on_tool_end":
                     name = event.get("name", "")
                     out = str(data.get("output", ""))
                     _log.info(f"  ✅ {name} | {len(out)}c")
-                    await self.queue.put({"reasoning_content": "", "content": f"\n**{name} 结果** ({len(out)}字符):\n```\n{out[:1000]}\n```\n\n执行结束\n", "type": "process"})
+                    await self.queue.put({"reasoning_content": "",
+                                          "content": f"\n**{name} 结果** ({len(out)}字符):\n```\n{out[:1000]}\n```\n\n执行结束\n",
+                                          "type": "process"})
 
             if report:
                 await self.queue.put({"type": "stage", "content": "生成报告", "stage": "report"})
                 await self.queue.put({"reasoning_content": "", "content": report, "type": "report"})
 
-            await self.queue.put({"reasoning_content": "", "content": "", "type": "finish", "chat_id": self.chat_question.chat_id})
+            await self.queue.put(
+                {"reasoning_content": "", "content": "", "type": "finish", "chat_id": self.chat_question.chat_id})
             _log.info(f"Data Agent done: {tc} tools, report={len(report)}c")
 
         except Exception as e:

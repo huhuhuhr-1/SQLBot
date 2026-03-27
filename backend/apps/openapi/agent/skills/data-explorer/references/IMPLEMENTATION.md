@@ -1,56 +1,168 @@
-# Data Explorer 实现指南
+# Data Explorer Skill v2.0.1 - 技能完善说明
 
-## 核心架构
+## 当前状态
 
-### .sqlbot 缓存结构
+### 已完成的功能
 
-```
-~/.sqlbot/<uid>/
-├── config.json                     # API 连接配置 (url + token)
-├── exports/                        # SQL 查询导出的 CSV 文件
-├── permissions/
-│   └── datasources.json            # 用户可见的数据源列表
-├── schema/<db_id>/
-│   ├── index.json                  # L1: 完整 API 响应（包含 table_schema）
-│   ├── summary.json                # L2: 表概要（M-Schema 格式的 DDL）
-│   └── tables/<table_name>.json    # L3: 单表详情（字段、类型、注释、字典项）
-├── semantic/<db_id>/
-│   ├── terminologies.json          # 业务术语列表（word + description + synonyms）
-│   └── terminologies_raw.txt       # 原始术语文本
-└── relations/<db_id>/
-    └── table_relations.json        # 表关系图（edges: source_table → target_table）
-```
-
-### 分层加载策略
-
-| 层级 | 内容 | 加载方式 | 用途 |
-|------|------|----------|------|
-| L1 | 数据源索引 | `pull-index` → index.json | 了解有哪些表 |
-| L2 | 表概要 (M-Schema) | `pull-index` → summary.json | 了解表结构和字段 |
-| L3 | 单表 DDL + 注释 + 字典 | `pull-table` → tables/*.json | 精确建模 SQL |
-
-### SQL 执行流程
-
-1. Agent 根据 L2/L3 元数据编写 SQL
-2. 调用 `run.sh exec <uid> <db_id> "<SQL>" result.csv`
-3. 脚本调用 `/openapi/getDataByDbIdAndSqlCsv` 接口
-4. 结果保存为 CSV 到 `exports/` 目录
-5. Agent 读取 CSV 分析数据
-
-### 安全约束
-
-- SQL 执行端点只允许 SELECT/SHOW/DESCRIBE/EXPLAIN/WITH 语句
-- 禁止 INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE 等 DML/DDL
-- 每个用户的数据隔离在 `~/.sqlbot/<uid>/` 下
-
-## 关键 API 端点
-
-| 功能 | 方法 | 路径 |
+| 功能 | 文件 | 状态 |
 |------|------|------|
-| 登录 | POST | /openapi/getToken |
-| 数据源列表 | GET | /openapi/getDataSourceList |
-| Schema + 术语 | POST | /openapi/getDataSourceByIdOrName |
-| 全部术语 | GET | /openapi/getAllTerminologiesByDataSource |
-| 表关系 | POST | /table_relation/get/{ds_id} |
-| SQL→CSV | POST | /openapi/getDataByDbIdAndSqlCsv |
-| SQL→JSON | POST | /openapi/getDataByDbIdAndSql |
+| 初始化 | `scripts/sqlbot_utils.py::init_config` | ✅ |
+| 索引同步 | `scripts/sqlbot_utils.py::pull_index` | ✅ |
+| 元数据检查 | `scripts/sqlbot_utils.py::check_metadata` | ✅ |
+| 权限同步 | `scripts/sqlbot_utils.py::pull_permissions` | ✅ |
+| 语义层同步 | `scripts/sqlbot_utils.py::pull_semantic` | ✅ |
+| 全量术语同步 | `scripts/sqlbot_utils.py::pull_terminologies_all` | ✅ |
+| 关系图同步 | `scripts/sqlbot_utils.py::pull_relations` | ✅ |
+| 单表同步 | `scripts/sqlbot_utils.py::pull_table` | ✅ |
+| 全表同步 | `scripts/sqlbot_utils.py::pull_tables` | ✅ |
+| SQL 执行 | `scripts/sqlbot_utils.py::exec_sql` | ✅ |
+| 公共知识同步 | `scripts/sqlbot_utils.py::pull_knowledge_common` | ✅ |
+
+### 目录结构
+
+```
+~/.sqlbot/
+└── <uid>/
+    ├── config.json
+    ├── exports/
+    ├── permissions/datasources.json
+    ├── schema/<db_id>/
+    │   ├── index.json
+    │   ├── summary.json
+    │   └── tables/*.json
+    ├── semantic/<db_id>/
+    │   └── terminologies.*
+    └── relations/<db_id>/
+        └── table_relations.json
+```
+
+## 渐进式加载层级
+
+| 层级 | 说明 | 文件大小 | 命令 |
+|------|------|----------|------|
+| L0 | 用户配置 | ~200B | `init` |
+| L1 | 库索引 | ~100B | `pull-index` |
+| L2 | 表概要 | ~10KB | `pull-index` |
+| L3 | 单表详情 | ~2KB/表 | `pull-table` |
+| L3-All | 全表详情 | ~2MB | `pull-tables` |
+| Semantic | 术语 | ~5KB | `pull-semantic` |
+| Relations | 关系图 | ~2KB | `pull-relations` |
+
+## 典型工作流
+
+```bash
+# 1. 初始化 (一次性)
+bash scripts/run.sh init 1 http://localhost:8000/api/v1 <token>
+
+# 2. 同步权限
+bash scripts/run.sh pull-permissions 1
+
+# 3. 同步 L1/L2 索引
+bash scripts/run.sh pull-index 1 2
+
+# 4. 检查元数据状态
+bash scripts/run.sh check 1 2
+
+# 5. 同步语义层
+bash scripts/run.sh pull-semantic 1 2
+
+# 6. 同步关系图
+bash scripts/run.sh pull-relations 1 2
+
+# 7. 按需同步单表
+bash scripts/run.sh pull-table 1 2 ci_builds
+bash scripts/run.sh pull-table 1 2 ci_pipelines
+
+# 8. 执行查询
+bash scripts/run.sh exec 1 2 "SELECT * FROM ci_builds LIMIT 100" result.csv
+```
+
+## API 依赖
+
+| API | 用途 | 端点 |
+|-----|------|------|
+| 获取数据源 | pull-index | POST /openapi/getDataSourceByIdOrName |
+| 获取数据源列表 | pull-permissions | GET /openapi/getDataSourceList |
+| 获取全量术语 | pull-terminologies-all | GET /openapi/getAllTerminologiesByDataSource |
+| 获取表关系 | pull-relations | GET /table_relation/get/{dbid} |
+| 执行 SQL | exec_sql | POST /openapi/getDataByDbIdAndSqlCsv |
+
+## 元数据格式
+
+### index.json
+
+```json
+{
+  "id": 2,
+  "name": "数据接入调度"
+}
+```
+
+### schema/summary.json
+
+```json
+[
+  {"table": "public.ci_builds", "comment": "CI 构建记录表"},
+  {"table": "public.ci_pipelines", "comment": "CI 流水线表"}
+]
+```
+
+### schema/tables/<table_name>.json
+
+```json
+{
+  "table": "public.ci_builds",
+  "ddl": "# Table: public.ci_builds\n[\n(finished_at:timestamp),\n(status:character varying),\n...\n]"
+}
+```
+
+### semantic/terminologies.txt
+
+```text
+CI 构建 (Build，编译任务)
+  代码提交后自动触发的编译、测试、打包流程
+
+流水线 (Pipeline)
+  由多个 Stage 组成的自动化流程定义
+```
+
+## Token 优化
+
+- **紧凑 JSON**: 使用 `separators=(',', ':')` 减少空格
+- **按需加载**: 仅同步需要的表，避免全量拉取
+- **本地缓存**: 使用 `full_table_schema.txt` 缓存，避免重复网络请求
+
+## 错误处理
+
+| 错误 | 处理方式 |
+|------|----------|
+| 网络失败 | 打印错误信息，退出码 1 |
+| 元数据缺失 | check 命令返回失败，提示同步 |
+| SQL 执行失败 | 打印 API 返回的错误详情 |
+| 表不存在 | pull_table 输出警告，继续下一表 |
+
+## 下一步优化建议
+
+1. **新增 API 支持**:
+   - `POST /datasource/getDDL/{ds_id}/{table_name}` - 获取 DDL
+   - `POST /datasource/getConstraints/{ds_id}/{table_name}` - 获取主键/外键
+   - `POST /datasource/getFieldEnums/{ds_id}/{table_name}/{field_name}` - 获取枚举值
+   - `POST /datasource/getSamples/{ds_id}/{table_name}` - 获取采样数据
+
+2. **格式优化**:
+   - 支持紧凑 JSON 输出
+   - 支持 JSONL 格式 (L1 索引)
+
+3. **增量同步**:
+   - 添加 `--force` 参数强制刷新
+   - 添加 `--if-modified` 参数按需刷新
+
+4. **测试用例**:
+   - 完善 `evals/evals.json`
+   - 添加端到端测试脚本
+
+## 相关链接
+
+- [SQLBot 主项目](../../../)
+- [v2.0 重构设计](../../../.sqlbot/REFACTOR_PLAN.md)
+- [后端 API 代码](../../../backend/apps/datasource/api/)
