@@ -91,6 +91,9 @@ COPY --from=sqlbot-builder ${SQLBOT_HOME} ${SQLBOT_HOME}
 COPY --from=ssr-builder /app /opt/sqlbot/g2-ssr
 COPY --from=vector-model /opt/maxkb/app/model /opt/sqlbot/models
 
+# Copy Data Agent skills directory
+COPY .claude/skills ${SQLBOT_HOME}/.claude/skills
+
 WORKDIR ${SQLBOT_HOME}/app
 
 RUN mkdir -p /opt/sqlbot/images /opt/sqlbot/g2-ssr
