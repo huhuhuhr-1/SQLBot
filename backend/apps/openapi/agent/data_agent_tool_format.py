@@ -70,6 +70,142 @@ def _parse_content_body_literal_or_str(raw: str) -> Any:
         return body
 
 
+def _normalize_todo_items_for_api(items: list[Any]) -> list[dict[str, str]] | None:
+    out: list[dict[str, str]] = []
+    for item in items:
+        if isinstance(item, dict):
+            c = item.get("content")
+            st = item.get("status", "")
+            if c is not None:
+                out.append(
+                    {
+                        "content": str(c),
+                        "status": str(st) if st is not None else "",
+                    }
+                )
+    return out if out else None
+
+
+def _slice_balanced_square(s: str, open_idx: int) -> str | None:
+    """从 open_idx 处的 '[' 起截取平衡的 [...] 子串（忽略字符串内的括号）。"""
+    if open_idx < 0 or open_idx >= len(s) or s[open_idx] != "[":
+        return None
+    depth = 0
+    in_str: str | None = None
+    esc = False
+    i = open_idx
+    while i < len(s):
+        c = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == in_str:
+                in_str = None
+            i += 1
+            continue
+        if c in ('"', "'"):
+            in_str = c
+            i += 1
+            continue
+        if c == "[":
+            depth += 1
+        elif c == "]":
+            depth -= 1
+            if depth == 0:
+                return s[open_idx : i + 1]
+        i += 1
+    return None
+
+
+def extract_write_todos_list(raw: str | None) -> list[dict[str, str]] | None:
+    """从 write_todos 工具原始输出中解析 [{content, status}, ...]。"""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+
+    def _try_list(obj: Any) -> list[dict[str, str]] | None:
+        if isinstance(obj, list):
+            return _normalize_todo_items_for_api(obj)
+        if isinstance(obj, dict):
+            t = obj.get("todos")
+            if isinstance(t, list):
+                return _normalize_todo_items_for_api(t)
+        return None
+
+    try:
+        parsed = _parse_content_body_literal_or_str(s)
+        got = _try_list(parsed)
+        if got:
+            return got
+        if isinstance(parsed, str):
+            st = parsed.strip()
+            if st.startswith("[") and st.endswith("]"):
+                try:
+                    inner = ast.literal_eval(st)
+                    got = _try_list(inner)
+                    if got:
+                        return got
+                except (SyntaxError, ValueError, TypeError):
+                    pass
+    except ValueError:
+        pass
+
+    body = _extract_toolmessage_content_str(s)
+    if body is not None:
+        try:
+            inner = ast.literal_eval(body.strip())
+            got = _try_list(inner)
+            if got:
+                return got
+        except (SyntaxError, ValueError, TypeError):
+            pass
+        b = body.strip()
+        if b.startswith("[") and b.endswith("]"):
+            try:
+                inner = ast.literal_eval(b)
+                got = _try_list(inner)
+                if got:
+                    return got
+            except (SyntaxError, ValueError, TypeError):
+                pass
+
+    marker = "Updated todo list to "
+    mi = s.find(marker)
+    if mi >= 0:
+        br = s.find("[", mi + len(marker))
+        if br >= 0:
+            chunk = _slice_balanced_square(s, br)
+            if chunk:
+                try:
+                    inner = ast.literal_eval(chunk)
+                    got = _try_list(inner)
+                    if got:
+                        return got
+                except (SyntaxError, ValueError, TypeError):
+                    pass
+
+    for needle in ("'todos':", '"todos":', "'todos' :", '"todos" :'):
+        ti = s.find(needle)
+        if ti >= 0:
+            br = s.find("[", ti + len(needle))
+            if br >= 0:
+                chunk = _slice_balanced_square(s, br)
+                if chunk:
+                    try:
+                        inner = ast.literal_eval(chunk)
+                        got = _try_list(inner)
+                        if got:
+                            return got
+                    except (SyntaxError, ValueError, TypeError):
+                        pass
+
+    return None
+
+
 _LINE_NUM_PREFIX = re.compile(r"^\s*\d+\t")
 
 
@@ -101,7 +237,9 @@ class ParsedExecute:
     truncated: bool
 
 
-def _scan_quoted_value_with_escapes(source: str, start: int, q: str) -> tuple[str, int] | None:
+def _scan_quoted_value_with_escapes(
+    source: str, start: int, q: str
+) -> tuple[str, int] | None:
     """扫描 source[start:] 处开始的引号串，返回 (解码后内容, 闭合引号后的下标)。"""
     i = start
     parts: list[str] = []
@@ -215,7 +353,9 @@ def format_execute_markdown(raw: str, command: str | None) -> str:
         parts.append("**执行状态**：已完成（无退出码信息）")
     if pe.truncated:
         parts.append("\n> 输出已被后端截断（体积上限）。")
-    out_show = pe.output if len(pe.output) <= 12000 else pe.output[:12000] + "\n\n…（截断）"
+    out_show = (
+        pe.output if len(pe.output) <= 12000 else pe.output[:12000] + "\n\n…（截断）"
+    )
     parts.append(f"\n**控制台输出**\n\n```text\n{out_show}\n```\n")
     return "\n".join(parts)
 
@@ -242,20 +382,59 @@ def execute_result_summary_line(raw: str, command: str | None = None) -> str:
     return " · ".join(bits)
 
 
+def _extract_first_json_object(s: str) -> Any | None:
+    """从「前文 + JSON + 后文」中取出第一个顶层 JSON 对象（如 step_description 前缀 + JSON + sql 代码块）。"""
+    i = s.find("{")
+    if i < 0:
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    str_q = ""
+    for j in range(i, len(s)):
+        c = s[j]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == str_q:
+                in_str = False
+            continue
+        if c in "\"'":
+            in_str = True
+            str_q = c
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(s[i : j + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
 def _sqlbot_result_summary_line(tool_name: str, raw: str) -> str | None:
     s = raw.strip()
     if len(s) > 50000:
         s = s[:50000]
+    obj: Any | None = None
     try:
         obj = json.loads(s)
     except json.JSONDecodeError:
         inner = _extract_toolmessage_content_str(s)
-        if inner is None:
-            return None
-        try:
-            obj = json.loads(inner.strip())
-        except (json.JSONDecodeError, TypeError):
-            return None
+        if inner is not None:
+            try:
+                obj = json.loads(inner.strip())
+            except (json.JSONDecodeError, TypeError):
+                obj = None
+        if obj is None:
+            obj = _extract_first_json_object(s)
+    if obj is None:
+        return None
     if isinstance(obj, list) and tool_name == "sqlbot_list_datasources":
         return f"{len(obj)} 个数据源"
     if not isinstance(obj, dict):
@@ -274,19 +453,27 @@ def _sqlbot_result_summary_line(tool_name: str, raw: str) -> str | None:
             return f"{len(arr)} 个数据源"
     if tool_name == "sqlbot_execute_sql_csv":
         path = obj.get("path") or obj.get("csv_path") or obj.get("file")
-        rows = obj.get("rows")
-        bits = ["已导出 CSV"]
+        row_count = obj.get("row_count")
+        if row_count is None:
+            row_count = obj.get("rows")
+        bits = []
+        if obj.get("ok") is False:
+            bits.append("执行失败")
+        else:
+            bits.append("已导出 CSV")
         if path:
             bits.append(str(path).split("/")[-1][:40])
-        if isinstance(rows, int):
-            bits.append(f"{rows} 行")
+        if isinstance(row_count, int):
+            bits.append(f"{row_count} 行")
         return " · ".join(bits)
     if tool_name == "sqlbot_sql_dialect":
         return "已获取方言模板"
     return None
 
 
-def tool_result_summary_line(tool_name: str, raw: str, *, command: str | None = None) -> str | None:
+def tool_result_summary_line(
+    tool_name: str, raw: str, *, command: str | None = None
+) -> str | None:
     if tool_name == "execute":
         return execute_result_summary_line(raw, command)
     if tool_name.startswith("sqlbot_"):
@@ -351,9 +538,7 @@ def format_deepagent_tool_output(
                 obj = json.loads(s)
                 extra = ""
                 if execute_command and str(execute_command).strip():
-                    extra = (
-                        f"**命令**\n\n```bash\n{str(execute_command).strip()[:8000]}\n```\n\n"
-                    )
+                    extra = f"**命令**\n\n```bash\n{str(execute_command).strip()[:8000]}\n```\n\n"
                 return extra + (
                     "**命令输出**\n\n```json\n"
                     + json.dumps(obj, ensure_ascii=False, indent=2)

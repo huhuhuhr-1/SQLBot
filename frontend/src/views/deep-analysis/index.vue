@@ -196,7 +196,14 @@
                     <div class="da-agent-status">
                       <span v-if="msg.loading" class="da-status-tag da-status-running">
                         <el-icon class="is-loading" size="12"><Loading /></el-icon>
-                        Agent 正在执行...
+                        <span class="da-status-main">Agent 正在执行...</span>
+                        <span
+                          v-if="idx === messages.length - 1 && streamStageSubtitle"
+                          class="da-status-sub"
+                          :title="currentStage"
+                        >
+                          {{ streamStageSubtitle }}
+                        </span>
                       </span>
                       <span v-else class="da-status-tag da-status-done">
                         <el-icon size="12"><CircleCheckFilled /></el-icon>
@@ -236,9 +243,13 @@
                           'da-step-done': step.status === 'done',
                           'da-step-error': step.status === 'error',
                           'da-step-selected': isStepSelected(idx, sIdx),
-                          'da-step-item--interactive': !!step.detailsMd,
+                          'da-step-item--interactive':
+                            !!step.detailsMd || step.status === 'running',
                         }"
-                        @click="step.detailsMd && selectStep(idx, sIdx, step)"
+                        @click="
+                          (step.detailsMd || step.status === 'running') &&
+                            selectStep(idx, sIdx, step)
+                        "
                       >
                         <div class="da-step-indicator">
                           <el-icon
@@ -296,7 +307,7 @@
                     <div
                       v-if="msg.loading && getLastRunningStep(msg)"
                       class="da-stream-block markdown-body"
-                      v-html="getLastRunningStep(msg)!.details"
+                      v-html="getStreamBlockHtml(getLastRunningStep(msg)!)"
                     ></div>
 
                     <!-- 主文本（简短总结） -->
@@ -375,12 +386,35 @@
 
       <!-- 右侧：执行事件详情面板 -->
       <transition name="da-panel-slide">
-        <aside v-if="detailPanelOpen" class="da-detail-panel">
+        <aside
+          v-if="detailPanelOpen"
+          class="da-detail-panel"
+          :class="{
+            'da-detail-panel--fullscreen': detailPanelFullscreen,
+            'da-detail-panel--resizing': resizingPanel,
+          }"
+          :style="detailPanelInlineStyle"
+        >
+          <div
+            v-if="!detailPanelFullscreen"
+            class="da-detail-resize-handle"
+            @mousedown="onDetailPanelResizeStart"
+          />
           <header class="da-detail-header">
             <span class="da-detail-title">执行事件详情</span>
-            <el-button link class="da-icon-btn" @click="detailPanelOpen = false">
-              <el-icon><Close /></el-icon>
-            </el-button>
+            <div class="da-detail-header-actions">
+              <el-button
+                link
+                class="da-icon-btn"
+                :title="detailPanelFullscreen ? t('deep_analysis.exit_fullscreen') : t('deep_analysis.fullscreen')"
+                @click="detailPanelFullscreen = !detailPanelFullscreen"
+              >
+                <el-icon><Fold v-if="detailPanelFullscreen" /><FullScreen v-else /></el-icon>
+              </el-button>
+              <el-button link class="da-icon-btn" @click="detailPanelOpen = false">
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
           </header>
 
           <!-- 报告模式 -->
@@ -438,6 +472,23 @@
             </div>
             <el-scrollbar class="da-detail-body-scroll">
               <div class="da-detail-events">
+                <div v-if="showDetailTodoStrip" class="da-detail-todo-strip">
+                  <div class="da-detail-todo-strip-title">
+                    {{ t('deep_analysis.current_tasks') }}
+                  </div>
+                  <ul class="da-detail-todo-list">
+                    <li v-for="(td, ti) in sessionTodos" :key="ti" class="da-detail-todo-item">
+                      <el-tag
+                        size="small"
+                        :type="todoStatusTagType(td.status)"
+                        class="da-detail-todo-status"
+                      >
+                        {{ td.status || '—' }}
+                      </el-tag>
+                      <span class="da-detail-todo-content">{{ td.content }}</span>
+                    </li>
+                  </ul>
+                </div>
                 <!-- 主区域：Markdown 流式全文（不再依赖「查看原始输出」折叠） -->
                 <div
                   v-if="activeStepDetail?.details"
@@ -496,6 +547,44 @@
                           </tbody>
                         </table>
                       </div>
+                      <div
+                        v-if="evt.previewTable?.columns?.length"
+                        class="da-evt-preview-table markdown-body"
+                      >
+                        <div class="da-evt-section-title">
+                          <el-icon size="12"><Grid /></el-icon> 结果预览
+                          <span v-if="evt.previewTable.rowCount != null" class="da-evt-meta-inline">
+                            共 {{ evt.previewTable.rowCount }} 行
+                          </span>
+                        </div>
+                        <el-table
+                          :data="evt.previewTable.rows"
+                          stripe
+                          border
+                          max-height="320"
+                          style="width: 100%"
+                          class="da-preview-el-table"
+                        >
+                          <el-table-column
+                            v-for="col in evt.previewTable.columns"
+                            :key="col"
+                            :prop="col"
+                            :label="col"
+                            min-width="96"
+                            show-overflow-tooltip
+                          />
+                        </el-table>
+                        <div v-if="evt.previewTable.csvPath" class="da-evt-meta da-evt-csv-path">
+                          CSV: <code>{{ evt.previewTable.csvPath }}</code>
+                        </div>
+                      </div>
+                      <DeepAnalysisPreviewChart
+                        v-if="evt.chartPreview"
+                        :x-key="evt.chartPreview.xKey"
+                        :y-key="evt.chartPreview.yKey"
+                        :kind="evt.chartPreview.kind"
+                        :rows="evt.chartPreview.rows"
+                      />
                       <!-- Markdown 内容 -->
                       <div
                         v-if="evt.contentHtml"
@@ -534,7 +623,17 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, nextTick, onMounted, ref, shallowRef, type Component } from 'vue'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  shallowRef,
+  watch,
+  type Component,
+} from 'vue'
+import { useEventListener } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import {
@@ -555,13 +654,20 @@ import {
   Monitor,
   Reading,
   SetUp,
+  FullScreen,
+  Fold,
 } from '@element-plus/icons-vue'
 import { request } from '@/utils/request'
 import { deepAnalysisApi } from '@/api/deepAnalysis'
 import { chatApi } from '@/api/chat'
 import type { ChatInfo } from '@/api/chat'
 import md from '@/utils/markdown.ts'
-import { parseToolBodyStructured, unwrapToolMessageRepr } from '@/utils/deepAnalysisToolParse'
+import {
+  extractSqlCsvToolPayload,
+  inferSqlCsvChartPreview,
+  parseToolBodyStructured,
+  unwrapToolMessageRepr,
+} from '@/utils/deepAnalysisToolParse'
 import dayjs from 'dayjs'
 import { getDate } from '@/utils/utils'
 import { groupBy } from 'lodash-es'
@@ -577,6 +683,7 @@ import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import icon_user from '@/assets/svg/icon_user.svg'
 import icon_sql_outlined from '@/assets/svg/icon_sql_outlined.svg'
 import icon_ai from '@/assets/svg/icon_ai.svg'
+import DeepAnalysisPreviewChart from '@/views/deep-analysis/DeepAnalysisPreviewChart.vue'
 import 'github-markdown-css/github-markdown-light.css'
 
 const { t } = useI18n()
@@ -591,7 +698,26 @@ interface EventItem {
   sql?: string
   duration?: string
   tableSchema?: { name: string; type: string }[]
+  /** sqlbot_execute_sql_csv 预览表 */
+  previewTable?: {
+    columns: string[]
+    rows: Record<string, unknown>[]
+    rowCount?: number
+    csvPath?: string
+  }
+  /** 启发式预览图（@antv/g2） */
+  chartPreview?: {
+    xKey: string
+    yKey: string
+    kind: 'bar' | 'line'
+    rows: Record<string, unknown>[]
+  }
   expanded: boolean
+}
+
+interface TodoSnapshotItem {
+  content: string
+  status: string
 }
 
 interface StepItem {
@@ -602,6 +728,8 @@ interface StepItem {
   expanded: boolean
   stepType: string
   events: EventItem[]
+  /** SSE stage 的 tool 名（如 write_todos），用于标题与解析 */
+  stageTool?: string
   /** 本步开始时间（客户端，用于无服务端耗时的兜底） */
   startedAt?: number
   /** 本步耗时（优先服务端 duration_ms） */
@@ -654,6 +782,90 @@ const activeStepDetail = shallowRef<StepItem | null>(null)
 const activeStepEvents = ref<EventItem[]>([])
 const selectedMsgIdx = ref(-1)
 const selectedStepIdx = ref(-1)
+/** 为 true 时流式输出会同步右侧到最后一步（用户点选步骤后关闭） */
+const liveFollowLatest = ref(true)
+
+/** write_todos 最新快照，用于右侧「当前任务」条 */
+const sessionTodos = ref<TodoSnapshotItem[]>([])
+const detailPanelWidth = ref(440)
+const detailPanelFullscreen = ref(false)
+const resizingPanel = ref(false)
+
+function normalizeTodoPayload(raw: unknown): TodoSnapshotItem[] {
+  if (!Array.isArray(raw)) return []
+  const out: TodoSnapshotItem[] = []
+  for (const x of raw) {
+    if (x == null || typeof x !== 'object') continue
+    const o = x as Record<string, unknown>
+    if (o.content == null) continue
+    out.push({
+      content: String(o.content),
+      status: o.status != null ? String(o.status) : '',
+    })
+  }
+  return out
+}
+
+function allTodosTerminal(items: TodoSnapshotItem[]): boolean {
+  if (!items.length) return false
+  const term = /^(completed|done|cancelled|canceled)$/i
+  return items.every((x) => term.test(x.status.trim()))
+}
+
+const showDetailTodoStrip = computed(
+  () =>
+    detailPanelOpen.value &&
+    detailMode.value === 'step' &&
+    sessionTodos.value.length > 0 &&
+    !allTodosTerminal(sessionTodos.value)
+)
+
+function todoStatusTagType(
+  status: string
+): 'success' | 'warning' | 'info' | 'primary' | 'danger' {
+  const s = status.trim().toLowerCase()
+  if (s === 'completed' || s === 'done') return 'success'
+  if (s === 'in_progress' || s === 'in progress') return 'warning'
+  if (s === 'cancelled' || s === 'canceled') return 'info'
+  return 'info'
+}
+
+watch(detailPanelOpen, (open) => {
+  if (!open) detailPanelFullscreen.value = false
+})
+
+const detailPanelInlineStyle = computed(() => {
+  if (detailPanelFullscreen.value) return {}
+  return { width: `${detailPanelWidth.value}px` }
+})
+
+let stopResizeMove: (() => void) | undefined
+let stopResizeUp: (() => void) | undefined
+
+function onDetailPanelResizeStart(e: MouseEvent) {
+  if (detailPanelFullscreen.value || e.button !== 0) return
+  e.preventDefault()
+  resizingPanel.value = true
+  const startX = e.clientX
+  const startW = detailPanelWidth.value
+  const maxW = Math.min(window.innerWidth * 0.92, window.innerWidth - 200)
+  stopResizeMove = useEventListener(document, 'mousemove', (ev: MouseEvent) => {
+    const dx = startX - ev.clientX
+    detailPanelWidth.value = Math.min(Math.max(startW + dx, 360), maxW)
+  })
+  stopResizeUp = useEventListener(document, 'mouseup', () => {
+    resizingPanel.value = false
+    stopResizeMove?.()
+    stopResizeUp?.()
+    stopResizeMove = undefined
+    stopResizeUp = undefined
+  })
+}
+
+onUnmounted(() => {
+  stopResizeMove?.()
+  stopResizeUp?.()
+})
 
 // Rename
 const renameVisible = ref(false)
@@ -666,6 +878,14 @@ const filteredSessions = computed(() => {
   if (!sessionSearch.value.trim()) return sessionList.value
   const q = sessionSearch.value.toLowerCase()
   return sessionList.value.filter((s) => (s.brief || '').toLowerCase().includes(q))
+})
+
+/** 仅最后一条 Agent 流式消息旁展示的当前阶段（截断） */
+const streamStageSubtitle = computed(() => {
+  const s = currentStage.value.trim()
+  if (!s) return ''
+  const max = 48
+  return s.length > max ? `${s.slice(0, max)}…` : s
 })
 
 const sessionGroups = computed(() => {
@@ -757,18 +977,31 @@ function getSubSteps(step: StepItem): string[] {
 function getLastRunningStep(msg: ChatMessage): StepItem | null {
   if (!msg.steps?.length) return null
   for (let i = msg.steps.length - 1; i >= 0; i--) {
-    if (msg.steps[i].status === 'running' && msg.steps[i].details) {
+    if (msg.steps[i].status === 'running') {
       return msg.steps[i]
     }
   }
   return null
 }
 
+function getStreamBlockHtml(step: StepItem): string {
+  if (step.details?.trim()) return step.details
+  return '<div class="da-stream-placeholder">正在输出执行详情…</div>'
+}
+
 function isStepSelected(msgIdx: number, stepIdx: number): boolean {
   return selectedMsgIdx.value === msgIdx && selectedStepIdx.value === stepIdx
 }
 
-function selectStep(msgIdx: number, stepIdx: number, step: StepItem) {
+function selectStep(
+  msgIdx: number,
+  stepIdx: number,
+  step: StepItem,
+  fromAutoFollow = false
+) {
+  if (!fromAutoFollow) {
+    liveFollowLatest.value = false
+  }
   selectedMsgIdx.value = msgIdx
   selectedStepIdx.value = stepIdx
   activeStepDetail.value = step
@@ -777,14 +1010,15 @@ function selectStep(msgIdx: number, stepIdx: number, step: StepItem) {
   detailPanelOpen.value = true
 }
 
-/** 新 stage 时强制跟随当前执行步（打开右侧详情并选中最后一步） */
+/** 新 stage / plan 等：跟随最后一步并打开右侧 */
 function followExecutingStep() {
   const mi = messages.value.length - 1
   const am = messages.value[mi]
   if (!am || am.role !== 'agent' || !am.steps?.length) return
+  liveFollowLatest.value = true
   const si = am.steps.length - 1
   const step = am.steps[si]
-  selectStep(mi, si, step)
+  selectStep(mi, si, step, true)
 }
 
 function getEventIcon(type: string): Component {
@@ -801,7 +1035,7 @@ function getEventIcon(type: string): Component {
 
 function buildEventsFromMd(step: StepItem): EventItem[] {
   if (!step.detailsMd) return []
-  return parseProcessContent(step.detailsMd, step.stepType || step.title)
+  return parseProcessContent(step.detailsMd, step.stepType || step.title, step.stageTool)
 }
 
 function sqlbotBadgeFromStepType(stepType: string): string | undefined {
@@ -810,7 +1044,11 @@ function sqlbotBadgeFromStepType(stepType: string): string | undefined {
 }
 
 // ===== Parse process content for structured events =====
-function parseProcessContent(content: string, stepType: string): EventItem[] {
+function parseProcessContent(
+  content: string,
+  stepType: string,
+  stageTool?: string
+): EventItem[] {
   const events: EventItem[] = []
   const durationMatch = content.match(/耗时[为：:]\s*(\d+[.\d]*\s*(?:ms|毫秒|秒|s))/i)
   const durationStr = durationMatch ? durationMatch[1] : undefined
@@ -818,6 +1056,11 @@ function parseProcessContent(content: string, stepType: string): EventItem[] {
   const { body, toolName: reprTool } = unwrapToolMessageRepr(content)
   const st = parseToolBodyStructured(body, reprTool)
   const toolBadge = st.toolName || sqlbotBadgeFromStepType(stepType)
+  const sqlCsvPayload = extractSqlCsvToolPayload(body)
+  const isSqlCsvStep =
+    /sqlbot_execute_sql_csv/i.test(stepType) ||
+    st.toolName === 'sqlbot_execute_sql_csv' ||
+    reprTool === 'sqlbot_execute_sql_csv'
 
   for (const { sql, field } of st.sqlFromJson) {
     events.push({
@@ -841,7 +1084,59 @@ function parseProcessContent(content: string, stepType: string): EventItem[] {
     })
   }
 
-  if (st.jsonPretty) {
+  let skipJsonPrettyForSqlCsv = false
+  if (sqlCsvPayload?.ok && sqlCsvPayload.columns.length) {
+    const rc = sqlCsvPayload.row_count ?? sqlCsvPayload.rows.length
+    events.push({
+      type: 'data',
+      title: `查询结果预览（${rc} 行）`,
+      badge: toolBadge,
+      previewTable: {
+        columns: sqlCsvPayload.columns,
+        rows: sqlCsvPayload.rows,
+        rowCount: rc,
+        csvPath: sqlCsvPayload.path,
+      },
+      expanded: true,
+    })
+    const chartSpec =
+      sqlCsvPayload.rows.length > 0
+        ? inferSqlCsvChartPreview(sqlCsvPayload.columns, sqlCsvPayload.rows)
+        : null
+    if (chartSpec) {
+      events.push({
+        type: 'data',
+        title: chartSpec.kind === 'line' ? '趋势预览图' : '分布预览图',
+        badge: toolBadge,
+        chartPreview: {
+          xKey: chartSpec.xKey,
+          yKey: chartSpec.yKey,
+          kind: chartSpec.kind,
+          rows: sqlCsvPayload.rows,
+        },
+        expanded: true,
+      })
+    }
+    skipJsonPrettyForSqlCsv = isSqlCsvStep
+  } else if (sqlCsvPayload && !sqlCsvPayload.ok && sqlCsvPayload.sql) {
+    events.push({
+      type: 'sql',
+      title: '执行失败的 SQL',
+      sql: sqlCsvPayload.sql,
+      badge: toolBadge,
+      expanded: true,
+    })
+    if (sqlCsvPayload.error) {
+      events.push({
+        type: 'error',
+        title: '执行错误',
+        content: sqlCsvPayload.error,
+        expanded: true,
+      })
+    }
+  }
+
+  if (st.jsonPretty && !skipJsonPrettyForSqlCsv) {
     events.push({
       type: 'data',
       title: st.toolName ? `工具返回（${st.toolName}）` : '结构化结果',
@@ -855,7 +1150,9 @@ function parseProcessContent(content: string, stepType: string): EventItem[] {
   if (st.narrativeMd) {
     events.push({
       type: 'info',
-      title: st.toolName ? `说明（${st.toolName}）` : classifyStageTitle(stepType || '执行过程'),
+      title: st.toolName
+        ? `说明（${st.toolName}）`
+        : classifyStageTitle(stepType || '执行过程', stageTool),
       contentHtml: renderMd(st.narrativeMd),
       expanded: !hadStructured,
     })
@@ -924,7 +1221,7 @@ function parseProcessContent(content: string, stepType: string): EventItem[] {
   if (!events.length && content.trim()) {
     events.push({
       type: 'info',
-      title: classifyStageTitle(stepType || '执行过程'),
+      title: classifyStageTitle(stepType || '执行过程', stageTool),
       contentHtml: renderMd(content),
       expanded: true,
     })
@@ -951,6 +1248,7 @@ function newChat() {
   selectedStepIdx.value = -1
   sessionStorage.removeItem('da_session')
   selectedIds.value = []
+  sessionTodos.value = []
 }
 
 function isSelected(id?: number) {
@@ -1084,11 +1382,20 @@ function selectSession(item: ChatInfo) {
   sessionStorage.setItem('da_session', String(item.id))
   messages.value = []
   detailPanelOpen.value = false
+  sessionTodos.value = []
   if (item.id != null) loadHistory(item.id)
 }
 
-function classifyStageTitle(raw: string): string {
+function classifyStageTitle(raw: string, stageTool?: string): string {
   const s = raw.replace(/^当前阶段：/, '').trim()
+  if (stageTool === 'write_todos') {
+    if (s.startsWith('更新任务列表')) return s
+    if (s === '任务规划' || /^任务规划[：:]?/.test(s)) {
+      const tail = s.includes('：') ? s.slice(s.indexOf('：')) : s.includes(':') ? s.slice(s.indexOf(':')) : ''
+      return tail ? `${t('deep_analysis.todo_list_update')}${tail}` : t('deep_analysis.todo_list_update')
+    }
+    return s
+  }
   if (/推理与生成\s*SQL|llm_reasoning/i.test(s)) return '生成 SQL'
   if (/撰写报告|llm_report_draft/i.test(s)) return '撰写报告'
   if (s.includes('：') || s.includes(': ')) return s
@@ -1141,9 +1448,14 @@ function buildStepsFromHistory(plan?: string, process?: any[], report?: string):
       if (typ === 'stage') {
         if (currentStep) {
           currentStep.details = renderMd(currentStep.detailsMd)
-          currentStep.events = parseProcessContent(currentStep.detailsMd, currentStep.stepType)
+          currentStep.events = parseProcessContent(
+            currentStep.detailsMd,
+            currentStep.stepType,
+            currentStep.stageTool
+          )
         }
-        const title = classifyStageTitle(c)
+        const stTool = typeof item.tool === 'string' ? item.tool : undefined
+        const title = classifyStageTitle(c, stTool)
         currentStep = {
           title,
           status: 'done',
@@ -1151,6 +1463,7 @@ function buildStepsFromHistory(plan?: string, process?: any[], report?: string):
           details: '',
           expanded: false,
           stepType: c,
+          stageTool: stTool,
           events: [],
         }
         steps.push(currentStep)
@@ -1181,7 +1494,11 @@ function buildStepsFromHistory(plan?: string, process?: any[], report?: string):
     if (currentStep) {
       if (!currentStep.details) currentStep.details = renderMd(currentStep.detailsMd)
       if (!currentStep.events.length) {
-        currentStep.events = parseProcessContent(currentStep.detailsMd, currentStep.stepType)
+        currentStep.events = parseProcessContent(
+          currentStep.detailsMd,
+          currentStep.stepType,
+          currentStep.stageTool
+        )
       }
     }
   }
@@ -1210,6 +1527,7 @@ function buildStepsFromHistory(plan?: string, process?: any[], report?: string):
 
 async function loadHistory(chatId: number) {
   try {
+    sessionTodos.value = []
     const res = await chatApi.get(chatId)
     const info = chatApi.toChatInfo(res)
     const records = info?.records || []
@@ -1254,6 +1572,8 @@ async function loadHistory(chatId: number) {
 // ===== Report =====
 function openReport(msg: ChatMessage) {
   if (msg.reportHtml) {
+    liveFollowLatest.value = false
+    detailPanelFullscreen.value = false
     activeReportHtml.value = msg.reportHtml
     activeReportMd.value = msg.reportMd || ''
     detailMode.value = 'report'
@@ -1279,7 +1599,8 @@ function exportReport() {
 function createStep(
   title: string,
   status: StepItem['status'] = 'running',
-  stepType = ''
+  stepType = '',
+  stageTool?: string
 ): StepItem {
   const s: StepItem = {
     title,
@@ -1290,6 +1611,7 @@ function createStep(
     stepType,
     events: [],
   }
+  if (stageTool) s.stageTool = stageTool
   if (status === 'running') {
     s.startedAt = Date.now()
   }
@@ -1304,7 +1626,7 @@ function finalizeStep(step: StepItem) {
   if (step.detailsMd) {
     step.details = renderMd(step.detailsMd)
     if (!step.events.length) {
-      step.events = parseProcessContent(step.detailsMd, step.stepType)
+      step.events = parseProcessContent(step.detailsMd, step.stepType, step.stageTool)
     }
   }
 }
@@ -1329,6 +1651,8 @@ async function sendMessage() {
 
   loading.value = true
   currentStage.value = ''
+  liveFollowLatest.value = true
+  sessionTodos.value = []
   abortController = new AbortController()
 
   messages.value.push({
@@ -1383,6 +1707,7 @@ async function sendMessage() {
 
           if (data.type === 'error') {
             if (currentStep) finalizeStep(currentStep)
+            sessionTodos.value = []
             const errStep = createStep('错误', 'error', 'error')
             errStep.detailsMd = c || '未知错误'
             errStep.details = renderMd(errStep.detailsMd)
@@ -1418,6 +1743,7 @@ async function sendMessage() {
 
           if (data.type === 'finish') {
             if (currentStep) finalizeStep(currentStep)
+            sessionTodos.value = []
             if (data.chat_id) {
               currentSessionId.value = data.chat_id
               await loadSessions()
@@ -1440,17 +1766,19 @@ async function sendMessage() {
             am.planExpanded = true
             currentStep = null
             scrollToBottom()
+            nextTick(() => followExecutingStep())
             continue
           }
 
           if (data.type === 'stage' && c) {
-            const stageTitle = classifyStageTitle(c)
+            const stTool = typeof (data as { tool?: string }).tool === 'string' ? data.tool : undefined
+            const stageTitle = classifyStageTitle(c, stTool)
             currentStage.value = stageTitle
 
             if (currentStep && currentStep.status === 'running') {
               finalizeStep(currentStep)
             }
-            currentStep = createStep(stageTitle, 'running', c)
+            currentStep = createStep(stageTitle, 'running', c, stTool)
             getAgentMsg().steps!.push(currentStep)
             scrollToBottom()
             nextTick(() => followExecutingStep())
@@ -1489,12 +1817,31 @@ async function sendMessage() {
             const am = getAgentMsg()
             const mi = messages.value.length - 1
             const si = am.steps!.indexOf(currentStep!)
-            if (si >= 0 && selectedMsgIdx.value === mi && selectedStepIdx.value === si) {
+            const lastStepIdx = am.steps!.length - 1
+            const isLastStreamStep = si >= 0 && si === lastStepIdx && mi === messages.value.length - 1
+            const selectionMatches =
+              si >= 0 && selectedMsgIdx.value === mi && selectedStepIdx.value === si
+            if (si >= 0 && (selectionMatches || (liveFollowLatest.value && isLastStreamStep))) {
+              if (liveFollowLatest.value && isLastStreamStep && !selectionMatches) {
+                selectedMsgIdx.value = mi
+                selectedStepIdx.value = si
+                detailMode.value = 'step'
+                detailPanelOpen.value = true
+              }
               activeStepDetail.value = currentStep
               activeStepEvents.value = parseProcessContent(
                 currentStep!.detailsMd,
-                currentStep!.stepType
+                currentStep!.stepType,
+                currentStep!.stageTool
               )
+            }
+            const todosSnap = (data as { todos?: unknown }).todos
+            if (
+              (data as { tool?: string }).tool === 'write_todos' &&
+              Array.isArray(todosSnap) &&
+              todosSnap.length
+            ) {
+              sessionTodos.value = normalizeTodoPayload(todosSnap)
             }
             scrollToBottom()
           }
@@ -1916,6 +2263,24 @@ onMounted(async () => {
 .da-status-running {
   background: rgba(28, 186, 144, 0.08);
   color: #1cba90;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  max-width: 100%;
+}
+.da-status-main {
+  line-height: 1.4;
+}
+.da-status-sub {
+  flex-basis: 100%;
+  padding-left: 22px;
+  font-weight: 400;
+  color: #646a73;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(100%, 320px);
 }
 .da-status-done {
   background: rgba(28, 186, 144, 0.08);
@@ -2153,6 +2518,11 @@ onMounted(async () => {
   overflow-y: auto;
   border: 1px solid #e8e9eb;
 }
+.da-stream-placeholder {
+  color: #8f959e;
+  font-size: 13px;
+  padding: 8px 0;
+}
 .da-stream-block :deep(pre) {
   background: #fff;
   padding: 8px;
@@ -2267,13 +2637,43 @@ onMounted(async () => {
 
 /* ===== Detail Panel ===== */
 .da-detail-panel {
-  width: 440px;
+  position: relative;
+  flex-shrink: 0;
   min-width: 360px;
-  max-width: 520px;
+  max-width: min(92vw, calc(100vw - 200px));
+  width: 440px;
   background: #fff;
   border-left: 1px solid #e8e9eb;
   display: flex;
   flex-direction: column;
+}
+.da-detail-panel--fullscreen {
+  position: fixed !important;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  width: 100vw !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  z-index: 2001;
+  box-shadow: -4px 0 24px rgba(31, 35, 41, 0.12);
+}
+.da-detail-panel--resizing {
+  user-select: none;
+}
+.da-detail-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 3;
+  margin-left: -3px;
+}
+.da-detail-resize-handle:hover {
+  background: rgba(28, 186, 144, 0.15);
 }
 .da-detail-header {
   padding: 14px 16px;
@@ -2281,6 +2681,13 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+.da-detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
 }
 .da-detail-title {
   font-size: 15px;
@@ -2312,6 +2719,45 @@ onMounted(async () => {
   font-size: 12px;
   color: #8f959e;
   flex-shrink: 0;
+}
+.da-detail-todo-strip {
+  margin: 0 16px 12px;
+  padding: 12px 14px;
+  background: #f7f9fa;
+  border: 1px solid #e8e9eb;
+  border-radius: 8px;
+}
+.da-detail-todo-strip-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #646a73;
+  margin-bottom: 8px;
+}
+.da-detail-todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.da-detail-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+.da-detail-todo-item:last-child {
+  margin-bottom: 0;
+}
+.da-detail-todo-status {
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.da-detail-todo-content {
+  color: #1f2329;
+  word-break: break-word;
 }
 .da-detail-stream {
   padding: 12px 16px 16px;
@@ -2484,6 +2930,22 @@ onMounted(async () => {
   font-size: 12px;
   color: #8f959e;
 }
+.da-evt-meta-inline {
+  margin-left: 8px;
+  font-weight: normal;
+  color: #8f959e;
+  font-size: 12px;
+}
+.da-evt-preview-table {
+  margin-top: 10px;
+}
+.da-evt-csv-path code {
+  font-size: 11px;
+  word-break: break-all;
+}
+.da-preview-el-table {
+  margin-top: 6px;
+}
 
 /* Schema table */
 .da-schema-table {
@@ -2579,7 +3041,6 @@ onMounted(async () => {
 /* Responsive */
 @media (max-width: 1200px) {
   .da-detail-panel {
-    width: 360px;
     min-width: 320px;
   }
 }

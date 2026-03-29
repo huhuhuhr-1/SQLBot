@@ -257,6 +257,8 @@ def execute_sql_to_csv(
     preview = data[:max_preview_rows]
     return {
         "ok": True,
+        "sql": sql,
+        "datasource_id": int(db_id),
         "path": str(path),
         "row_count": len(data),
         "columns": fields,

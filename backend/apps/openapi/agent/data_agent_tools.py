@@ -52,14 +52,28 @@ def build_data_agent_tools(
         )
         head = (step_description.strip() + "\n\n") if step_description.strip() else ""
         if not res.get("ok"):
-            return head + f"执行失败：{res.get('error', 'unknown')}"
+            err = res.get("error", "unknown")
+            fail_obj = {
+                "ok": False,
+                "error": err,
+                "sql": sql.strip(),
+                "datasource_id": int(datasource_id),
+            }
+            out = head + json.dumps(fail_obj, ensure_ascii=False, indent=2)
+            out += f"\n\n```sql\n{sql.strip()}\n```\n"
+            return out
         body = {
+            "ok": True,
+            "sql": sql.strip(),
+            "datasource_id": int(datasource_id),
             "path": res["path"],
             "row_count": res["row_count"],
             "columns": res["columns"],
             "preview_rows": res["preview_rows"],
         }
-        return head + json.dumps(body, ensure_ascii=False, indent=2)
+        out = head + json.dumps(body, ensure_ascii=False, indent=2)
+        out += f"\n\n```sql\n{sql.strip()}\n```\n"
+        return out
 
     def sqlbot_sql_dialect(datasource_id: int, step_description: str = "") -> str:
         """根据数据源引擎类型返回系统内置 SQL 方言模板（规则与示例），用于生成可解析的 SQL。"""
@@ -94,7 +108,11 @@ def build_data_agent_tools(
         ),
         StructuredTool.from_function(
             name="sqlbot_execute_sql_csv",
-            description="执行只读 SQL 并导出 CSV 到工作区 exports。SQL 列别名请用英文，避免解析错误。",
+            description=(
+                "执行只读 SQL 并导出 CSV 到工作区 exports。返回 JSON 含 sql、datasource_id、"
+                "path、row_count、columns、preview_rows，并附 Markdown SQL 代码块便于界面展示。"
+                "SQL 列别名请用英文。"
+            ),
             func=sqlbot_execute_sql_csv,
         ),
         StructuredTool.from_function(

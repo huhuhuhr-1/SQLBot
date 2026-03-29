@@ -772,6 +772,8 @@ async def deep_analysis(
                             entry['tool'] = msg['tool']
                         if msg.get('result_summary'):
                             entry['result_summary'] = msg['result_summary']
+                        if msg.get('todos') is not None:
+                            entry['todos'] = msg['todos']
                         self.process.append(entry)
                     if t == 'finish':
                         from apps.chat.curd.chat import save_deep_analysis_result

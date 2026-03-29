@@ -230,6 +230,138 @@ export interface ParsedToolBody {
   toolName?: string
 }
 
+/** sqlbot_execute_sql_csv 工具 JSON 解析结果（供表格 / 预览图） */
+export interface SqlCsvToolPayload {
+  ok: boolean
+  columns: string[]
+  rows: Record<string, unknown>[]
+  row_count?: number
+  path?: string
+  sql?: string
+  datasource_id?: number
+  error?: string
+}
+
+/**
+ * 从工具输出正文（可先 unwrap）中提取 sqlbot_execute_sql_csv 的 JSON 载荷。
+ */
+export function extractSqlCsvToolPayload(body: string): SqlCsvToolPayload | null {
+  const { rest: afterFences } = stripSqlFences(body)
+  const { json } = extractTrailingJsonObject(afterFences)
+  if (!json) return null
+  if (json.ok === false) {
+    return {
+      ok: false,
+      columns: [],
+      rows: [],
+      sql: typeof json.sql === 'string' ? json.sql : undefined,
+      datasource_id: typeof json.datasource_id === 'number' ? json.datasource_id : undefined,
+      error: typeof json.error === 'string' ? json.error : 'unknown',
+    }
+  }
+
+  const hasShape = Array.isArray(json.columns) && Array.isArray(json.preview_rows)
+  if (!hasShape) return null
+
+  const cols = json.columns as unknown[]
+  if (!cols.every((c) => typeof c === 'string')) return null
+  const preview = json.preview_rows as unknown[]
+  const rows = preview
+    .filter((r) => r != null && typeof r === 'object' && !Array.isArray(r))
+    .map((r) => r as Record<string, unknown>)
+
+  return {
+    ok: true,
+    columns: cols as string[],
+    rows,
+    row_count: typeof json.row_count === 'number' ? json.row_count : rows.length,
+    path: typeof json.path === 'string' ? json.path : undefined,
+    sql: typeof json.sql === 'string' ? json.sql : undefined,
+    datasource_id: typeof json.datasource_id === 'number' ? json.datasource_id : undefined,
+  }
+}
+
+function cellLooksNumeric(v: unknown): boolean {
+  if (v === null || v === undefined || v === '') return false
+  if (typeof v === 'number' && Number.isFinite(v)) return true
+  if (typeof v === 'string') {
+    const t = v.trim()
+    if (!t) return false
+    return /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(t)
+  }
+  return false
+}
+
+function cellLooksTemporal(v: unknown): boolean {
+  if (v === null || v === undefined || v === '') return false
+  if (typeof v === 'number' && Number.isFinite(v)) return false
+  const s = String(v).trim()
+  if (!s) return false
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return true
+  if (/^\d{4}\/\d{2}\/\d{2}/.test(s)) return true
+  const d = Date.parse(s)
+  return !Number.isNaN(d) && s.length >= 8
+}
+
+function columnNameHintTemporal(name: string): boolean {
+  return /date|time|day|month|year|ts|_at$/i.test(name)
+}
+
+/**
+ * 对预览行做简单启发式：类别/时间列 + 数值列 → 柱状或折线预览。
+ */
+export function inferSqlCsvChartPreview(
+  columns: string[],
+  rows: Record<string, unknown>[]
+): { xKey: string; yKey: string; kind: 'bar' | 'line' } | null {
+  if (rows.length === 0 || rows.length > 50 || columns.length < 2 || columns.length > 4) return null
+
+  const sample = rows.slice(0, Math.min(8, rows.length))
+  const numericCols: string[] = []
+  const catCols: string[] = []
+  const timeCols: string[] = []
+
+  for (const col of columns) {
+    let numN = 0
+    let timeN = 0
+    let strN = 0
+    for (const r of sample) {
+      const v = r[col]
+      if (cellLooksTemporal(v) || columnNameHintTemporal(col)) timeN++
+      else if (cellLooksNumeric(v)) numN++
+      else if (v != null && String(v).trim() !== '') strN++
+    }
+    const dom = Math.max(numN, timeN, strN)
+    if (dom === numN && numN >= Math.ceil(sample.length * 0.5)) numericCols.push(col)
+    else if (dom === timeN && timeN >= 1) timeCols.push(col)
+    else if (strN >= 1) catCols.push(col)
+  }
+
+  let xKey: string | undefined
+  let yKey: string | undefined
+  let kind: 'bar' | 'line' = 'bar'
+
+  if (timeCols.length && numericCols.length) {
+    xKey = timeCols[0]
+    yKey = numericCols.find((c) => c !== xKey) || numericCols[0]
+    kind = 'line'
+  } else if (catCols.length && numericCols.length) {
+    xKey = catCols[0]
+    yKey = numericCols.find((c) => c !== xKey) || numericCols[0]
+    kind = 'bar'
+  } else if (numericCols.length >= 2) {
+    xKey = numericCols[0]
+    yKey = numericCols[1]
+    kind = 'bar'
+  }
+
+  if (!xKey || !yKey || xKey === yKey) return null
+  for (const r of rows) {
+    if (cellLooksNumeric(r[yKey])) return { xKey, yKey, kind }
+  }
+  return null
+}
+
 /**
  * 对工具输出正文（已 unwrap）做结构化拆分。
  */

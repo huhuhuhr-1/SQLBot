@@ -3,26 +3,36 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import time
 
-from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
 from sqlmodel import Session
 
 from apps.ai_model.model_factory import create_llm
-from apps.datasource.crud.datasource import get_datasource_list_for_openapi
+from apps.datasource.crud.datasource import (
+    get_datasource_list_for_openapi,
+    get_table_schema,
+)
 from apps.openapi.agent import sqlbot_workspace as sw
 from apps.openapi.agent.data_agent_tool_format import (
+    _extract_first_json_object,
+    extract_write_todos_list,
     format_deepagent_tool_output,
     tool_result_summary_line,
 )
 from apps.openapi.agent.data_agent_tools import build_data_agent_tools
-from apps.openapi.models.openapiModels import OpenChatQuestion
+from apps.openapi.dao.openapiDao import get_datasource_by_name_or_id
+from apps.openapi.models.openapiModels import DataSourceRequest, OpenChatQuestion
 from apps.openapi.service.openapi_service import create_access_token_with_expiry
 from common.core.config import settings
 from common.core.deps import CurrentUser
 from common.utils.utils import SQLBotLogUtil
+
+# 预规划用的 schema 总长度上限，避免撑爆上下文
+_DATA_AGENT_SCHEMA_BUDGET = 22000
 
 
 class DataAgentRunner:
@@ -81,6 +91,93 @@ class DataAgentRunner:
         ):
             sw.sync_datasource_to_disk(self.session, self.current_user, uid, int(ds.id))
 
+    def _aggregate_schema_digest(self) -> str:
+        """多数据源表结构摘要，供预规划 LLM 使用（与智能问数 schema 同源）。"""
+        parts: list[str] = []
+        used = 0
+        q = (self.chat_question.question or "").strip()
+        for row in get_datasource_list_for_openapi(
+            session=self.session, user=self.current_user
+        ):
+            ds = get_datasource_by_name_or_id(
+                session=self.session,
+                user=self.current_user,
+                query=DataSourceRequest(id=int(row.id)),
+            )
+            if ds is None:
+                continue
+            block = get_table_schema(
+                session=self.session,
+                current_user=self.current_user,
+                ds=ds,
+                question=q,
+                embedding=False,
+            )
+            header = f"### 数据源 id={row.id} name={row.name} type={row.type}\n\n"
+            chunk = header + (block or "（无表结构）")
+            if used + len(chunk) > _DATA_AGENT_SCHEMA_BUDGET:
+                parts.append(
+                    f"### 数据源 id={row.id} name={row.name}\n\n"
+                    "（表结构过长，其余数据源请用 sqlbot_sync_datasource + read_file 读本地 .sqlbot 元数据）\n"
+                )
+                break
+            parts.append(chunk)
+            used += len(chunk)
+        if not parts:
+            return "（当前无可见数据源或未配置表；请先配置数据源与选表。）"
+        return "\n\n".join(parts)
+
+    async def _generate_data_agent_execution_plan(self, schema_digest: str) -> str:
+        """
+        对标智能问数「先思考再动手」：在 Agent 循环前生成可展示的执行规划（Markdown）。
+        """
+        system = (
+            "你是企业级 Data Agent 的任务规划助手。根据用户分析意图与数据库 schema 摘要，"
+            "输出一份**可执行、可分步**的 Markdown 执行规划（使用中文）。\n\n"
+            "结构要求：\n"
+            "1. 用 `## 目标理解` 简要重述业务问题、时间口径、关键实体（不确定则写「待澄清」）。\n"
+            "2. 用 `## 涉及数据源与表` 列出可能用到的数据源 id、表/主题（可写待同步后从 .sqlbot 确认）。\n"
+            "3. 用 `## 执行步骤` 给出有序步骤列表；每步包含：**要做什么**、**建议使用的工具类型**"
+            "（如：sqlbot_list_datasources / sqlbot_sync_datasource / read_file+grep 读 schema / "
+            "sqlbot_sql_dialect / sqlbot_execute_sql_csv / execute 跑 Python 读 exports 下 CSV）、"
+            "**本步产出**（如：CSV 路径、中间结论）。\n"
+            "4. 用 `## 预期交付` 说明最终需要表格、图表还是文字结论（可多种）。\n"
+            "5. 不要编造不存在的表名或字段；信息不足时明确写需要同步元数据后再查。\n"
+            "6. 禁止输出敷衍套话；步骤应具体到能指导后续工具调用。\n"
+        )
+        human = (
+            f"【Schema 摘要】\n\n{schema_digest}\n\n"
+            f"【用户问题】\n\n{self.chat_question.question or ''}\n"
+        )
+        try:
+            llm = await create_llm(use_tool=False)
+            resp = await llm.ainvoke(
+                [SystemMessage(content=system), HumanMessage(content=human)]
+            )
+            text = getattr(resp, "content", None) or ""
+            if isinstance(text, list):
+                text = "".join(
+                    getattr(b, "text", str(b)) for b in text if b is not None
+                )
+            plan = (text or "").strip()
+            if len(plan) < 80:
+                return (
+                    "## 执行步骤\n\n"
+                    "1. 使用 `sqlbot_list_datasources` 确认可见数据源。\n"
+                    "2. 对涉及库执行 `sqlbot_sync_datasource`，必要时 `read_file`/`grep` 阅读 `.sqlbot` 下 schema。\n"
+                    "3. `sqlbot_sql_dialect` 确认方言后，用 `sqlbot_execute_sql_csv` 导出结果 CSV。\n"
+                    "4. 复杂统计或制图用 `execute` 运行 Python 读取 `exports` 下 CSV。\n"
+                    "5. 汇总结论与建议。\n"
+                )
+            return plan
+        except Exception as e:
+            SQLBotLogUtil.error(f"Data Agent 预规划失败: {e}")
+            return (
+                "## 执行步骤（预规划失败，采用默认步骤）\n\n"
+                "请按工具顺序：列出数据源 → 同步元数据 → 读本地 schema → 方言模板 → "
+                "执行 SQL 导出 CSV → 必要时 Python 分析。\n"
+            )
+
     async def _build_agent(self):
         from deepagents import create_deep_agent
         from deepagents.backends import LocalShellBackend
@@ -109,8 +206,11 @@ class DataAgentRunner:
             f"元数据与 CSV: {sqlbot_home / uid}",
             f"技能包目录（Shell cwd）: {skill_dir}",
             f"API 根 URL（供子进程/脚本）: {api_base}",
+            "用户消息开头包含「系统自动生成的执行规划」：必须按步骤推进，避免跳步；每步说明正在完成规划中的哪一条。",
+            "阶段建议：① 确认数据源与 .sqlbot 元数据（list/sync/read_file/grep）② sqlbot_sql_dialect ③ sqlbot_execute_sql_csv 导出证据 ④ execute+Python 做复杂统计或制图。",
             "优先使用语义工具：sqlbot_list_datasources、sqlbot_sync_datasource、sqlbot_sql_dialect、sqlbot_execute_sql_csv；",
-            "需要复杂统计或绘图时用 execute 运行 Python，或用 read_file 读取 exports 下 CSV。",
+            "sqlbot_execute_sql_csv 的结果含 JSON（含 sql、preview）与 SQL 代码块，便于界面展示；复杂分析用 execute 读 exports 下 CSV。",
+            "最终给用户的总结须采用报告体：先摘要，再分点发现与证据（CSV/SQL），最后建议；系统可能在结束后再次整理格式，但草稿也应条理清晰。",
             "生成 SQL 时列别名请使用英文，避免解析错误。",
             "所有输出使用中文。",
         ]
@@ -159,13 +259,17 @@ class DataAgentRunner:
             "ls": "浏览目录",
             "grep": "搜索内容",
             "glob": "文件匹配",
-            "write_todos": "任务规划",
+            "write_todos": "更新任务列表",
             "task": "委派子任务",
         }
         base = labels.get(tool_name, tool_name)
         detail = ""
         if isinstance(tool_input, dict):
-            if tool_name == "execute":
+            if tool_name == "write_todos":
+                tl = tool_input.get("todos")
+                if isinstance(tl, list) and tl:
+                    detail = f"{len(tl)} 项"
+            elif tool_name == "execute":
                 cmd = tool_input.get("command", tool_input.get("cmd", ""))
                 if isinstance(cmd, str) and cmd:
                     line = cmd.strip().split("\n")[0]
@@ -197,6 +301,90 @@ class DataAgentRunner:
         return format_deepagent_tool_output(
             tool_name, out, execute_command=execute_command
         )
+
+    @staticmethod
+    def _evidence_from_sql_csv_tool(raw: str, tool_input) -> dict | None:
+        """从 sqlbot_execute_sql_csv 工具输出中解析一条证据记录。"""
+        obj = _extract_first_json_object((raw or "").strip())
+        if not isinstance(obj, dict):
+            return None
+        step_desc = ""
+        if isinstance(tool_input, dict):
+            step_desc = str(tool_input.get("step_description", "") or "")[:240]
+        sql = str(obj.get("sql") or "")[:2000]
+        path = str(obj.get("path") or "")[:500]
+        err = str(obj.get("error") or "")[:500]
+        return {
+            "datasource_id": obj.get("datasource_id"),
+            "row_count": obj.get("row_count"),
+            "path": path,
+            "ok": obj.get("ok", True),
+            "error": err,
+            "sql": sql,
+            "step_description": step_desc,
+        }
+
+    async def _finalize_structured_report(
+        self,
+        *,
+        question: str,
+        plan_excerpt: str,
+        evidence_log: list[dict],
+        draft: str,
+    ) -> str:
+        """将模型草稿整理为固定章节 Markdown（对标正式分析报告）。"""
+        if not getattr(settings, "DATA_AGENT_STRUCTURED_REPORT", True):
+            return draft
+        text = (draft or "").strip()
+        if not text:
+            return draft
+        try:
+            ev_text = json.dumps(evidence_log, ensure_ascii=False)
+            if len(ev_text) > 8000:
+                ev_text = ev_text[:8000] + "\n…（证据列表已截断）"
+            plan_x = (plan_excerpt or "")[:6000]
+            draft_x = text[:14000]
+            if len(text) > 14000:
+                draft_x += "\n\n…（草稿已截断，整理时请保留核心结论）"
+
+            system = (
+                "你是数据分析报告编辑。请将「分析草稿」改写为正式 Markdown 分析报告，"
+                "必须使用以下章节标题（按顺序，使用 # / ##）：\n"
+                "# 分析摘要\n"
+                "## 数据与证据\n"
+                "## 主要发现\n"
+                "## 建议与后续\n"
+                "## 附录（SQL 与导出索引）\n\n"
+                "写作要求：\n"
+                "- 「分析摘要」用 3～6 句话概括业务问题、数据范围与核心结论。\n"
+                "- 「数据与证据」用 Markdown 表格或有序列表，为每条证据编号（E1,E2…），"
+                "列出数据源 id、行数、CSV 路径、SQL 摘要；内容须与「证据 JSON」一致，禁止编造路径或行数。\n"
+                "- 「主要发现」分条列出，每条尽量对应证据编号或 CSV 路径。\n"
+                "- 「建议与后续」写可执行建议或数据/口径待办。\n"
+                "- 「附录」汇总关键 SQL（可截断）与导出文件路径。\n"
+                "- 禁止空洞套话；若证据不足须在摘要或发现中明确说明限制。\n"
+                "- 全文使用中文。\n"
+            )
+            human = (
+                f"用户问题：\n{question}\n\n"
+                f"执行规划（摘录）：\n{plan_x}\n\n"
+                f"证据 JSON：\n{ev_text}\n\n"
+                f"---\n分析草稿：\n{draft_x}"
+            )
+            llm = await create_llm(use_tool=False)
+            resp = await llm.ainvoke(
+                [SystemMessage(content=system), HumanMessage(content=human)]
+            )
+            out = getattr(resp, "content", None) or ""
+            if isinstance(out, list):
+                out = "".join(getattr(b, "text", str(b)) for b in out if b is not None)
+            polished = (out or "").strip()
+            if len(polished) < 120:
+                return draft
+            return polished
+        except Exception as e:
+            SQLBotLogUtil.error(f"Data Agent 结构化报告失败，使用草稿: {e}")
+            return draft
 
     async def _emit_buffered_llm_text(
         self, buffer_parts: list[str], *, title: str, stage_key: str
@@ -234,21 +422,24 @@ class DataAgentRunner:
 
             sqlbot_home = sw.sqlbot_root_path()
             skill_path = sw.data_explorer_skill_dir()
+            schema_digest = self._aggregate_schema_digest()
+            execution_plan_md = await self._generate_data_agent_execution_plan(
+                schema_digest
+            )
+
             methodology = (
-                "### 方法论（data-explorer）\n\n"
-                "1. **需求与身份** — 明确业务问题、口径与权限边界。\n"
-                "2. **元数据同步** — 同步数据源与表结构，保证 SQL 与方言一致。\n"
-                "3. **闭环探查迭代** — 以 CSV/证据链渐进验证假设，必要时修正查询。\n"
-                "4. **实证报告** — 基于可复现结果输出结论与建议。\n\n"
-                "### 执行轨迹说明\n\n"
-                "下方 **时间线** 为运行时真实步骤（Shell 脚本、读文件、SQL 工具等）。"
-                "每步标题含简要动作；**摘要** 为一行结果提示；点「查看详情」可看完整输出（命令、退出码、控制台文本等）。\n"
+                "### 工作方法提示（data-explorer）\n\n"
+                "1. **元数据** — `.sqlbot` 本地缓存与 schema 文件是生成 SQL 的依据。\n"
+                "2. **证据链** — 用 `sqlbot_execute_sql_csv` 导出 CSV，再决定是否用 Python 深入分析。\n"
+                "3. **界面** — 左侧为步骤时间线，右侧详情含 SQL、JSON 与命令输出；请保持步骤描述与规划一致。\n"
             )
             await self.queue.put(
                 {
                     "type": "plan",
                     "content": (
-                        f"**Data Agent(技能)**\n\n{methodology}\n"
+                        f"**Data Agent(技能)**\n\n"
+                        f"## 执行规划（系统自动生成）\n\n{execution_plan_md}\n\n"
+                        f"---\n\n{methodology}\n"
                         f"**环境**\n\n"
                         f"- 工作区: `{uid}`\n"
                         f"- SQLBOT_HOME: `{sqlbot_home}`\n"
@@ -260,6 +451,8 @@ class DataAgentRunner:
                         "skills": ["data-explorer"],
                         "sqlbot_home": str(sqlbot_home),
                         "workspace_uid": uid,
+                        "plan_source": "llm",
+                        "schema_digest_chars": len(schema_digest),
                     },
                 }
             )
@@ -269,16 +462,29 @@ class DataAgentRunner:
 
             agent = await self._build_agent()
             report = ""
+            evidence_log: list[dict] = []
             tc = 0
             tool_time_stack: list[float] = []
             post_tool_llm_buffer: list[str] = []
             accumulate_post_tool_llm = False
             last_execute_command: str | None = None
 
+            user_q = (self.chat_question.question or "").strip()
+            agent_user_content = (
+                "系统已在界面「任务规划」中展示执行规划。请严格按该规划顺序推进；"
+                "每完成规划中的关键一步，用一两句中文说明对应了规划中哪一条。\n\n"
+                "---\n\n"
+                "## 执行规划（与任务规划卡片一致）\n\n"
+                f"{execution_plan_md}\n\n"
+                "---\n\n"
+                "## 用户原始问题\n\n"
+                f"{user_q}\n"
+            )
+
             async for event in agent.astream_events(
                 {
                     "messages": [
-                        {"role": "user", "content": self.chat_question.question}
+                        {"role": "user", "content": agent_user_content},
                     ]
                 },
                 version="v2",
@@ -344,6 +550,12 @@ class DataAgentRunner:
 
                     name = event.get("name", "")
                     out = str(data.get("output", ""))
+                    tool_inp = data.get("input")
+                    if name == "sqlbot_execute_sql_csv":
+                        ev = self._evidence_from_sql_csv_tool(out, tool_inp)
+                        if ev:
+                            ev["index"] = len(evidence_log) + 1
+                            evidence_log.append(ev)
                     t0 = tool_time_stack.pop() if tool_time_stack else None
                     duration_ms = (
                         int((time.monotonic() - t0) * 1000) if t0 is not None else None
@@ -353,9 +565,7 @@ class DataAgentRunner:
                     body = self._tool_result_for_stream(
                         name, out, execute_command=cmd_for_exec
                     )
-                    summ = tool_result_summary_line(
-                        name, out, command=cmd_for_exec
-                    )
+                    summ = tool_result_summary_line(name, out, command=cmd_for_exec)
                     if name == "execute":
                         last_execute_command = None
                     payload: dict = {
@@ -368,6 +578,10 @@ class DataAgentRunner:
                         payload["duration_ms"] = duration_ms
                     if summ:
                         payload["result_summary"] = summ
+                    if name == "write_todos":
+                        todos_snap = extract_write_todos_list(out)
+                        if todos_snap:
+                            payload["todos"] = todos_snap
                     await self.queue.put(payload)
 
             await self._emit_buffered_llm_text(
@@ -381,8 +595,18 @@ class DataAgentRunner:
                 await self.queue.put(
                     {"type": "stage", "content": "生成报告", "stage": "report"}
                 )
+                final_report = await self._finalize_structured_report(
+                    question=user_q,
+                    plan_excerpt=execution_plan_md,
+                    evidence_log=evidence_log,
+                    draft=report,
+                )
                 await self.queue.put(
-                    {"reasoning_content": "", "content": report, "type": "report"}
+                    {
+                        "reasoning_content": "",
+                        "content": final_report,
+                        "type": "report",
+                    }
                 )
 
             await self.queue.put(
