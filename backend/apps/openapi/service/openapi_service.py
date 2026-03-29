@@ -11,7 +11,14 @@ from sqlalchemy import and_
 from sqlmodel import select
 from starlette.responses import StreamingResponse
 
-from apps.chat.curd.chat import get_chat_chart_data, delete_chat, list_chats, list_chats_by_time_range
+from apps.chat.curd.chat import (
+    delete_chat,
+    get_chat_chart_data,
+    list_chats,
+    list_chats_by_time_range,
+    list_deep_analysis_chats,
+    list_deep_analysis_chats_by_time_range,
+)
 from apps.chat.models.chat_model import ChatRecord, Chat
 from apps.openapi.models.openapiModels import IntentPayload, OpenChatQuestion, OpenClean, OpenChat, \
     AnalysisIntentPayload
@@ -395,6 +402,36 @@ def _get_chats_to_clean(
         end_dt = datetime.fromisoformat(clean.end_time.replace("Z", "+00:00")) if clean.end_time else None
         return list_chats_by_time_range(session, current_user, start_time=start_dt, end_time=end_dt)
     return list_chats(session, current_user)
+
+
+def _get_deep_analysis_chats_to_clean(
+    session: SessionDep,
+    current_user: CurrentUser,
+    clean: OpenClean,
+) -> List[Chat]:
+    """
+    获取待清理的深度分析会话（origin=1）。语义与智能问数 deleteChats 一致：
+    支持 chat_ids、时间段、空参=全部深度分析记录。
+    """
+    ids = clean.get_chat_ids()
+    oid = current_user.oid if current_user.oid is not None else 1
+    if ids:
+        stmt = select(Chat).where(
+            and_(
+                Chat.id.in_(ids),
+                Chat.create_by == current_user.id,
+                Chat.oid == oid,
+                Chat.origin == 1,
+            )
+        )
+        return list(session.exec(stmt))
+    if clean.start_time or clean.end_time:
+        start_dt = datetime.fromisoformat(clean.start_time.replace("Z", "+00:00")) if clean.start_time else None
+        end_dt = datetime.fromisoformat(clean.end_time.replace("Z", "+00:00")) if clean.end_time else None
+        return list_deep_analysis_chats_by_time_range(
+            session, current_user, start_time=start_dt, end_time=end_dt
+        )
+    return list_deep_analysis_chats(session, current_user)
 
 
 def _execute_cleanup(

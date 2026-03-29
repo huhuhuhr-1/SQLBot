@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
+import time
 
 from langchain_core.messages import AIMessageChunk
 from sqlmodel import Session
@@ -11,6 +13,10 @@ from sqlmodel import Session
 from apps.ai_model.model_factory import create_llm
 from apps.datasource.crud.datasource import get_datasource_list_for_openapi
 from apps.openapi.agent import sqlbot_workspace as sw
+from apps.openapi.agent.data_agent_tool_format import (
+    format_deepagent_tool_output,
+    tool_result_summary_line,
+)
 from apps.openapi.agent.data_agent_tools import build_data_agent_tools
 from apps.openapi.models.openapiModels import OpenChatQuestion
 from apps.openapi.service.openapi_service import create_access_token_with_expiry
@@ -135,8 +141,8 @@ class DataAgentRunner:
         sqlbot_labels = {
             "sqlbot_list_datasources": "列出数据源",
             "sqlbot_sync_datasource": "同步元数据",
-            "sqlbot_execute_sql_csv": "导出查询 CSV",
-            "sqlbot_sql_dialect": "SQL 方言模板",
+            "sqlbot_execute_sql_csv": "执行 SQL（导出 CSV）",
+            "sqlbot_sql_dialect": "查阅 SQL 方言模板",
         }
         if tool_name.startswith("sqlbot_"):
             desc = ""
@@ -162,7 +168,13 @@ class DataAgentRunner:
             if tool_name == "execute":
                 cmd = tool_input.get("command", tool_input.get("cmd", ""))
                 if isinstance(cmd, str) and cmd:
-                    detail = cmd.strip().split("\n")[0][:120]
+                    line = cmd.strip().split("\n")[0]
+                    sm = re.search(r"([\w./-]+\.(?:sh|py))\b", line)
+                    if sm:
+                        tail = line[:100] + ("…" if len(line) > 100 else "")
+                        detail = f"`{sm.group(1)}` · {tail}"
+                    else:
+                        detail = line[:120] + ("…" if len(line) > 120 else "")
             elif tool_name in ("read_file", "write_file", "edit_file"):
                 detail = str(tool_input.get("path", tool_input.get("file_path", "")))
             elif tool_name == "ls":
@@ -174,13 +186,41 @@ class DataAgentRunner:
         return f"{base}：{detail}" if detail else base
 
     @staticmethod
-    def _tool_result_for_stream(tool_name: str, out: str) -> str:
+    def _tool_result_for_stream(
+        tool_name: str, out: str, *, execute_command: str | None = None
+    ) -> str:
         if tool_name.startswith("sqlbot_"):
             limit = 12000
             if len(out) > limit:
                 return out[:limit] + "\n\n...（输出已截断）"
             return out
-        return f"\n**{tool_name} 结果** ({len(out)}字符):\n```\n{out[:1000]}\n```\n\n执行结束\n"
+        return format_deepagent_tool_output(
+            tool_name, out, execute_command=execute_command
+        )
+
+    async def _emit_buffered_llm_text(
+        self, buffer_parts: list[str], *, title: str, stage_key: str
+    ) -> None:
+        """将工具调用间隙的 LLM 文本单独成步，避免与上一工具混在同一步里。"""
+        text = "".join(buffer_parts)
+        buffer_parts.clear()
+        if not text.strip():
+            return
+        await self.queue.put(
+            {
+                "type": "stage",
+                "content": title,
+                "stage": stage_key,
+                "tool": "llm",
+            }
+        )
+        await self.queue.put(
+            {
+                "reasoning_content": "",
+                "content": text,
+                "type": "process",
+            }
+        )
 
     async def run(self) -> None:
         _log = SQLBotLogUtil
@@ -194,12 +234,26 @@ class DataAgentRunner:
 
             sqlbot_home = sw.sqlbot_root_path()
             skill_path = sw.data_explorer_skill_dir()
+            methodology = (
+                "### 方法论（data-explorer）\n\n"
+                "1. **需求与身份** — 明确业务问题、口径与权限边界。\n"
+                "2. **元数据同步** — 同步数据源与表结构，保证 SQL 与方言一致。\n"
+                "3. **闭环探查迭代** — 以 CSV/证据链渐进验证假设，必要时修正查询。\n"
+                "4. **实证报告** — 基于可复现结果输出结论与建议。\n\n"
+                "### 执行轨迹说明\n\n"
+                "下方 **时间线** 为运行时真实步骤（Shell 脚本、读文件、SQL 工具等）。"
+                "每步标题含简要动作；**摘要** 为一行结果提示；点「查看详情」可看完整输出（命令、退出码、控制台文本等）。\n"
+            )
             await self.queue.put(
                 {
                     "type": "plan",
                     "content": (
-                        f"**Data Agent**\n\n- 工作区: `{uid}`\n- SQLBOT_HOME: `{sqlbot_home}`\n"
-                        f"- 技能目录: `{skill_path}`\n- 技能: `data-explorer`"
+                        f"**Data Agent(技能)**\n\n{methodology}\n"
+                        f"**环境**\n\n"
+                        f"- 工作区: `{uid}`\n"
+                        f"- SQLBOT_HOME: `{sqlbot_home}`\n"
+                        f"- 技能目录: `{skill_path}`\n"
+                        f"- 技能: `data-explorer`\n"
                     ),
                     "plan": {
                         "mode": "data-agent",
@@ -210,12 +264,16 @@ class DataAgentRunner:
                 }
             )
             await self.queue.put(
-                {"type": "stage", "content": "Data Agent 启动", "stage": "agent"}
+                {"type": "stage", "content": "Data Agent(技能) 启动", "stage": "agent"}
             )
 
             agent = await self._build_agent()
             report = ""
             tc = 0
+            tool_time_stack: list[float] = []
+            post_tool_llm_buffer: list[str] = []
+            accumulate_post_tool_llm = False
+            last_execute_command: str | None = None
 
             async for event in agent.astream_events(
                 {
@@ -240,17 +298,33 @@ class DataAgentRunner:
                         text = chunk.content
                         if isinstance(text, str) and text.strip():
                             report += text
-                            await self.queue.put(
-                                {
-                                    "reasoning_content": "",
-                                    "content": text,
-                                    "type": "process",
-                                }
-                            )
+                            if accumulate_post_tool_llm:
+                                post_tool_llm_buffer.append(text)
+                            else:
+                                await self.queue.put(
+                                    {
+                                        "reasoning_content": "",
+                                        "content": text,
+                                        "type": "process",
+                                    }
+                                )
 
                 elif kind == "on_tool_start":
+                    await self._emit_buffered_llm_text(
+                        post_tool_llm_buffer,
+                        title="推理与生成 SQL",
+                        stage_key="llm_reasoning_sql",
+                    )
+                    accumulate_post_tool_llm = False
+
                     name = event.get("name", "")
                     inp = data.get("input", {})
+                    if name == "execute" and isinstance(inp, dict):
+                        c = inp.get("command", inp.get("cmd", ""))
+                        last_execute_command = c if isinstance(c, str) else None
+                    elif name == "execute":
+                        last_execute_command = None
+                    tool_time_stack.append(time.monotonic())
                     tc += 1
                     label = self._stage_label(name, inp)
                     _log.info(f"  🔧 #{tc}: {name}")
@@ -266,13 +340,42 @@ class DataAgentRunner:
                     )
 
                 elif kind == "on_tool_end":
+                    accumulate_post_tool_llm = True
+
                     name = event.get("name", "")
                     out = str(data.get("output", ""))
-                    _log.info(f"  ✅ {name} | {len(out)}c")
-                    body = self._tool_result_for_stream(name, out)
-                    await self.queue.put(
-                        {"reasoning_content": "", "content": body, "type": "process"}
+                    t0 = tool_time_stack.pop() if tool_time_stack else None
+                    duration_ms = (
+                        int((time.monotonic() - t0) * 1000) if t0 is not None else None
                     )
+                    _log.info(f"  ✅ {name} | {len(out)}c | {duration_ms}ms")
+                    cmd_for_exec = last_execute_command if name == "execute" else None
+                    body = self._tool_result_for_stream(
+                        name, out, execute_command=cmd_for_exec
+                    )
+                    summ = tool_result_summary_line(
+                        name, out, command=cmd_for_exec
+                    )
+                    if name == "execute":
+                        last_execute_command = None
+                    payload: dict = {
+                        "reasoning_content": "",
+                        "content": body,
+                        "type": "process",
+                        "tool": name,
+                    }
+                    if duration_ms is not None:
+                        payload["duration_ms"] = duration_ms
+                    if summ:
+                        payload["result_summary"] = summ
+                    await self.queue.put(payload)
+
+            await self._emit_buffered_llm_text(
+                post_tool_llm_buffer,
+                title="撰写报告",
+                stage_key="llm_report_draft",
+            )
+            accumulate_post_tool_llm = False
 
             if report:
                 await self.queue.put(
@@ -300,7 +403,7 @@ class DataAgentRunner:
             await self.queue.put(
                 {
                     "reasoning_content": "",
-                    "content": f"Data Agent 执行出错：{e}",
+                    "content": f"Data Agent(技能) 执行出错：{e}",
                     "type": "error",
                 }
             )

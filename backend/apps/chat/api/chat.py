@@ -174,11 +174,8 @@ async def delete(session: SessionDep, current_user: CurrentUser, chart_id: int, 
     try:
         return delete_chat_with_user(session=session, current_user=current_user, chart_id=chart_id)
     except Exception as e:
-        # 该接口的“禁止删除深度分析会话”属于业务规则，前端不应把它当作服务端 500 错误
         msg = str(e)
-        if "不允许删除深度分析会话" in msg:
-            status_code = 403
-        elif "not owned" in msg.lower():
+        if "not owned" in msg.lower():
             status_code = 403
         else:
             status_code = 500

@@ -41,6 +41,17 @@ class DeepAnalysisRequest(BaseModel):
     max_steps: Optional[int] = Body(default=None, description='最大执行步骤数（迭代次数），不填则自动推断')
 
 
+class DeepAnalysisBatchDeleteRequest(BaseModel):
+    """批量删除深度分析会话（仅 origin=1，且须为当前用户所创建）。"""
+
+    chat_ids: List[int] = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="要删除的会话 ID 列表",
+    )
+
+
 class OpenClean(BaseModel):
     """
     聊天记录清理请求模型（仅清理智能问数，不包含深度分析 origin=1）

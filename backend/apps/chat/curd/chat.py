@@ -95,6 +95,31 @@ def list_deep_analysis_chats(session: SessionDep, current_user: CurrentUser) -> 
     )
 
 
+def list_deep_analysis_chats_by_time_range(
+    session: SessionDep,
+    current_user: CurrentUser,
+    start_time: Optional[datetime.datetime] = None,
+    end_time: Optional[datetime.datetime] = None,
+) -> List[Chat]:
+    """深度分析会话（origin=1），按 create_time 在 [start_time, end_time] 内筛选。"""
+    oid = current_user.oid if current_user.oid is not None else 1
+    conditions = [
+        Chat.create_by == current_user.id,
+        Chat.oid == oid,
+        Chat.origin == 1,
+    ]
+    if start_time is not None:
+        conditions.append(Chat.create_time >= start_time)
+    if end_time is not None:
+        conditions.append(Chat.create_time <= end_time)
+    return (
+        session.query(Chat)
+        .filter(and_(*conditions))
+        .order_by(Chat.create_time.desc())
+        .all()
+    )
+
+
 def list_recent_questions(session: SessionDep, current_user: CurrentUser, datasource_id: int) -> List[str]:
     chat_records = (
         session.query(
@@ -158,14 +183,41 @@ def delete_chat(session, chart_id) -> str:
     return f'Chat with id {chart_id} has been deleted'
 
 
+def delete_deep_analysis_chats_batch(
+    session: SessionDep, current_user: CurrentUser, chat_ids: List[int]
+) -> dict:
+    """批量删除深度分析会话：仅 origin=1、create_by 与 oid 匹配的记录。"""
+    raw = [int(x) for x in chat_ids if x is not None][:500]
+    ids = list(dict.fromkeys(raw))
+    if not ids:
+        return {"deleted": 0, "skipped_ids": []}
+    oid = current_user.oid if current_user.oid is not None else 1
+    rows = (
+        session.query(Chat)
+        .filter(
+            Chat.id.in_(ids),
+            Chat.create_by == current_user.id,
+            Chat.oid == oid,
+            Chat.origin == 1,
+        )
+        .all()
+    )
+    deleted_ids: List[int] = []
+    for c in rows:
+        deleted_ids.append(c.id)
+        session.delete(c)
+    session.commit()
+    skipped = [i for i in ids if i not in deleted_ids]
+    return {"deleted": len(deleted_ids), "skipped_ids": skipped}
+
+
 def delete_chat_with_user(session, current_user: CurrentUser, chart_id) -> str:
     chat = session.query(Chat).filter(Chat.id == chart_id).first()
     if not chat:
         return f'Chat with id {chart_id} has been deleted'
     if chat.create_by != current_user.id:
         raise Exception(f"Chat with id {chart_id} not Owned by the current user")
-    if getattr(chat, 'origin', None) == 1:
-        raise Exception("不允许删除深度分析会话，请到深度分析页管理")
+    # origin=1 深度分析会话仅在深度分析列表展示（问数列表已排除），允许所有者删除
     session.delete(chat)
     session.commit()
 

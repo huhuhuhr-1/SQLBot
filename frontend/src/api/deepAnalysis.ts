@@ -25,6 +25,38 @@ export const deepAnalysisApi = {
     })
   },
 
+  /** 批量删除深度分析会话（仅当前用户、origin=1） */
+  batchDeleteSessions: (
+    chatIds: number[]
+  ): Promise<{ deleted: number; skipped_ids: number[] }> => {
+    return request
+      .post('/openapi/deep-analysis/sessions/batch-delete', { chat_ids: chatIds })
+      .then((res: any) => ({
+        deleted: Number(res?.deleted) || 0,
+        skipped_ids: Array.isArray(res?.skipped_ids) ? res.skipped_ids.map(Number) : [],
+      }))
+  },
+
+  /**
+   * 按范围清理深度分析会话（仅 origin=1），语义同智能问数 cleanChats。
+   */
+  cleanSessions: (params?: {
+    chat_ids?: number[]
+    start_time?: string
+    end_time?: string
+  }): Promise<{
+    success_count: number
+    failed_count: number
+    total_count: number
+    message: string
+  }> => {
+    return request.post('/openapi/deep-analysis/sessions/clean', {
+      chat_ids: params?.chat_ids ?? undefined,
+      start_time: params?.start_time,
+      end_time: params?.end_time,
+    })
+  },
+
   /**
    * 根据数据源库表 + LLM 推荐深度分析目标（用于「试试这些分析目标」）
    */

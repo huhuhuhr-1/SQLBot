@@ -17,6 +17,7 @@ from starlette.responses import StreamingResponse
 from apps.ai_model.model_factory import create_llm
 from apps.chat.curd.chat import (
     create_chat,
+    delete_deep_analysis_chats_batch,
     get_chat_chart_data,
     get_chat_record_by_id,
     list_deep_analysis_chats,
@@ -46,6 +47,7 @@ from apps.openapi.models.openapiModels import (
     DataSourceRequestWithSql,
     DatasourceResponse,
     DbBindChat,
+    DeepAnalysisBatchDeleteRequest,
     DeepAnalysisRequest,
     OpenChat,
     OpenChatQuestion,
@@ -64,6 +66,7 @@ from apps.openapi.service.openapi_service import (
     _create_clean_response,
     _execute_cleanup,
     _get_chats_to_clean,
+    _get_deep_analysis_chats_to_clean,
     _run_analysis_or_predict,
     create_access_token_with_expiry,
     is_safe_sql,
@@ -557,6 +560,50 @@ async def deep_analysis_sessions(session: SessionDep, current_user: CurrentUser)
     return list_deep_analysis_chats(session, current_user)
 
 
+@router.post(
+    "/deep-analysis/sessions/batch-delete",
+    summary="批量删除深度分析会话",
+    description="仅删除当前用户、origin=1 的深度分析会话；无权或不存在 ID 会出现在 skipped_ids",
+    dependencies=[Depends(common_headers)],
+)
+async def deep_analysis_sessions_batch_delete(
+    session: SessionDep,
+    current_user: CurrentUser,
+    body: DeepAnalysisBatchDeleteRequest,
+):
+    try:
+        return delete_deep_analysis_chats_batch(
+            session, current_user, list(body.chat_ids)
+        )
+    except Exception as e:
+        SQLBotLogUtil.error(e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/deep-analysis/sessions/clean",
+    summary="清理深度分析会话历史",
+    description="仅清理当前用户 origin=1 的深度分析会话；支持按时间段或全部，与智能问数清空历史语义一致。",
+    dependencies=[Depends(common_headers)],
+)
+async def deep_analysis_sessions_clean(
+    session: SessionDep,
+    current_user: CurrentUser,
+    clean: OpenClean,
+):
+    try:
+        chat_list = _get_deep_analysis_chats_to_clean(session, current_user, clean)
+        if not chat_list:
+            return _create_clean_response(0, 0, 0)
+        success_count, failed_count, _failed = _execute_cleanup(session, chat_list)
+        return _create_clean_response(success_count, failed_count, len(chat_list))
+    except Exception as e:
+        SQLBotLogUtil.error(f"清理深度分析会话异常: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/deep-analysis/recommend-questions", summary="深度分析推荐问题（LLM+库表）",
             description="根据所选数据源的表结构，用 LLM 生成 3～5 个适合深度分析的分析目标，用于「试试这些分析目标」",
             dependencies=[Depends(common_headers)])
@@ -706,8 +753,26 @@ async def deep_analysis(
                         self.plan = c
                     elif t == 'report':
                         self.report = c
-                    elif t in ('process', 'analysis-result', 'chart', 'chart-data', 'data-finish') or (c or r):
-                        self.process.append({'content': c, 'reasoning_content': r, 'type': t})
+                    elif t in (
+                        'process',
+                        'analysis-result',
+                        'chart',
+                        'chart-data',
+                        'data-finish',
+                        'stage',
+                    ) or (c or r):
+                        entry: dict = {
+                            'content': c,
+                            'reasoning_content': r,
+                            'type': t,
+                        }
+                        if msg.get('duration_ms') is not None:
+                            entry['duration_ms'] = msg['duration_ms']
+                        if msg.get('tool'):
+                            entry['tool'] = msg['tool']
+                        if msg.get('result_summary'):
+                            entry['result_summary'] = msg['result_summary']
+                        self.process.append(entry)
                     if t == 'finish':
                         from apps.chat.curd.chat import save_deep_analysis_result
                         save_deep_analysis_result(
