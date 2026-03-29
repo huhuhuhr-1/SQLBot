@@ -140,6 +140,13 @@ class Settings(BaseSettings):
     # Data Agent：是否使用 DeepAgents 框架的 Data Agent 模式
     # 开启后深度分析将使用 DeepAgents（bash + skills + agentic），替代 LangGraph 引擎
     DATA_AGENT_ENABLED: bool = True
+    # Data Agent / CLI 共用：本地缓存根目录；空字符串表示使用 ~/.sqlbot
+    SQLBOT_HOME: str = ""
+    # Data Agent 技能包根目录（其下为各技能子目录，如 data-explorer/）；空则使用 <仓库>/.claude/skills
+    DATA_AGENT_SKILL_ROOT: str = ""
+    # 写入 ~/.sqlbot/<account>/config.json 的 host，及 CLI curl 使用的公网可达 API 根（不含路径后缀）
+    # 例：http://localhost:8000 ；空则回退 DATA_AGENT_API_PUBLIC_BASE_DEFAULT 逻辑（见 data_agent 内解析）
+    DATA_AGENT_PUBLIC_API_BASE: str = ""
 
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',

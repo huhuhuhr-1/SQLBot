@@ -751,6 +751,8 @@ def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema):
             dialect = 'mysql'
         elif equals_ignore_case(ds.type, 'sqlServer'):
             dialect = 'tsql'
+        elif equals_ignore_case(ds.type, 'es'):
+            dialect = 'mysql'  # ES SQL 语法类似 MySQL，支持反引号引用标识符
 
         statements = sqlglot.parse(sql, dialect=dialect)
 
