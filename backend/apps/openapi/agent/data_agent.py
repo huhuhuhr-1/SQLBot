@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import csv as csv_module
 import json
 import os
 import re
@@ -27,6 +28,7 @@ from apps.openapi.agent.data_agent_tool_format import (
     _extract_first_json_object,
     extract_write_todos_list,
     format_deepagent_tool_output,
+    parse_execute_tool_raw,
     tool_result_summary_line,
 )
 from apps.openapi.agent.data_agent_tools import build_data_agent_tools
@@ -394,6 +396,141 @@ class DataAgentRunner:
             rec["preview_rows"] = preview_out
         return rec
 
+    @staticmethod
+    def _event_tool_name(name: str) -> str:
+        """LangGraph 事件里工具名可能是 `tools/sqlbot_execute_sql_csv` 等形式。"""
+        n = (name or "").strip()
+        if "/" in n:
+            return n.rsplit("/", 1)[-1]
+        return n
+
+    @staticmethod
+    def _csv_paths_from_text(text: str) -> list[str]:
+        """从 execute / 技能脚本输出里抽取 exports 下 CSV 路径（skill 常不调 sqlbot_execute_sql_csv）。"""
+        if not text:
+            return []
+        out: list[str] = []
+        seen: set[str] = set()
+        for m in re.finditer(
+            r"(?:CSV:\s*)?[`\"']?([^\s`\"'<>]+\.csv)[`\"']?",
+            text,
+            re.IGNORECASE,
+        ):
+            p = (m.group(1) or "").strip()
+            if p and p not in seen:
+                seen.add(p)
+                out.append(p)
+        for m in re.finditer(
+            r"([^\s`\"'<>]+/exports/[a-zA-Z0-9._-]+\.csv)", text, re.IGNORECASE
+        ):
+            p = (m.group(1) or "").strip()
+            if p and p not in seen:
+                seen.add(p)
+                out.append(p)
+        return out
+
+    def _evidence_from_exports_csv_file(
+        self,
+        raw_path: str,
+        workspace_uid: str,
+        *,
+        step_description: str = "",
+    ) -> dict | None:
+        """根据工作区内已存在的 CSV 文件构造一条证据（无 SQL，用于 execute/脚本路径）。"""
+        p = (raw_path or "").strip()
+        if not p.lower().endswith(".csv"):
+            return None
+        try:
+            path = Path(p).expanduser()
+            if not path.is_absolute():
+                path = (sw.user_dir(workspace_uid) / p).resolve()
+            else:
+                path = path.resolve()
+        except OSError:
+            return None
+        base = sw.user_dir(workspace_uid).resolve()
+        try:
+            path.relative_to(base)
+        except ValueError:
+            return None
+        if not path.is_file():
+            return None
+        rel_path = str(path.relative_to(base))
+        try:
+            with path.open(encoding="utf-8-sig", errors="replace", newline="") as f:
+                reader = csv_module.DictReader(f)
+                cols = list(reader.fieldnames or [])
+                preview: list[dict] = []
+                for i, row in enumerate(reader):
+                    if i >= 20:
+                        break
+                    preview.append(
+                        {k: ("" if v is None else str(v)[:500]) for k, v in row.items()}
+                    )
+        except Exception:
+            return None
+        try:
+            with path.open(encoding="utf-8-sig", errors="replace", newline="") as f:
+                n_lines = sum(1 for _ in f)
+            row_count = max(0, n_lines - 1)
+        except Exception:
+            row_count = len(preview)
+        rec: dict = {
+            "datasource_id": None,
+            "row_count": row_count,
+            "path": str(path),
+            "rel_path": rel_path,
+            "ok": True,
+            "error": "",
+            "sql": "",
+            "step_description": (step_description or "")[:240],
+        }
+        if cols:
+            rec["columns"] = [str(c)[:200] for c in cols[:64]]
+        if preview:
+            rec["preview_rows"] = preview
+        return rec
+
+    def _merge_evidence_from_execute(
+        self,
+        *,
+        raw_tool_output: str,
+        tool_input,
+        workspace_uid: str,
+        evidence_log: list[dict],
+    ) -> None:
+        pe = parse_execute_tool_raw(raw_tool_output)
+        scan_txt = pe.output or ""
+        desc = ""
+        if isinstance(tool_input, dict):
+            c = tool_input.get("command", tool_input.get("cmd", ""))
+            if isinstance(c, str) and c.strip():
+                desc = c.strip().split("\n")[0][:200]
+        existing: set[str] = set()
+        for e in evidence_log:
+            pp = e.get("path")
+            if not pp:
+                continue
+            try:
+                existing.add(str(Path(str(pp)).resolve()))
+            except Exception:
+                pass
+        for raw_p in self._csv_paths_from_text(scan_txt):
+            ev = self._evidence_from_exports_csv_file(
+                raw_p, workspace_uid, step_description=desc
+            )
+            if not ev:
+                continue
+            try:
+                key = str(Path(str(ev["path"])).resolve())
+            except Exception:
+                continue
+            if key in existing:
+                continue
+            existing.add(key)
+            ev["index"] = len(evidence_log) + 1
+            evidence_log.append(ev)
+
     def _build_report_bundle(
         self,
         *,
@@ -701,18 +838,19 @@ class DataAgentRunner:
                     accumulate_post_tool_llm = False
 
                     name = event.get("name", "")
+                    ename = self._event_tool_name(name)
                     inp = data.get("input", {})
-                    if name == "execute" and isinstance(inp, dict):
+                    if ename == "execute" and isinstance(inp, dict):
                         c = inp.get("command", inp.get("cmd", ""))
                         last_execute_command = c if isinstance(c, str) else None
-                    elif name == "execute":
+                    elif ename == "execute":
                         last_execute_command = None
                     tool_time_stack.append(time.monotonic())
                     tc += 1
-                    label = self._stage_label(name, inp)
-                    _log.info(f"  🔧 #{tc}: {name}")
+                    label = self._stage_label(ename, inp)
+                    _log.info(f"  🔧 #{tc}: {ename}")
                     await self.queue.put(
-                        {"type": "stage", "content": label, "stage": name, "tool": name}
+                        {"type": "stage", "content": label, "stage": ename, "tool": ename}
                     )
                     await self.queue.put(
                         {
@@ -726,36 +864,44 @@ class DataAgentRunner:
                     accumulate_post_tool_llm = True
 
                     name = event.get("name", "")
+                    ename = self._event_tool_name(name)
                     out = str(data.get("output", ""))
                     tool_inp = data.get("input")
-                    if name == "sqlbot_execute_sql_csv":
+                    if ename == "sqlbot_execute_sql_csv":
                         ev = self._evidence_from_sql_csv_tool(out, tool_inp, uid)
                         if ev:
                             ev["index"] = len(evidence_log) + 1
                             evidence_log.append(ev)
+                    if ename == "execute":
+                        self._merge_evidence_from_execute(
+                            raw_tool_output=out,
+                            tool_input=tool_inp,
+                            workspace_uid=uid,
+                            evidence_log=evidence_log,
+                        )
                     t0 = tool_time_stack.pop() if tool_time_stack else None
                     duration_ms = (
                         int((time.monotonic() - t0) * 1000) if t0 is not None else None
                     )
-                    _log.info(f"  ✅ {name} | {len(out)}c | {duration_ms}ms")
-                    cmd_for_exec = last_execute_command if name == "execute" else None
+                    _log.info(f"  ✅ {ename} | {len(out)}c | {duration_ms}ms")
+                    cmd_for_exec = last_execute_command if ename == "execute" else None
                     body = self._tool_result_for_stream(
-                        name, out, execute_command=cmd_for_exec
+                        ename, out, execute_command=cmd_for_exec
                     )
-                    summ = tool_result_summary_line(name, out, command=cmd_for_exec)
-                    if name == "execute":
+                    summ = tool_result_summary_line(ename, out, command=cmd_for_exec)
+                    if ename == "execute":
                         last_execute_command = None
                     payload: dict = {
                         "reasoning_content": "",
                         "content": body,
                         "type": "process",
-                        "tool": name,
+                        "tool": ename,
                     }
                     if duration_ms is not None:
                         payload["duration_ms"] = duration_ms
                     if summ:
                         payload["result_summary"] = summ
-                    if name == "write_todos":
+                    if ename == "write_todos":
                         todos_snap = extract_write_todos_list(out)
                         if todos_snap:
                             payload["todos"] = todos_snap
