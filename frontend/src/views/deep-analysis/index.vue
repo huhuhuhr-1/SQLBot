@@ -405,28 +405,10 @@
                           class="markdown-body da-deliver-summary"
                           v-html="msg.contentHtml"
                         ></div>
-                        <div v-if="msg.reportHtml" class="da-report-card-grid">
-                          <div
-                            class="da-report-card"
-                            role="button"
-                            tabindex="0"
-                            @click="openReportMarkdown(msg)"
-                            @keydown.enter="openReportMarkdown(msg)"
-                          >
-                            <div class="da-report-card-icon">
-                              <el-icon size="20"><Document /></el-icon>
-                            </div>
-                            <div class="da-report-card-body">
-                              <div class="da-report-card-title">
-                                {{ t('deep_analysis.report_title_md') }}
-                              </div>
-                              <div class="da-report-card-desc">
-                                {{ t('deep_analysis.report_desc_md') }}
-                              </div>
-                            </div>
-                            <el-icon size="16" color="#8f959e"><ArrowRight /></el-icon>
-                          </div>
-
+                        <div
+                          v-if="msg.reportHtml || msg.reportHtmlRelpath"
+                          class="da-report-card-grid"
+                        >
                           <div
                             class="da-report-card da-report-card--html"
                             role="button"
@@ -2127,11 +2109,6 @@ function openReport(msg: ChatMessage) {
   selectedStepIdx.value = -1
 }
 
-function openReportMarkdown(msg: ChatMessage) {
-  openReport(msg)
-  // 不再提供 Markdown 视图（仅兼容历史 reportMd 的导出功能）
-}
-
 function openReportHtml(msg: ChatMessage) {
   openReport(msg)
   void loadReportHtmlForPanel()
@@ -3587,7 +3564,7 @@ onMounted(async () => {
 /* Report card */
 .da-report-card-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
   margin-top: 12px;
 }
