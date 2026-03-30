@@ -562,21 +562,11 @@
             <div class="da-detail-toolbar da-report-toolbar">
               <div class="da-report-toolbar-left">
                 <span class="da-detail-tab active">{{ t('deep_analysis.report_title') }}</span>
-                <el-radio-group
-                  v-model="reportViewMode"
-                  size="small"
-                  class="da-report-view-mode"
-                  :disabled="!activeReportMd"
-                >
-                  <el-radio-button label="markdown">{{
-                    t('deep_analysis.view_markdown')
-                  }}</el-radio-button>
-                  <el-radio-button label="html">{{ t('deep_analysis.view_html') }}</el-radio-button>
-                </el-radio-group>
+                <span class="da-report-view-mode muted">HTML</span>
               </div>
               <div class="da-detail-actions">
                 <el-button
-                  v-if="currentSessionId && activeReportMd && reportViewMode === 'html'"
+                  v-if="currentSessionId"
                   type="primary"
                   plain
                   size="small"
@@ -595,35 +585,7 @@
                 </el-button>
               </div>
             </div>
-            <el-scrollbar
-              v-show="reportViewMode === 'markdown'"
-              class="da-detail-body-scroll da-report-scroll-md"
-            >
-              <div class="markdown-body da-detail-body" v-html="activeReportHtml"></div>
-              <div v-if="activeReportEvidence.length" class="da-evidence-appendix">
-                <div class="da-evidence-appendix-title">
-                  {{ t('deep_analysis.data_sources_appendix') }}
-                </div>
-                <ul class="da-evidence-list">
-                  <li v-for="(ev, ei) in activeReportEvidence" :key="ei" class="da-evidence-row">
-                    <span class="da-evidence-meta"
-                      >E{{ ev.index ?? ei + 1 }} · {{ ev.rel_path || ev.path || '—' }}</span
-                    >
-                    <el-button
-                      v-if="ev.rel_path"
-                      link
-                      type="primary"
-                      size="small"
-                      @click="downloadWorkspaceEvidence(ev)"
-                    >
-                      {{ t('deep_analysis.download_csv') }}
-                    </el-button>
-                  </li>
-                </ul>
-              </div>
-            </el-scrollbar>
             <div
-              v-show="reportViewMode === 'html'"
               v-loading="reportHtmlLoading"
               class="da-detail-body-scroll da-report-html-panel"
             >
@@ -1095,8 +1057,8 @@ const detailMode = ref<'report' | 'step'>('step')
 const activeReportHtml = ref('')
 const activeReportMd = ref('')
 const activeReportEvidence = ref<EvidenceItem[]>([])
-/** 报告侧栏：Markdown 渲染版 vs 服务端整页 HTML */
-const reportViewMode = ref<'markdown' | 'html'>('markdown')
+/** 报告侧栏：仅展示服务端整页 HTML（离线报告也会写入工作区） */
+const reportViewMode = ref<'html'>('html')
 const reportHtmlBlobUrl = ref<string | null>(null)
 const reportHtmlLoading = ref(false)
 const reportHtmlLoadError = ref('')
@@ -2125,15 +2087,16 @@ async function loadHistory(chatId: number) {
         }
 
         if (data.report) {
+          // 兼容历史数据：旧记录仍可能存在 report（Markdown），但新流程只交付 HTML
           agentMsg.reportHtml = renderMd(data.report)
           agentMsg.reportMd = data.report
-          agentMsg.contentHtml = renderMd('**分析完成** — 点击下方卡片查看完整报告')
         }
         if (Array.isArray(data.evidence)) {
           agentMsg.evidence = data.evidence as EvidenceItem[]
         }
         if (typeof data.report_html_relpath === 'string' && data.report_html_relpath) {
           agentMsg.reportHtmlRelpath = data.report_html_relpath
+          agentMsg.contentHtml = renderMd('**分析完成** — 点击下方卡片查看 HTML 报告')
         }
         msgs.push(agentMsg)
       } catch {
@@ -2149,30 +2112,28 @@ async function loadHistory(chatId: number) {
 
 // ===== Report =====
 function openReport(msg: ChatMessage) {
-  if (msg.reportHtml) {
-    liveFollowLatest.value = false
-    detailPanelFullscreen.value = false
-    activeReportHtml.value = msg.reportHtml
-    activeReportMd.value = msg.reportMd || ''
-    activeReportEvidence.value = msg.evidence && msg.evidence.length ? msg.evidence : []
-    reportViewMode.value = 'markdown'
-    revokeReportHtmlBlob()
-    reportHtmlLoadError.value = ''
-    detailMode.value = 'report'
-    detailPanelOpen.value = true
-    selectedMsgIdx.value = -1
-    selectedStepIdx.value = -1
-  }
+  // 新流程：不依赖 reportMd/reportHtml，直接打开 HTML 报告
+  liveFollowLatest.value = false
+  detailPanelFullscreen.value = false
+  activeReportHtml.value = msg.reportHtml || ''
+  activeReportMd.value = msg.reportMd || ''
+  activeReportEvidence.value = msg.evidence && msg.evidence.length ? msg.evidence : []
+  reportViewMode.value = 'html'
+  revokeReportHtmlBlob()
+  reportHtmlLoadError.value = ''
+  detailMode.value = 'report'
+  detailPanelOpen.value = true
+  selectedMsgIdx.value = -1
+  selectedStepIdx.value = -1
 }
 
 function openReportMarkdown(msg: ChatMessage) {
   openReport(msg)
-  reportViewMode.value = 'markdown'
+  // 不再提供 Markdown 视图（仅兼容历史 reportMd 的导出功能）
 }
 
 function openReportHtml(msg: ChatMessage) {
   openReport(msg)
-  reportViewMode.value = 'html'
   void loadReportHtmlForPanel()
 }
 
@@ -2197,11 +2158,7 @@ async function loadReportHtmlForPanel() {
   }
 }
 
-watch(reportViewMode, (mode) => {
-  if (detailMode.value === 'report' && mode === 'html') {
-    void loadReportHtmlForPanel()
-  }
-})
+// reportViewMode 固定为 html，无需 watch
 
 async function openHtmlReportNewWindow() {
   const id = currentSessionId.value
@@ -2219,27 +2176,8 @@ async function openHtmlReportNewWindow() {
   }
 }
 
-async function downloadWorkspaceEvidence(ev: EvidenceItem) {
-  const id = currentSessionId.value
-  const rel = (ev.rel_path || '').trim()
-  if (!id || !rel) {
-    ElMessage.warning(t('deep_analysis.no_download_path'))
-    return
-  }
-  try {
-    const blob = await deepAnalysisApi.downloadWorkspaceFile(id, rel)
-    const name = rel.split('/').pop() || 'export.csv'
-    const u = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = u
-    a.download = name
-    a.click()
-    URL.revokeObjectURL(u)
-    ElMessage.success(t('deep_analysis.download_started'))
-  } catch (e: any) {
-    ElMessage.error(e?.message || '下载失败')
-  }
-}
+// 注：旧版 Markdown 报告视图会在此处提供证据 CSV 下载按钮；
+// 新版仅展示 HTML 报告（离线文件），不再在侧栏单独列出证据下载入口。
 
 function exportReport() {
   if (!activeReportMd.value) return

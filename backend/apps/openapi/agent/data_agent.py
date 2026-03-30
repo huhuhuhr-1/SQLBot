@@ -636,7 +636,9 @@ class DataAgentRunner:
             )
 
             agent = await self._build_agent()
-            report = ""
+            # 不再让 LLM 自由写作产出最终报告；最终交付由 evidence + bundle 渲染离线 HTML。
+            # report_text 仅用于过程展示（不写入最终 report 字段）。
+            report_text = ""
             evidence_log: list[dict] = []
             tc = 0
             tool_time_stack: list[float] = []
@@ -678,7 +680,7 @@ class DataAgentRunner:
                     if chunk and isinstance(chunk, AIMessageChunk):
                         text = chunk.content
                         if isinstance(text, str) and text.strip():
-                            report += text
+                            report_text += text
                             if accumulate_post_tool_llm:
                                 post_tool_llm_buffer.append(text)
                             else:
@@ -759,160 +761,66 @@ class DataAgentRunner:
                             payload["todos"] = todos_snap
                     await self.queue.put(payload)
 
+            # 收尾阶段：仅汇总证据并生成离线 HTML（不再展示“撰写报告/纠错/润色”等步骤）
             await self._emit_buffered_llm_text(
                 post_tool_llm_buffer,
-                title="撰写报告",
-                stage_key="llm_report_draft",
+                title="汇总",
+                stage_key="llm_summary",
             )
             accumulate_post_tool_llm = False
 
-            if report:
-                await self.queue.put(
-                    {"type": "stage", "content": "生成报告", "stage": "report"}
-                )
-                t_report0 = time.monotonic()
-                await self._emit_report_stage("draft", "running", "结构化初版")
-                structured = await self._finalize_structured_report(
-                    question=user_q,
-                    plan_excerpt=execution_plan_md,
-                    evidence_log=evidence_log,
-                    draft=report,
-                )
-                await self._emit_report_stage("draft", "done", "结构化初版完成")
-                await self.queue.put(
-                    {
-                        "type": "process",
-                        "content": (
-                            "生成报告：结构化初版完成。\n"
-                            f"- 证据条数：{len(evidence_log)}\n"
-                            f"- 报告字数：{len(structured)}\n"
-                        ),
-                    }
-                )
-
-                body = structured
-                ev_summary = self._evidence_summary_text(evidence_log)
-
-                if getattr(settings, "DATA_AGENT_REPORT_CORRECT", True):
-                    t0 = time.monotonic()
-                    await self._emit_report_stage("correct", "running", "智能纠错")
-                    await self.queue.put(
-                        {
-                            "type": "stage",
-                            "content": "报告智能纠错",
-                            "stage": "report_correct",
-                        }
-                    )
-                    body = await self._report_correct(
+            # 最终报告：只输出 HTML（离线文件），并将证据写入 report_bundle.json
+            await self.queue.put({"type": "stage", "content": "汇总证据", "stage": "report_bundle"})
+            ev_json = sanitize_evidence_for_json(evidence_log)
+            html_relpath: str | None = None
+            html_doc = build_report_html("", ev_json, chat_id=int(self.chat_question.chat_id or 0))
+            if getattr(settings, "DATA_AGENT_REPORT_WRITE_HTML_FILE", False) and (
+                self.chat_question.chat_id
+            ):
+                da_dir = sw.user_dir(uid) / "deep_analysis" / str(self.chat_question.chat_id)
+                da_dir.mkdir(parents=True, exist_ok=True)
+                (da_dir / "report.html").write_text(html_doc, encoding="utf-8")
+                try:
+                    bundle = self._build_report_bundle(
+                        chat_id=int(self.chat_question.chat_id),
                         question=user_q,
-                        body=body,
-                        evidence_summary=ev_summary,
+                        report_md="",
+                        evidence_json=ev_json,
                     )
-                    await self._emit_report_stage("correct", "done", "纠错完成")
-                    dt = int((time.monotonic() - t0) * 1000)
-                    await self.queue.put(
-                        {
-                            "type": "process",
-                            "content": (
-                                "报告智能纠错：完成。\n"
-                                f"- 耗时：{dt} ms\n"
-                                f"- 当前报告字数：{len(body)}\n"
-                            ),
-                        }
+                    (da_dir / "report_bundle.json").write_text(
+                        json.dumps(bundle, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
                     )
+                except Exception as e:
+                    SQLBotLogUtil.error(f"写 report_bundle.json 失败: {e}")
+                html_relpath = f"deep_analysis/{self.chat_question.chat_id}/report.html"
 
-                if getattr(settings, "DATA_AGENT_REPORT_POLISH", True):
-                    t0 = time.monotonic()
-                    await self._emit_report_stage("polish", "running", "智能润色")
-                    await self.queue.put(
-                        {
-                            "type": "stage",
-                            "content": "报告智能润色",
-                            "stage": "report_polish",
-                        }
-                    )
-                    body = await self._report_polish(body)
-                    await self._emit_report_stage("polish", "done", "润色完成")
-                    dt = int((time.monotonic() - t0) * 1000)
-                    await self.queue.put(
-                        {
-                            "type": "process",
-                            "content": (
-                                "报告智能润色：完成。\n"
-                                f"- 耗时：{dt} ms\n"
-                                f"- 当前报告字数：{len(body)}\n"
-                            ),
-                        }
-                    )
-
-                ev_json = sanitize_evidence_for_json(evidence_log)
-                html_relpath: str | None = None
-                if getattr(settings, "DATA_AGENT_REPORT_HTML", True):
-                    t0 = time.monotonic()
-                    await self._emit_report_stage("html", "running", "生成 HTML")
-                    await self.queue.put(
-                        {
-                            "type": "stage",
-                            "content": "生成 HTML 报告",
-                            "stage": "report_html",
-                        }
-                    )
-                    html_doc = build_report_html(
-                        body, ev_json, chat_id=int(self.chat_question.chat_id or 0)
-                    )
-                    if getattr(settings, "DATA_AGENT_REPORT_WRITE_HTML_FILE", False) and (
-                        self.chat_question.chat_id
-                    ):
-                        da_dir = (
-                            sw.user_dir(uid) / "deep_analysis" / str(self.chat_question.chat_id)
-                        )
-                        da_dir.mkdir(parents=True, exist_ok=True)
-                        fp = da_dir / "report.html"
-                        fp.write_text(html_doc, encoding="utf-8")
-                        # 同时落一份可复现的结构化数据，便于后续重新渲染/调样式
-                        try:
-                            bundle = self._build_report_bundle(
-                                chat_id=int(self.chat_question.chat_id),
-                                question=user_q,
-                                report_md=body,
-                                evidence_json=ev_json,
-                            )
-                            (da_dir / "report_bundle.json").write_text(
-                                json.dumps(bundle, ensure_ascii=False, indent=2),
-                                encoding="utf-8",
-                            )
-                        except Exception as e:
-                            SQLBotLogUtil.error(f"写 report_bundle.json 失败: {e}")
-                        html_relpath = f"deep_analysis/{self.chat_question.chat_id}/report.html"
-                    await self._emit_report_stage("html", "done", "HTML 完成")
-                    dt = int((time.monotonic() - t0) * 1000)
-                    await self.queue.put(
-                        {
-                            "type": "process",
-                            "content": (
-                                "生成 HTML 报告：完成。\n"
-                                f"- 耗时：{dt} ms\n"
-                                f"- HTML 字符数：{len(html_doc)}\n"
-                            ),
-                        }
-                    )
-
-                payload = {
-                    "reasoning_content": "",
-                    "content": body,
-                    "type": "report",
-                    "evidence": ev_json,
+            await self.queue.put(
+                {
+                    "type": "stage",
+                    "content": "生成 HTML 报告",
+                    "stage": "report_html",
                 }
-                if html_relpath:
-                    payload["report_html_relpath"] = html_relpath
-                await self.queue.put(payload)
-                dt_all = int((time.monotonic() - t_report0) * 1000)
-                await self.queue.put(
-                    {
-                        "type": "process",
-                        "content": f"报告流水线全部完成（总耗时 {dt_all} ms）。\n",
-                    }
-                )
+            )
+            await self.queue.put(
+                {
+                    "type": "process",
+                    "content": (
+                        "离线 HTML 报告已生成。\n"
+                        f"- 证据条数：{len(ev_json)}\n"
+                        f"- HTML 字符数：{len(html_doc)}\n"
+                    ),
+                }
+            )
+            payload = {
+                "reasoning_content": "",
+                "content": "",
+                "type": "report",
+                "evidence": ev_json,
+            }
+            if html_relpath:
+                payload["report_html_relpath"] = html_relpath
+            await self.queue.put(payload)
 
             await self.queue.put(
                 {
@@ -922,7 +830,7 @@ class DataAgentRunner:
                     "chat_id": self.chat_question.chat_id,
                 }
             )
-            _log.info(f"Data Agent done: {tc} tools, report={len(report)}c")
+            _log.info(f"Data Agent done: {tc} tools, report_text={len(report_text)}c")
 
         except Exception as e:
             _log.error(f"Data Agent error: {e}")
