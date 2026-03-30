@@ -617,21 +617,22 @@
                   class="da-cum-section"
                   :class="{ 'da-cum-section--selected': selectedStepIdx === block.stepIndex }"
                 >
-                  <header class="da-cum-section-head">
-                    <span class="da-cum-section-title">{{ block.step.title }}</span>
-                    <span v-if="block.step.durationMs != null" class="da-step-duration-header">{{
-                      formatStepDuration(block.step.durationMs)
-                    }}</span>
-                  </header>
-                  <div
-                    v-if="block.step.details"
-                    class="markdown-body da-detail-body da-detail-stream da-cum-section-details"
-                    v-html="block.step.details"
-                  ></div>
-                  <div
-                    v-for="(evt, eIdx) in block.events"
-                    :key="eIdx"
-                    class="da-event-card"
+                  <div class="da-cum-section-inner">
+                    <header class="da-cum-section-head">
+                      <span class="da-cum-section-title">{{ block.step.title }}</span>
+                      <span v-if="block.step.durationMs != null" class="da-step-duration-header">{{
+                        formatStepDuration(block.step.durationMs)
+                      }}</span>
+                    </header>
+                    <div
+                      v-if="showCumulativeStepDetails(block.step, block.events)"
+                      class="markdown-body da-detail-body da-detail-stream da-cum-section-details"
+                      v-html="block.step.details"
+                    ></div>
+                    <div
+                      v-for="(evt, eIdx) in block.events"
+                      :key="eIdx"
+                      class="da-event-card"
                     :class="{ expanded: evt.expanded, 'da-event-card-sql': evt.type === 'sql' }"
                   >
                     <div class="da-event-card-header" @click="evt.expanded = !evt.expanded">
@@ -648,6 +649,25 @@
                     </div>
                     <transition name="da-evt-expand">
                       <div v-if="evt.expanded" class="da-event-card-body">
+                        <ul
+                          v-if="evt.todoSnapshot?.length"
+                          class="da-evt-todo-list markdown-body"
+                        >
+                          <li
+                            v-for="(td, tdi) in evt.todoSnapshot"
+                            :key="tdi"
+                            class="da-evt-todo-item"
+                          >
+                            <el-tag
+                              size="small"
+                              :type="todoStatusTagType(td.status)"
+                              class="da-detail-todo-status"
+                            >
+                              {{ td.status || '—' }}
+                            </el-tag>
+                            <span class="da-evt-todo-text">{{ td.content }}</span>
+                          </li>
+                        </ul>
                         <div v-if="evt.sql" class="da-evt-sql">
                           <div class="da-evt-section-title">
                             <el-icon size="12"><icon_sql_outlined /></el-icon>
@@ -728,6 +748,7 @@
                         </div>
                       </div>
                     </transition>
+                  </div>
                   </div>
                 </section>
               </div>
@@ -822,10 +843,17 @@ import 'github-markdown-css/github-markdown-light.css'
 const { t } = useI18n()
 
 // ===== Types =====
+interface TodoSnapshotItem {
+  content: string
+  status: string
+}
+
 interface EventItem {
   type: 'data' | 'sql' | 'transform' | 'tool' | 'info' | 'error'
   title: string
   badge?: string
+  /** write_todos 等：从 Command repr 解析出的任务行，用于替代原始长文本 */
+  todoSnapshot?: TodoSnapshotItem[]
   content?: string
   contentHtml?: string
   sql?: string
@@ -846,11 +874,6 @@ interface EventItem {
     rows: Record<string, unknown>[]
   }
   expanded: boolean
-}
-
-interface TodoSnapshotItem {
-  content: string
-  status: string
 }
 
 interface StepItem {
@@ -1260,6 +1283,30 @@ function buildEventsFromMd(step: StepItem): EventItem[] {
   return parseProcessContent(step.detailsMd, step.stepType || step.title, step.stageTool)
 }
 
+/** 能解析出事件时只展示卡片；无事件时才展示顶部 HTML（流式中 parse 会随 detailsMd 更新） */
+function showCumulativeStepDetails(step: StepItem, events: EventItem[]): boolean {
+  return Boolean(step.details?.trim()) && events.length === 0
+}
+
+/** 从 write_todos / Command(update=...) 类 repr 中解析 todos */
+function parseTodosFromWriteTodosRepr(content: string): TodoSnapshotItem[] | null {
+  if (!content || (!content.includes('todos') && !content.includes("'content'"))) return null
+  const out: TodoSnapshotItem[] = []
+  const re = /\{'content':\s*'((?:[^'\\]|\\.)*)'\s*,\s*'status':\s*'([^']*)'\}/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(content)) !== null) {
+    const c = m[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\')
+    out.push({ content: c, status: m[2] })
+  }
+  if (out.length) return out
+  const re2 = /"content":\s*"((?:[^"\\]|\\.)*)"\s*,\s*"status":\s*"([^"]*)"/g
+  while ((m = re2.exec(content)) !== null) {
+    const c = m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+    out.push({ content: c, status: m[2] })
+  }
+  return out.length ? out : null
+}
+
 /** 当前右侧详情对应的 agent 消息里，按顺序堆叠的执行块 */
 const cumulativeDetailBlocks = computed((): CumulativeStepBlock[] => {
   const mi = selectedMsgIdx.value
@@ -1293,6 +1340,24 @@ function parseProcessContent(content: string, stepType: string, stageTool?: stri
   const events: EventItem[] = []
   const durationMatch = content.match(/耗时[为：:]\s*(\d+[.\d]*\s*(?:ms|毫秒|秒|s))/i)
   const durationStr = durationMatch ? durationMatch[1] : undefined
+
+  const likelyWriteTodos =
+    stageTool === 'write_todos' ||
+    /Command\(update=\{[\s\S]*'todos':/.test(content) ||
+    (content.includes('write_todos') && content.includes("'todos'"))
+  if (likelyWriteTodos) {
+    const todos = parseTodosFromWriteTodosRepr(content)
+    if (todos?.length) {
+      events.push({
+        type: 'info',
+        title: classifyStageTitle(stepType || '执行过程', stageTool || 'write_todos'),
+        badge: 'write_todos',
+        todoSnapshot: todos,
+        expanded: true,
+      })
+      return events
+    }
+  }
 
   const { body, toolName: reprTool } = unwrapToolMessageRepr(content)
   const st = parseToolBodyStructured(body, reprTool)
@@ -1400,7 +1465,7 @@ function parseProcessContent(content: string, stepType: string, stageTool?: stri
   }
 
   const codeBlocks = content.match(/```(?:python|pandas)\n([\s\S]*?)```/gi)
-  if (codeBlocks?.length) {
+  if (codeBlocks?.length && events.length === 0) {
     events.push({
       type: 'transform',
       title: 'Pandas 代码转换',
@@ -1410,7 +1475,7 @@ function parseProcessContent(content: string, stepType: string, stageTool?: stri
   }
 
   const toolMatch = content.match(/### 调用工具[：:]\s*`?(\w+)`?/i)
-  if (toolMatch && !st.toolName) {
+  if (toolMatch && !st.toolName && events.length === 0) {
     const tn = toolMatch[1]
     const titleMap: Record<string, string> = {
       execute_one_sql: 'SQL 执行',
@@ -1448,14 +1513,26 @@ function parseProcessContent(content: string, stepType: string, stageTool?: stri
       }
     }
     if (!events.some((e) => e.tableSchema?.length)) {
-      events.push({
-        type: 'data',
-        title: '获取数据集信息',
-        badge: tableMatch ? tableMatch[1] : undefined,
-        tableSchema: schema.length ? schema : undefined,
-        contentHtml: renderMd(content),
-        expanded: true,
-      })
+      if (events.length > 0) {
+        if (schema.length) {
+          events.push({
+            type: 'data',
+            title: '获取数据集信息',
+            badge: tableMatch ? tableMatch[1] : undefined,
+            tableSchema: schema,
+            expanded: true,
+          })
+        }
+      } else {
+        events.push({
+          type: 'data',
+          title: '获取数据集信息',
+          badge: tableMatch ? tableMatch[1] : undefined,
+          tableSchema: schema.length ? schema : undefined,
+          contentHtml: renderMd(content),
+          expanded: true,
+        })
+      }
     }
   }
 
@@ -1856,6 +1933,11 @@ function eventItemToMarkdown(evt: EventItem): string {
       ? `#### ${evt.title} (${evt.badge})`
       : `#### ${evt.title}`
   lines.push(head)
+  if (evt.todoSnapshot?.length) {
+    for (const td of evt.todoSnapshot) {
+      lines.push(`- [${td.status || '—'}] ${td.content}`)
+    }
+  }
   if (evt.sql) {
     lines.push('```sql', evt.sql, '```')
     if (evt.duration) {
@@ -1935,7 +2017,7 @@ function buildExecutionChainMarkdown(): string {
     const mdBody = s.detailsMd?.trim()
     const htmlBody = s.details?.trim()
     const detailText = mdBody || (htmlBody ? htmlToPlainForExport(htmlBody) : '')
-    if (detailText) {
+    if (detailText && showCumulativeStepDetails(s, block.events)) {
       parts.push(`### ${t('deep_analysis.export_section_details')}`)
       parts.push(detailText)
       parts.push('')
@@ -3328,21 +3410,77 @@ onMounted(async () => {
   background: rgba(28, 186, 144, 0.06);
   box-shadow: inset 3px 0 0 0 var(--ed-color-primary, #1cba90);
 }
+.da-cum-section-inner {
+  position: relative;
+  margin-left: 10px;
+  padding-left: 16px;
+  padding-right: 12px;
+  border-left: 2px solid #e8eaed;
+}
+.da-cum-section--selected .da-cum-section-inner {
+  border-left-color: rgba(28, 186, 144, 0.4);
+}
+.da-cum-section:last-child .da-cum-section-inner {
+  padding-bottom: 8px;
+}
 .da-cum-section-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  padding: 12px 16px 4px;
+  padding: 12px 0 6px;
+}
+.da-cum-section-head::before {
+  content: '';
+  position: absolute;
+  left: -21px;
+  top: 15px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c5c8ce;
+  box-shadow: 0 0 0 2px #fff;
+  z-index: 1;
+}
+.da-cum-section--selected .da-cum-section-head::before {
+  background: var(--ed-color-primary, #1cba90);
 }
 .da-cum-section-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: #1f2329;
+  letter-spacing: -0.01em;
 }
 .da-cum-section-details {
-  padding: 4px 16px 12px;
+  padding: 0 0 12px;
   border-bottom: none;
+  font-size: 14px;
+  line-height: 1.65;
+  color: #3c434d;
+}
+.da-evt-todo-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  background: #f7f9fa;
+  border-radius: 8px;
+  border: 1px solid #e8e9eb;
+}
+.da-evt-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.da-evt-todo-item:last-child {
+  margin-bottom: 0;
+}
+.da-evt-todo-text {
+  color: #1f2329;
+  word-break: break-word;
 }
 .da-detail-empty {
   padding: 28px 20px;
@@ -3543,6 +3681,14 @@ onMounted(async () => {
 .da-event-card-body {
   padding: 12px;
   border-top: 1px solid #f0f1f3;
+}
+.da-event-card-body .da-sql-code {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.da-event-card-body .markdown-body :deep(pre) {
+  max-height: 260px;
+  overflow: auto;
 }
 
 /* SQL code */
