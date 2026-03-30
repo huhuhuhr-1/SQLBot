@@ -533,36 +533,56 @@
             </el-scrollbar>
           </template>
 
-          <!-- 步骤详情模式 -->
+          <!-- 步骤详情模式：累计完整执行链，点击主列步骤仅高亮并滚动锚点 -->
           <template v-else-if="detailMode === 'step'">
             <div class="da-detail-toolbar">
-              <div class="da-detail-toolbar-main">
+              <div class="da-detail-toolbar-main da-detail-toolbar-cumulative">
                 <span class="da-detail-tab active">{{
-                  activeStepDetail?.title || '查询数据'
+                  t('deep_analysis.cumulative_execution_chain')
                 }}</span>
-                <span v-if="activeStepDetail?.durationMs != null" class="da-step-duration-header">{{
-                  formatStepDuration(activeStepDetail.durationMs)
-                }}</span>
-                <span
-                  v-if="activeStepDetail?.resultSummary"
-                  class="da-detail-result-chip"
-                  :title="activeStepDetail.resultSummary"
-                  >{{ activeStepDetail.resultSummary }}</span
-                >
+                <template v-if="focusedStepForDetailPanel">
+                  <span class="da-cum-focus-title">{{
+                    focusedStepForDetailPanel.title || t('deep_analysis.process')
+                  }}</span>
+                  <span
+                    v-if="focusedStepForDetailPanel.durationMs != null"
+                    class="da-step-duration-header"
+                    >{{ formatStepDuration(focusedStepForDetailPanel.durationMs) }}</span
+                  >
+                  <span
+                    v-if="focusedStepForDetailPanel.resultSummary"
+                    class="da-detail-result-chip"
+                    :title="focusedStepForDetailPanel.resultSummary"
+                    >{{ focusedStepForDetailPanel.resultSummary }}</span
+                  >
+                </template>
               </div>
-              <div class="da-detail-status-badge">
-                <template v-if="activeStepDetail?.status === 'running'">
-                  <el-icon class="is-loading" size="12"><Loading /></el-icon>
-                  <span>Agent 正在执行...</span>
-                </template>
-                <template v-else-if="activeStepDetail?.status === 'done'">
-                  <el-icon size="12" color="#1cba90"><CircleCheckFilled /></el-icon>
-                  <span>已完成</span>
-                </template>
-                <template v-else-if="activeStepDetail?.status === 'error'">
-                  <el-icon size="12" color="#f56c6c"><CircleCloseFilled /></el-icon>
-                  <span>执行失败</span>
-                </template>
+              <div class="da-detail-toolbar-right">
+                <div class="da-detail-actions">
+                  <el-button
+                    v-if="cumulativeDetailBlocks.length"
+                    type="primary"
+                    plain
+                    size="small"
+                    @click="exportExecutionChain"
+                  >
+                    {{ t('deep_analysis.export_execution_chain') }}
+                  </el-button>
+                </div>
+                <div class="da-detail-status-badge">
+                  <template v-if="focusedStepForDetailPanel?.status === 'running'">
+                    <el-icon class="is-loading" size="12"><Loading /></el-icon>
+                    <span>{{ t('deep_analysis.detail_status_running') }}</span>
+                  </template>
+                  <template v-else-if="focusedStepForDetailPanel?.status === 'done'">
+                    <el-icon size="12" color="#1cba90"><CircleCheckFilled /></el-icon>
+                    <span>{{ t('deep_analysis.detail_status_done') }}</span>
+                  </template>
+                  <template v-else-if="focusedStepForDetailPanel?.status === 'error'">
+                    <el-icon size="12" color="#f56c6c"><CircleCloseFilled /></el-icon>
+                    <span>{{ t('deep_analysis.detail_status_error') }}</span>
+                  </template>
+                </div>
               </div>
             </div>
             <el-scrollbar class="da-detail-body-scroll">
@@ -584,114 +604,132 @@
                     </li>
                   </ul>
                 </div>
-                <!-- 主区域：Markdown 流式全文（不再依赖「查看原始输出」折叠） -->
                 <div
-                  v-if="activeStepDetail?.details"
-                  class="markdown-body da-detail-body da-detail-stream"
-                  v-html="activeStepDetail.details"
-                ></div>
-                <!-- 事件卡片列表 -->
-                <div
-                  v-for="(evt, eIdx) in activeStepEvents"
-                  :key="eIdx"
-                  class="da-event-card"
-                  :class="{ expanded: evt.expanded, 'da-event-card-sql': evt.type === 'sql' }"
+                  v-if="!cumulativeDetailBlocks.length"
+                  class="da-detail-empty markdown-body"
                 >
-                  <div class="da-event-card-header" @click="evt.expanded = !evt.expanded">
-                    <div class="da-event-card-icon" :class="'da-evt-' + evt.type">
-                      <el-icon size="14">
-                        <component :is="getEventIcon(evt.type)" />
-                      </el-icon>
-                    </div>
-                    <span class="da-event-card-title">{{ evt.title }}</span>
-                    <span v-if="evt.badge" class="da-event-badge">{{ evt.badge }}</span>
-                    <el-icon class="da-event-toggle" :class="{ open: evt.expanded }" size="12"
-                      ><ArrowRight
-                    /></el-icon>
-                  </div>
-                  <transition name="da-evt-expand">
-                    <div v-if="evt.expanded" class="da-event-card-body">
-                      <!-- SQL 展示 -->
-                      <div v-if="evt.sql" class="da-evt-sql">
-                        <div class="da-evt-section-title">
-                          <el-icon size="12"><icon_sql_outlined /></el-icon>
-                          {{ evt.title && /sql/i.test(evt.title) ? evt.title : '执行的 SQL' }}
-                        </div>
-                        <pre class="da-sql-code"><code>{{ evt.sql }}</code></pre>
-                        <div v-if="evt.duration" class="da-evt-meta">
-                          执行耗时 {{ evt.duration }}
-                        </div>
-                      </div>
-                      <!-- 数据表信息 -->
-                      <div v-if="evt.tableSchema && evt.tableSchema.length" class="da-evt-schema">
-                        <div class="da-evt-section-title">
-                          <el-icon size="12"><Grid /></el-icon> 字段列表
-                        </div>
-                        <table class="da-schema-table">
-                          <thead>
-                            <tr>
-                              <th>字段名</th>
-                              <th>字段类型</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr v-for="(col, cIdx) in evt.tableSchema" :key="cIdx">
-                              <td>{{ col.name }}</td>
-                              <td>{{ col.type }}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                      <div
-                        v-if="evt.previewTable?.columns?.length"
-                        class="da-evt-preview-table markdown-body"
-                      >
-                        <div class="da-evt-section-title">
-                          <el-icon size="12"><Grid /></el-icon> 结果预览
-                          <span v-if="evt.previewTable.rowCount != null" class="da-evt-meta-inline">
-                            共 {{ evt.previewTable.rowCount }} 行
-                          </span>
-                        </div>
-                        <el-table
-                          :data="evt.previewTable.rows"
-                          stripe
-                          border
-                          max-height="320"
-                          style="width: 100%"
-                          class="da-preview-el-table"
-                        >
-                          <el-table-column
-                            v-for="col in evt.previewTable.columns"
-                            :key="col"
-                            :prop="col"
-                            :label="col"
-                            min-width="96"
-                            show-overflow-tooltip
-                          />
-                        </el-table>
-                        <div v-if="evt.previewTable.csvPath" class="da-evt-meta da-evt-csv-path">
-                          CSV: <code>{{ evt.previewTable.csvPath }}</code>
-                        </div>
-                      </div>
-                      <DeepAnalysisPreviewChart
-                        v-if="evt.chartPreview"
-                        :x-key="evt.chartPreview.xKey"
-                        :y-key="evt.chartPreview.yKey"
-                        :kind="evt.chartPreview.kind"
-                        :rows="evt.chartPreview.rows"
-                      />
-                      <!-- Markdown 内容 -->
-                      <div
-                        v-if="evt.contentHtml"
-                        class="markdown-body da-evt-content"
-                        v-html="evt.contentHtml"
-                      ></div>
-                      <div v-else-if="evt.content" class="da-evt-content da-evt-text">
-                        {{ evt.content }}
-                      </div>
-                    </div>
-                  </transition>
+                  {{ t('deep_analysis.cumulative_detail_empty') }}
                 </div>
+                <section
+                  v-for="block in cumulativeDetailBlocks"
+                  :id="'da-cum-' + block.stepIndex"
+                  :key="block.stepIndex"
+                  class="da-cum-section"
+                  :class="{ 'da-cum-section--selected': selectedStepIdx === block.stepIndex }"
+                >
+                  <header class="da-cum-section-head">
+                    <span class="da-cum-section-title">{{ block.step.title }}</span>
+                    <span v-if="block.step.durationMs != null" class="da-step-duration-header">{{
+                      formatStepDuration(block.step.durationMs)
+                    }}</span>
+                  </header>
+                  <div
+                    v-if="block.step.details"
+                    class="markdown-body da-detail-body da-detail-stream da-cum-section-details"
+                    v-html="block.step.details"
+                  ></div>
+                  <div
+                    v-for="(evt, eIdx) in block.events"
+                    :key="eIdx"
+                    class="da-event-card"
+                    :class="{ expanded: evt.expanded, 'da-event-card-sql': evt.type === 'sql' }"
+                  >
+                    <div class="da-event-card-header" @click="evt.expanded = !evt.expanded">
+                      <div class="da-event-card-icon" :class="'da-evt-' + evt.type">
+                        <el-icon size="14">
+                          <component :is="getEventIcon(evt.type)" />
+                        </el-icon>
+                      </div>
+                      <span class="da-event-card-title">{{ evt.title }}</span>
+                      <span v-if="evt.badge" class="da-event-badge">{{ evt.badge }}</span>
+                      <el-icon class="da-event-toggle" :class="{ open: evt.expanded }" size="12"
+                        ><ArrowRight
+                      /></el-icon>
+                    </div>
+                    <transition name="da-evt-expand">
+                      <div v-if="evt.expanded" class="da-event-card-body">
+                        <div v-if="evt.sql" class="da-evt-sql">
+                          <div class="da-evt-section-title">
+                            <el-icon size="12"><icon_sql_outlined /></el-icon>
+                            {{ evt.title && /sql/i.test(evt.title) ? evt.title : '执行的 SQL' }}
+                          </div>
+                          <pre class="da-sql-code"><code>{{ evt.sql }}</code></pre>
+                          <div v-if="evt.duration" class="da-evt-meta">
+                            执行耗时 {{ evt.duration }}
+                          </div>
+                        </div>
+                        <div v-if="evt.tableSchema && evt.tableSchema.length" class="da-evt-schema">
+                          <div class="da-evt-section-title">
+                            <el-icon size="12"><Grid /></el-icon> 字段列表
+                          </div>
+                          <table class="da-schema-table">
+                            <thead>
+                              <tr>
+                                <th>字段名</th>
+                                <th>字段类型</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr v-for="(col, cIdx) in evt.tableSchema" :key="cIdx">
+                                <td>{{ col.name }}</td>
+                                <td>{{ col.type }}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        <div
+                          v-if="evt.previewTable?.columns?.length"
+                          class="da-evt-preview-table markdown-body"
+                        >
+                          <div class="da-evt-section-title">
+                            <el-icon size="12"><Grid /></el-icon> 结果预览
+                            <span
+                              v-if="evt.previewTable.rowCount != null"
+                              class="da-evt-meta-inline"
+                            >
+                              共 {{ evt.previewTable.rowCount }} 行
+                            </span>
+                          </div>
+                          <el-table
+                            :data="evt.previewTable.rows"
+                            stripe
+                            border
+                            max-height="320"
+                            style="width: 100%"
+                            class="da-preview-el-table"
+                          >
+                            <el-table-column
+                              v-for="col in evt.previewTable.columns"
+                              :key="col"
+                              :prop="col"
+                              :label="col"
+                              min-width="96"
+                              show-overflow-tooltip
+                            />
+                          </el-table>
+                          <div v-if="evt.previewTable.csvPath" class="da-evt-meta da-evt-csv-path">
+                            CSV: <code>{{ evt.previewTable.csvPath }}</code>
+                          </div>
+                        </div>
+                        <DeepAnalysisPreviewChart
+                          v-if="evt.chartPreview"
+                          :x-key="evt.chartPreview.xKey"
+                          :y-key="evt.chartPreview.yKey"
+                          :kind="evt.chartPreview.kind"
+                          :rows="evt.chartPreview.rows"
+                        />
+                        <div
+                          v-if="evt.contentHtml"
+                          class="markdown-body da-evt-content"
+                          v-html="evt.contentHtml"
+                        ></div>
+                        <div v-else-if="evt.content" class="da-evt-content da-evt-text">
+                          {{ evt.content }}
+                        </div>
+                      </div>
+                    </transition>
+                  </div>
+                </section>
               </div>
             </el-scrollbar>
           </template>
@@ -724,7 +762,6 @@ import {
   onMounted,
   onUnmounted,
   ref,
-  shallowRef,
   watch,
   type Component,
 } from 'vue'
@@ -851,6 +888,13 @@ interface ChatMessage {
   steps?: StepItem[]
 }
 
+/** 右侧「累计执行详情」每一块对应一个时间线步骤 */
+interface CumulativeStepBlock {
+  stepIndex: number
+  step: StepItem
+  events: EventItem[]
+}
+
 // ===== State =====
 const sidebarShow = ref(true)
 const sessionList = ref<ChatInfo[]>([])
@@ -876,8 +920,6 @@ const detailPanelOpen = ref(false)
 const detailMode = ref<'report' | 'step'>('step')
 const activeReportHtml = ref('')
 const activeReportMd = ref('')
-const activeStepDetail = shallowRef<StepItem | null>(null)
-const activeStepEvents = ref<EventItem[]>([])
 const selectedMsgIdx = ref(-1)
 const selectedStepIdx = ref(-1)
 /** 为 true 时流式输出会同步右侧到最后一步（用户点选步骤后关闭） */
@@ -1157,16 +1199,37 @@ function isStepSelected(msgIdx: number, stepIdx: number): boolean {
   return selectedMsgIdx.value === msgIdx && selectedStepIdx.value === stepIdx
 }
 
-function selectStep(msgIdx: number, stepIdx: number, step: StepItem, fromAutoFollow = false) {
+/** 滚动右侧累计详情到指定步骤锚点 */
+function scrollDetailToCumulativeStep(
+  stepIdx: number,
+  opts?: { smooth?: boolean; alignEnd?: boolean }
+) {
+  const smooth = opts?.smooth !== false
+  const alignEnd = opts?.alignEnd === true
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`da-cum-${stepIdx}`)
+      if (!el) return
+      el.scrollIntoView({
+        block: alignEnd ? 'end' : 'nearest',
+        behavior: smooth ? 'smooth' : 'auto',
+      })
+    })
+  })
+}
+
+function selectStep(msgIdx: number, stepIdx: number, _step: StepItem, fromAutoFollow = false) {
   if (!fromAutoFollow) {
     liveFollowLatest.value = false
   }
   selectedMsgIdx.value = msgIdx
   selectedStepIdx.value = stepIdx
-  activeStepDetail.value = step
-  activeStepEvents.value = step.events.length ? step.events : buildEventsFromMd(step)
   detailMode.value = 'step'
   detailPanelOpen.value = true
+  scrollDetailToCumulativeStep(stepIdx, {
+    smooth: !fromAutoFollow,
+    alignEnd: fromAutoFollow,
+  })
 }
 
 /** 新 stage / plan 等：跟随最后一步并打开右侧 */
@@ -1196,6 +1259,29 @@ function buildEventsFromMd(step: StepItem): EventItem[] {
   if (!step.detailsMd) return []
   return parseProcessContent(step.detailsMd, step.stepType || step.title, step.stageTool)
 }
+
+/** 当前右侧详情对应的 agent 消息里，按顺序堆叠的执行块 */
+const cumulativeDetailBlocks = computed((): CumulativeStepBlock[] => {
+  const mi = selectedMsgIdx.value
+  if (mi < 0 || mi >= messages.value.length) return []
+  const msg = messages.value[mi]
+  if (msg.role !== 'agent' || !msg.steps?.length) return []
+  return agentExecutionSteps(msg).map(({ step, index }) => ({
+    stepIndex: index,
+    step,
+    events: step.events.length ? step.events : buildEventsFromMd(step),
+  }))
+})
+
+/** 顶栏：当前选中的步骤（状态徽标） */
+const focusedStepForDetailPanel = computed((): StepItem | null => {
+  const mi = selectedMsgIdx.value
+  const si = selectedStepIdx.value
+  if (mi < 0 || si < 0) return null
+  const msg = messages.value[mi]
+  if (msg?.role !== 'agent' || !msg.steps?.[si]) return null
+  return msg.steps[si]
+})
 
 function sqlbotBadgeFromStepType(stepType: string): string | undefined {
   const m = stepType.match(/sqlbot_[\w]+/)
@@ -1739,6 +1825,148 @@ function exportReport() {
   ElMessage.success(t('deep_analysis.export_success'))
 }
 
+function htmlToPlainForExport(html: string): string {
+  if (!html?.trim()) return ''
+  const d = document.createElement('div')
+  d.innerHTML = html
+  return (d.textContent || '').replace(/\u00a0/g, ' ').trim()
+}
+
+function mdEscapeCell(s: string): string {
+  return s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim().slice(0, 500)
+}
+
+function stepStatusLabelForExport(status: StepItem['status']): string {
+  switch (status) {
+    case 'running':
+      return t('deep_analysis.detail_status_running')
+    case 'done':
+      return t('deep_analysis.detail_status_done')
+    case 'error':
+      return t('deep_analysis.detail_status_error')
+    default:
+      return t('deep_analysis.export_status_pending')
+  }
+}
+
+function eventItemToMarkdown(evt: EventItem): string {
+  const lines: string[] = []
+  const head =
+    evt.badge && evt.badge.trim()
+      ? `#### ${evt.title} (${evt.badge})`
+      : `#### ${evt.title}`
+  lines.push(head)
+  if (evt.sql) {
+    lines.push('```sql', evt.sql, '```')
+    if (evt.duration) {
+      lines.push(`${t('deep_analysis.export_sql_duration')}: ${evt.duration}`)
+    }
+  }
+  if (evt.tableSchema?.length) {
+    lines.push('', '| ' + t('deep_analysis.export_col_name') + ' | ' + t('deep_analysis.export_col_type') + ' |', '| --- | --- |')
+    for (const col of evt.tableSchema) {
+      lines.push(`| ${mdEscapeCell(col.name)} | ${mdEscapeCell(col.type)} |`)
+    }
+  }
+  if (evt.previewTable?.columns?.length) {
+    const cols = evt.previewTable.columns
+    const maxRows = 40
+    const rows = (evt.previewTable.rows || []).slice(0, maxRows)
+    lines.push('')
+    if (evt.previewTable.rowCount != null) {
+      lines.push(
+        `*${t('deep_analysis.export_preview_caption', { total: evt.previewTable.rowCount, max: maxRows })}*`
+      )
+    } else {
+      lines.push(`*${t('deep_analysis.export_preview_caption_short', { max: maxRows })}*`)
+    }
+    lines.push('| ' + cols.map((c) => mdEscapeCell(c)).join(' | ') + ' |')
+    lines.push('|' + cols.map(() => ' --- ').join('|') + '|')
+    for (const row of rows) {
+      lines.push(
+        '| ' + cols.map((c) => mdEscapeCell(String((row as Record<string, unknown>)[c] ?? ''))).join(' | ') + ' |'
+      )
+    }
+    if (evt.previewTable.csvPath) {
+      lines.push('', `CSV: \`${evt.previewTable.csvPath}\``)
+    }
+  }
+  if (evt.chartPreview) {
+    lines.push('', `*${t('deep_analysis.export_chart_note')}*`)
+  }
+  if (evt.content?.trim()) {
+    lines.push('', evt.content.trim())
+  } else if (evt.contentHtml?.trim()) {
+    const plain = htmlToPlainForExport(evt.contentHtml)
+    if (plain) lines.push('', plain)
+  }
+  return lines.join('\n').trim()
+}
+
+function buildExecutionChainMarkdown(): string {
+  const blocks = cumulativeDetailBlocks.value
+  const parts: string[] = []
+  parts.push(`# ${t('deep_analysis.cumulative_execution_chain')}`)
+  parts.push('')
+  parts.push(`${t('deep_analysis.export_generated_at')}: ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`)
+  parts.push('')
+  if (sessionTodos.value.length) {
+    parts.push(`## ${t('deep_analysis.current_tasks')}`)
+    for (const td of sessionTodos.value) {
+      parts.push(`- [${td.status || '—'}] ${td.content}`)
+    }
+    parts.push('')
+  }
+  for (const block of blocks) {
+    const s = block.step
+    parts.push(`## ${block.stepIndex + 1}. ${s.title}`)
+    parts.push(
+      `- ${t('deep_analysis.export_label_status')}: ${stepStatusLabelForExport(s.status)}`
+    )
+    if (s.durationMs != null) {
+      parts.push(
+        `- ${t('deep_analysis.export_label_duration')}: ${formatStepDuration(s.durationMs)}`
+      )
+    }
+    if (s.resultSummary?.trim()) {
+      parts.push(`- ${t('deep_analysis.export_label_summary')}: ${s.resultSummary.trim()}`)
+    }
+    parts.push('')
+    const mdBody = s.detailsMd?.trim()
+    const htmlBody = s.details?.trim()
+    const detailText = mdBody || (htmlBody ? htmlToPlainForExport(htmlBody) : '')
+    if (detailText) {
+      parts.push(`### ${t('deep_analysis.export_section_details')}`)
+      parts.push(detailText)
+      parts.push('')
+    }
+    if (block.events.length) {
+      parts.push(`### ${t('deep_analysis.export_section_events')}`)
+      parts.push('')
+      for (const evt of block.events) {
+        parts.push(eventItemToMarkdown(evt))
+        parts.push('')
+      }
+    }
+    parts.push('---')
+    parts.push('')
+  }
+  return parts.join('\n').trim()
+}
+
+function exportExecutionChain() {
+  const md = buildExecutionChainMarkdown()
+  if (!md) return
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `Data_Agent_ExecutionChain_${dayjs().format('YYYYMMDD_HHmmss')}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success(t('deep_analysis.export_execution_success'))
+}
+
 // ===== Step helpers =====
 function createStep(
   title: string,
@@ -1966,12 +2194,7 @@ async function sendMessage() {
                 detailMode.value = 'step'
                 detailPanelOpen.value = true
               }
-              activeStepDetail.value = currentStep
-              activeStepEvents.value = parseProcessContent(
-                currentStep!.detailsMd,
-                currentStep!.stepType,
-                currentStep!.stageTool
-              )
+              scrollDetailToCumulativeStep(si, { smooth: false, alignEnd: true })
             }
             const todosSnap = (data as { todos?: unknown }).todos
             if (
@@ -3067,12 +3290,66 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 8px;
 }
+.da-detail-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
 .da-detail-toolbar-main {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
   flex: 1;
+}
+.da-detail-toolbar-cumulative {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.da-cum-focus-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #646a73;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.da-cum-section {
+  scroll-margin-top: 12px;
+  border-bottom: 1px solid #f0f1f3;
+  transition: background 0.2s ease;
+}
+.da-cum-section:last-child {
+  border-bottom: none;
+}
+.da-cum-section--selected {
+  background: rgba(28, 186, 144, 0.06);
+  box-shadow: inset 3px 0 0 0 var(--ed-color-primary, #1cba90);
+}
+.da-cum-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 16px 4px;
+}
+.da-cum-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2329;
+}
+.da-cum-section-details {
+  padding: 4px 16px 12px;
+  border-bottom: none;
+}
+.da-detail-empty {
+  padding: 28px 20px;
+  color: #8f959e;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
 }
 .da-step-duration-header {
   flex-shrink: 0;
