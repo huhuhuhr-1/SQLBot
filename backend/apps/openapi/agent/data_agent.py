@@ -7,6 +7,7 @@ import json
 import os
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
@@ -311,7 +312,33 @@ class DataAgentRunner:
         self, raw: str, tool_input, workspace_uid: str
     ) -> dict | None:
         """从 sqlbot_execute_sql_csv 工具输出中解析一条证据记录。"""
-        obj = _extract_first_json_object((raw or "").strip())
+        s0 = (raw or "").strip()
+        obj = _extract_first_json_object(s0)
+        if obj is None:
+            # 工具输出可能是 ToolMessage repr 或 Python dict repr；尽可能恢复为 dict
+            try:
+                import ast
+
+                s1 = s0
+                # ToolMessage repr 里 content='...'
+                m = re.search(r"\bcontent=(['\"])", s1)
+                if m:
+                    # 复用 data_agent_tool_format 中对 ToolMessage content 的解析逻辑
+                    from apps.openapi.agent.data_agent_tool_format import (
+                        _extract_toolmessage_content_str as _tm_content,
+                    )
+
+                    inner = _tm_content(s1)
+                    if inner:
+                        s1 = inner.strip()
+                if s1.startswith("{") and s1.endswith("}"):
+                    try:
+                        obj = json.loads(s1)
+                    except json.JSONDecodeError:
+                        # 可能是 Python dict 单引号
+                        obj = ast.literal_eval(s1)
+            except Exception:
+                obj = None
         if not isinstance(obj, dict):
             return None
         step_desc = ""
@@ -366,6 +393,25 @@ class DataAgentRunner:
         if preview_out is not None:
             rec["preview_rows"] = preview_out
         return rec
+
+    def _build_report_bundle(
+        self,
+        *,
+        chat_id: int,
+        question: str,
+        report_md: str,
+        evidence_json: list[dict],
+    ) -> dict:
+        """生成离线 HTML 的结构化数据包（可落盘复现渲染）。"""
+        now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        return {
+            "version": 1,
+            "generated_at": now,
+            "chat_id": chat_id,
+            "question": (question or "").strip(),
+            "report_markdown": report_md or "",
+            "evidence": evidence_json or [],
+        }
 
     async def _finalize_structured_report(
         self,
@@ -823,6 +869,20 @@ class DataAgentRunner:
                         da_dir.mkdir(parents=True, exist_ok=True)
                         fp = da_dir / "report.html"
                         fp.write_text(html_doc, encoding="utf-8")
+                        # 同时落一份可复现的结构化数据，便于后续重新渲染/调样式
+                        try:
+                            bundle = self._build_report_bundle(
+                                chat_id=int(self.chat_question.chat_id),
+                                question=user_q,
+                                report_md=body,
+                                evidence_json=ev_json,
+                            )
+                            (da_dir / "report_bundle.json").write_text(
+                                json.dumps(bundle, ensure_ascii=False, indent=2),
+                                encoding="utf-8",
+                            )
+                        except Exception as e:
+                            SQLBotLogUtil.error(f"写 report_bundle.json 失败: {e}")
                         html_relpath = f"deep_analysis/{self.chat_question.chat_id}/report.html"
                     await self._emit_report_stage("html", "done", "HTML 完成")
                     dt = int((time.monotonic() - t0) * 1000)

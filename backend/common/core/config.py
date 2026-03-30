@@ -155,7 +155,7 @@ class Settings(BaseSettings):
     DATA_AGENT_REPORT_POLISH: bool = True
     DATA_AGENT_REPORT_HTML: bool = True
     # 是否将 HTML 写入 SQLBOT_HOME/<uid>/deep_analysis/<chat_id>/report.html（默认可仅从接口动态生成）
-    DATA_AGENT_REPORT_WRITE_HTML_FILE: bool = False
+    DATA_AGENT_REPORT_WRITE_HTML_FILE: bool = True
 
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
