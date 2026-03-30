@@ -7,6 +7,7 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 
 from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
 from sqlmodel import Session
@@ -17,6 +18,10 @@ from apps.datasource.crud.datasource import (
     get_table_schema,
 )
 from apps.openapi.agent import sqlbot_workspace as sw
+from apps.openapi.agent.data_agent_report_html import (
+    build_report_html,
+    sanitize_evidence_for_json,
+)
 from apps.openapi.agent.data_agent_tool_format import (
     _extract_first_json_object,
     extract_write_todos_list,
@@ -302,8 +307,9 @@ class DataAgentRunner:
             tool_name, out, execute_command=execute_command
         )
 
-    @staticmethod
-    def _evidence_from_sql_csv_tool(raw: str, tool_input) -> dict | None:
+    def _evidence_from_sql_csv_tool(
+        self, raw: str, tool_input, workspace_uid: str
+    ) -> dict | None:
         """从 sqlbot_execute_sql_csv 工具输出中解析一条证据记录。"""
         obj = _extract_first_json_object((raw or "").strip())
         if not isinstance(obj, dict):
@@ -314,15 +320,52 @@ class DataAgentRunner:
         sql = str(obj.get("sql") or "")[:2000]
         path = str(obj.get("path") or "")[:500]
         err = str(obj.get("error") or "")[:500]
-        return {
+        rel_path = ""
+        if path:
+            try:
+                rel_path = str(
+                    Path(path).resolve().relative_to(sw.user_dir(workspace_uid).resolve())
+                )
+            except ValueError:
+                rel_path = ""
+        cols = obj.get("columns")
+        columns_out = (
+            [str(x)[:200] for x in cols[:64]] if isinstance(cols, list) else None
+        )
+        pr = obj.get("preview_rows")
+        preview_out = None
+        if isinstance(pr, list):
+
+            def _norm_cell(v):
+                if v is None:
+                    return None
+                if isinstance(v, (int, float, str, bool)):
+                    return v
+                return str(v)
+
+            def _norm_row(r):
+                if isinstance(r, dict):
+                    return {k: _norm_cell(v) for k, v in r.items()}
+                if isinstance(r, (list, tuple)):
+                    return [_norm_cell(x) for x in r]
+                return _norm_cell(r)
+
+            preview_out = [_norm_row(r) for r in pr[:20]]
+        rec: dict = {
             "datasource_id": obj.get("datasource_id"),
             "row_count": obj.get("row_count"),
             "path": path,
+            "rel_path": rel_path,
             "ok": obj.get("ok", True),
             "error": err,
             "sql": sql,
             "step_description": step_desc,
         }
+        if columns_out is not None:
+            rec["columns"] = columns_out
+        if preview_out is not None:
+            rec["preview_rows"] = preview_out
+        return rec
 
     async def _finalize_structured_report(
         self,
@@ -385,6 +428,92 @@ class DataAgentRunner:
         except Exception as e:
             SQLBotLogUtil.error(f"Data Agent 结构化报告失败，使用草稿: {e}")
             return draft
+
+    async def _emit_report_stage(
+        self, stage: str, status: str, message: str = ""
+    ) -> None:
+        await self.queue.put(
+            {
+                "type": "report_stage",
+                "stage": stage,
+                "status": status,
+                "message": message,
+            }
+        )
+
+    def _evidence_summary_text(self, evidence_log: list[dict]) -> str:
+        lines: list[str] = []
+        for ev in evidence_log:
+            if not isinstance(ev, dict):
+                continue
+            idx = ev.get("index", "")
+            lines.append(
+                f"E{idx}: ds={ev.get('datasource_id')} rows={ev.get('row_count')} "
+                f"path={ev.get('rel_path') or ev.get('path')} "
+                f"cols={ev.get('columns')}"
+            )
+            sql = str(ev.get("sql") or "")
+            if sql:
+                lines.append("  sql: " + sql[:400].replace("\n", " "))
+        return "\n".join(lines)[:12000]
+
+    async def _report_correct(
+        self, *, question: str, body: str, evidence_summary: str
+    ) -> str:
+        system = (
+            "你是数据分析报告审校员。对照「证据摘要」检查下面 Markdown 报告中的事实、数字与结论，"
+            "修正明显错误、矛盾或夸大表述；不得编造证据中不存在的路径或行数。"
+            "保持原有章节结构（# 分析摘要、## 数据与证据 等）；如证据不足，将相关句改为谨慎表述。"
+            "全文使用中文，直接输出修正后的完整 Markdown。"
+        )
+        human = (
+            f"用户问题：\n{question[:4000]}\n\n"
+            f"证据摘要：\n{evidence_summary}\n\n"
+            f"---\n待审校报告：\n{body[:20000]}"
+        )
+        if len(body) > 20000:
+            human += "\n\n…（报告已截断，请仅就可见部分审校并保持结构）"
+        try:
+            llm = await create_llm(use_tool=False)
+            resp = await llm.ainvoke(
+                [SystemMessage(content=system), HumanMessage(content=human)]
+            )
+            out = getattr(resp, "content", None) or ""
+            if isinstance(out, list):
+                out = "".join(
+                    getattr(b, "text", str(b)) for b in out if b is not None
+                )
+            corrected = (out or "").strip()
+            if len(corrected) < 80:
+                return body
+            return corrected
+        except Exception as e:
+            SQLBotLogUtil.error(f"Data Agent 报告纠错失败，沿用上一版: {e}")
+            return body
+
+    async def _report_polish(self, body: str) -> str:
+        system = (
+            "你是专业中文技术编辑。在不改变事实、数字、路径与 SQL 的前提下，润色下面 Markdown："
+            "段落衔接、用词统一、标题层级清晰。禁止新增数据或结论。直接输出润色后的完整 Markdown。"
+        )
+        human = f"待润色报告：\n{body[:22000]}"
+        try:
+            llm = await create_llm(use_tool=False)
+            resp = await llm.ainvoke(
+                [SystemMessage(content=system), HumanMessage(content=human)]
+            )
+            out = getattr(resp, "content", None) or ""
+            if isinstance(out, list):
+                out = "".join(
+                    getattr(b, "text", str(b)) for b in out if b is not None
+                )
+            polished = (out or "").strip()
+            if len(polished) < 80:
+                return body
+            return polished
+        except Exception as e:
+            SQLBotLogUtil.error(f"Data Agent 报告润色失败，沿用上一版: {e}")
+            return body
 
     async def _emit_buffered_llm_text(
         self, buffer_parts: list[str], *, title: str, stage_key: str
@@ -552,7 +681,7 @@ class DataAgentRunner:
                     out = str(data.get("output", ""))
                     tool_inp = data.get("input")
                     if name == "sqlbot_execute_sql_csv":
-                        ev = self._evidence_from_sql_csv_tool(out, tool_inp)
+                        ev = self._evidence_from_sql_csv_tool(out, tool_inp, uid)
                         if ev:
                             ev["index"] = len(evidence_log) + 1
                             evidence_log.append(ev)
@@ -595,17 +724,133 @@ class DataAgentRunner:
                 await self.queue.put(
                     {"type": "stage", "content": "生成报告", "stage": "report"}
                 )
-                final_report = await self._finalize_structured_report(
+                t_report0 = time.monotonic()
+                await self._emit_report_stage("draft", "running", "结构化初版")
+                structured = await self._finalize_structured_report(
                     question=user_q,
                     plan_excerpt=execution_plan_md,
                     evidence_log=evidence_log,
                     draft=report,
                 )
+                await self._emit_report_stage("draft", "done", "结构化初版完成")
                 await self.queue.put(
                     {
-                        "reasoning_content": "",
-                        "content": final_report,
-                        "type": "report",
+                        "type": "process",
+                        "content": (
+                            "生成报告：结构化初版完成。\n"
+                            f"- 证据条数：{len(evidence_log)}\n"
+                            f"- 报告字数：{len(structured)}\n"
+                        ),
+                    }
+                )
+
+                body = structured
+                ev_summary = self._evidence_summary_text(evidence_log)
+
+                if getattr(settings, "DATA_AGENT_REPORT_CORRECT", True):
+                    t0 = time.monotonic()
+                    await self._emit_report_stage("correct", "running", "智能纠错")
+                    await self.queue.put(
+                        {
+                            "type": "stage",
+                            "content": "报告智能纠错",
+                            "stage": "report_correct",
+                        }
+                    )
+                    body = await self._report_correct(
+                        question=user_q,
+                        body=body,
+                        evidence_summary=ev_summary,
+                    )
+                    await self._emit_report_stage("correct", "done", "纠错完成")
+                    dt = int((time.monotonic() - t0) * 1000)
+                    await self.queue.put(
+                        {
+                            "type": "process",
+                            "content": (
+                                "报告智能纠错：完成。\n"
+                                f"- 耗时：{dt} ms\n"
+                                f"- 当前报告字数：{len(body)}\n"
+                            ),
+                        }
+                    )
+
+                if getattr(settings, "DATA_AGENT_REPORT_POLISH", True):
+                    t0 = time.monotonic()
+                    await self._emit_report_stage("polish", "running", "智能润色")
+                    await self.queue.put(
+                        {
+                            "type": "stage",
+                            "content": "报告智能润色",
+                            "stage": "report_polish",
+                        }
+                    )
+                    body = await self._report_polish(body)
+                    await self._emit_report_stage("polish", "done", "润色完成")
+                    dt = int((time.monotonic() - t0) * 1000)
+                    await self.queue.put(
+                        {
+                            "type": "process",
+                            "content": (
+                                "报告智能润色：完成。\n"
+                                f"- 耗时：{dt} ms\n"
+                                f"- 当前报告字数：{len(body)}\n"
+                            ),
+                        }
+                    )
+
+                ev_json = sanitize_evidence_for_json(evidence_log)
+                html_relpath: str | None = None
+                if getattr(settings, "DATA_AGENT_REPORT_HTML", True):
+                    t0 = time.monotonic()
+                    await self._emit_report_stage("html", "running", "生成 HTML")
+                    await self.queue.put(
+                        {
+                            "type": "stage",
+                            "content": "生成 HTML 报告",
+                            "stage": "report_html",
+                        }
+                    )
+                    html_doc = build_report_html(
+                        body, ev_json, chat_id=int(self.chat_question.chat_id or 0)
+                    )
+                    if getattr(settings, "DATA_AGENT_REPORT_WRITE_HTML_FILE", False) and (
+                        self.chat_question.chat_id
+                    ):
+                        da_dir = (
+                            sw.user_dir(uid) / "deep_analysis" / str(self.chat_question.chat_id)
+                        )
+                        da_dir.mkdir(parents=True, exist_ok=True)
+                        fp = da_dir / "report.html"
+                        fp.write_text(html_doc, encoding="utf-8")
+                        html_relpath = f"deep_analysis/{self.chat_question.chat_id}/report.html"
+                    await self._emit_report_stage("html", "done", "HTML 完成")
+                    dt = int((time.monotonic() - t0) * 1000)
+                    await self.queue.put(
+                        {
+                            "type": "process",
+                            "content": (
+                                "生成 HTML 报告：完成。\n"
+                                f"- 耗时：{dt} ms\n"
+                                f"- HTML 字符数：{len(html_doc)}\n"
+                            ),
+                        }
+                    )
+
+                payload = {
+                    "reasoning_content": "",
+                    "content": body,
+                    "type": "report",
+                    "evidence": ev_json,
+                }
+                if html_relpath:
+                    payload["report_html_relpath"] = html_relpath
+                await self.queue.put(payload)
+                dt_all = int((time.monotonic() - t_report0) * 1000)
+                await self.queue.put(
+                    {
+                        "type": "process",
+                        "content": f"报告流水线全部完成（总耗时 {dt_all} ms）。\n",
                     }
                 )
 

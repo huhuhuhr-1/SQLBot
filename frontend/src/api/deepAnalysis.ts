@@ -69,4 +69,19 @@ export const deepAnalysisApi = {
         questions: Array.isArray(res?.questions) ? res.questions : [],
       }))
   },
+  /** 下载工作区内文件（rel_path 相对用户 SQLBOT_HOME 账号目录） */
+  downloadWorkspaceFile: (chatId: number, relPath: string): Promise<Blob> => {
+    return request.get('/openapi/deep-analysis/workspace-file', {
+      params: { chat_id: chatId, rel_path: relPath },
+      responseType: 'blob',
+    })
+  },
+
+  /** 拉取动态生成的 HTML 报告（需登录态） */
+  fetchSessionReportHtml: (chatId: number): Promise<Blob> => {
+    return request.get('/openapi/deep-analysis/session-report-html', {
+      params: { chat_id: chatId },
+      responseType: 'blob',
+    })
+  },
 }

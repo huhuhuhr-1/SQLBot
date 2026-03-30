@@ -12,7 +12,9 @@ import uuid
 import orjson
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from langchain_core.messages import HumanMessage, SystemMessage
-from starlette.responses import StreamingResponse
+from sqlalchemy import desc
+from sqlmodel import select
+from starlette.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from apps.ai_model.model_factory import create_llm
 from apps.chat.curd.chat import (
@@ -22,7 +24,7 @@ from apps.chat.curd.chat import (
     get_chat_record_by_id,
     list_deep_analysis_chats,
 )
-from apps.chat.models.chat_model import Chat, CreateChat
+from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat
 from apps.datasource.crud.datasource import (
     create_ds,
     get_datasource_list_for_openapi,
@@ -560,6 +562,101 @@ async def deep_analysis_sessions(session: SessionDep, current_user: CurrentUser)
     return list_deep_analysis_chats(session, current_user)
 
 
+@router.get(
+    "/deep-analysis/workspace-file",
+    summary="下载深度分析工作区文件（受控路径）",
+    description="仅允许下载当前用户 SQLBOT_HOME 工作区内文件；rel_path 为相对于该用户目录的相对路径（如 exports/a.csv）。",
+    dependencies=[Depends(common_headers)],
+)
+async def deep_analysis_workspace_file(
+    session: SessionDep,
+    current_user: CurrentUser,
+    chat_id: int = Query(..., ge=1, description="深度分析会话 ID，用于校验归属"),
+    rel_path: str = Query(..., max_length=2048, description="相对用户工作区根的路径"),
+):
+    from apps.openapi.agent import sqlbot_workspace as sw
+
+    chat = session.get(Chat, chat_id)
+    if (
+        chat is None
+        or chat.create_by != current_user.id
+        or int(chat.origin or 0) != 1
+    ):
+        raise HTTPException(status_code=404, detail="会话不存在或无权访问")
+    uid = sw.workspace_uid(current_user)
+    base = sw.user_dir(uid).resolve()
+    rel = (rel_path or "").strip().replace("\\", "/").lstrip("/")
+    if not rel or ".." in rel.split("/"):
+        raise HTTPException(status_code=400, detail="非法路径")
+    target = (base / rel).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="路径越界")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    suffix = target.suffix.lower()
+    media = "application/octet-stream"
+    if suffix == ".csv":
+        media = "text/csv; charset=utf-8"
+    elif suffix in (".html", ".htm"):
+        media = "text/html; charset=utf-8"
+    elif suffix == ".json":
+        media = "application/json; charset=utf-8"
+    return FileResponse(target, filename=target.name, media_type=media)
+
+
+@router.get(
+    "/deep-analysis/session-report-html",
+    summary="获取深度分析 HTML 报告（动态生成）",
+    description="根据会话最新一条带 analysis 的记录生成 HTML（Markdown + 证据表 + 图表）。",
+    dependencies=[Depends(common_headers)],
+    response_class=HTMLResponse,
+)
+async def deep_analysis_session_report_html(
+    session: SessionDep,
+    current_user: CurrentUser,
+    chat_id: int = Query(..., ge=1),
+):
+    from apps.openapi.agent.data_agent_report_html import build_report_html
+
+    chat = session.get(Chat, chat_id)
+    if (
+        chat is None
+        or chat.create_by != current_user.id
+        or int(chat.origin or 0) != 1
+    ):
+        raise HTTPException(status_code=404, detail="会话不存在或无权访问")
+    stmt = (
+        select(ChatRecord)
+        .where(ChatRecord.chat_id == chat_id)
+        .order_by(desc(ChatRecord.create_time))
+        .limit(30)
+    )
+    records = session.exec(stmt).all()
+    picked = None
+    for rec in records:
+        if not rec.analysis:
+            continue
+        try:
+            data = orjson.loads(rec.analysis)
+        except Exception:
+            continue
+        if isinstance(data, dict) and (data.get("report") or "").strip():
+            picked = data
+            break
+    if not picked:
+        raise HTTPException(status_code=404, detail="暂无可用的分析报告")
+    report_md = picked.get("report") or ""
+    evidence = picked.get("evidence")
+    if evidence is None:
+        evidence = (picked.get("config") or {}).get("evidence")
+    if not isinstance(evidence, list):
+        evidence = []
+    html_doc = build_report_html(report_md, evidence, chat_id=chat_id)
+    return HTMLResponse(content=html_doc)
+
+
 @router.post(
     "/deep-analysis/sessions/batch-delete",
     summary="批量删除深度分析会话",
@@ -728,7 +825,7 @@ async def deep_analysis(
 
         class DeepAnalysisAccumulator:
             """包装 queue，在流式输出时累积 plan/report/process，在 finish 时写入 DB 以便刷新/切回后恢复。"""
-            __slots__ = ('_q', '_sess', '_uid', '_cid', '_qtext', '_config', 'plan', 'report', 'process', '_loop')
+            __slots__ = ('_q', '_sess', '_uid', '_cid', '_qtext', '_config', 'plan', 'report', 'process', '_loop', '_report_meta')
 
             def __init__(self, q, sess, uid, cid, qtext, config=None):
                 self._q = q
@@ -741,6 +838,7 @@ async def deep_analysis(
                 self.report = None
                 self.process = []
                 self._loop = None
+                self._report_meta = {}
 
             async def put(self, msg):
                 if self._loop is None:
@@ -753,6 +851,12 @@ async def deep_analysis(
                         self.plan = c
                     elif t == 'report':
                         self.report = c
+                        rm = {}
+                        if 'evidence' in msg:
+                            rm['evidence'] = msg['evidence']
+                        if msg.get('report_html_relpath'):
+                            rm['report_html_relpath'] = msg['report_html_relpath']
+                        self._report_meta = rm
                     elif t in (
                         'process',
                         'analysis-result',
@@ -770,6 +874,8 @@ async def deep_analysis(
                             entry['duration_ms'] = msg['duration_ms']
                         if msg.get('tool'):
                             entry['tool'] = msg['tool']
+                        if msg.get('stage') is not None:
+                            entry['stage'] = msg['stage']
                         if msg.get('result_summary'):
                             entry['result_summary'] = msg['result_summary']
                         if msg.get('todos') is not None:
@@ -777,10 +883,12 @@ async def deep_analysis(
                         self.process.append(entry)
                     if t == 'finish':
                         from apps.chat.curd.chat import save_deep_analysis_result
+                        merged_cfg = dict(self._config)
+                        merged_cfg.update(getattr(self, '_report_meta', {}))
                         save_deep_analysis_result(
                             self._sess, self._cid, self._uid, self._qtext,
                             self.plan, self.report, self.process,
-                            config=self._config,
+                            config=merged_cfg,
                         )
                 await self._q.put(msg)
 

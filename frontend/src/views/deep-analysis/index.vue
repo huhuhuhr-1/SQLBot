@@ -279,13 +279,13 @@
                                 'da-step-error': step.status === 'error',
                                 'da-step-selected': isStepSelected(idx, sIdx),
                                 'da-step-item--interactive':
-                                  !!step.detailsMd || step.status === 'running',
+                                  !!step.detailsMd || step.status === 'running' || step.stepType === 'finish',
                               }"
                             >
                               <div
                                 class="da-step-main-click"
                                 @click="
-                                  (step.detailsMd || step.status === 'running') &&
+                                  (step.detailsMd || step.status === 'running' || step.stepType === 'finish') &&
                                   selectStep(idx, sIdx, step)
                                 "
                               >
@@ -405,17 +405,61 @@
                           class="markdown-body da-deliver-summary"
                           v-html="msg.contentHtml"
                         ></div>
-                        <div v-if="msg.reportHtml" class="da-report-card" @click="openReport(msg)">
-                          <div class="da-report-card-icon">
-                            <el-icon size="20"><Document /></el-icon>
-                          </div>
-                          <div class="da-report-card-body">
-                            <div class="da-report-card-title">
-                              {{ t('deep_analysis.report_title') }}
+                        <div v-if="msg.reportHtml" class="da-report-card-grid">
+                          <div
+                            class="da-report-card"
+                            role="button"
+                            tabindex="0"
+                            @click="openReportMarkdown(msg)"
+                            @keydown.enter="openReportMarkdown(msg)"
+                          >
+                            <div class="da-report-card-icon">
+                              <el-icon size="20"><Document /></el-icon>
                             </div>
-                            <div class="da-report-card-desc">点击查看完整分析报告</div>
+                            <div class="da-report-card-body">
+                              <div class="da-report-card-title">
+                                {{ t('deep_analysis.report_title_md') }}
+                              </div>
+                              <div class="da-report-card-desc">
+                                {{ t('deep_analysis.report_desc_md') }}
+                              </div>
+                            </div>
+                            <el-icon size="16" color="#8f959e"><ArrowRight /></el-icon>
                           </div>
-                          <el-icon size="16" color="#8f959e"><ArrowRight /></el-icon>
+
+                          <div
+                            class="da-report-card da-report-card--html"
+                            role="button"
+                            tabindex="0"
+                            @click="openReportHtml(msg)"
+                            @keydown.enter="openReportHtml(msg)"
+                          >
+                            <div class="da-report-card-icon da-report-card-icon--html">
+                              <el-icon size="20"><Document /></el-icon>
+                            </div>
+                            <div class="da-report-card-body">
+                              <div class="da-report-card-title">
+                                {{ t('deep_analysis.report_title_html') }}
+                              </div>
+                              <div class="da-report-card-desc">
+                                {{ t('deep_analysis.report_desc_html') }}
+                              </div>
+                            </div>
+                            <el-icon size="16" color="#8f959e"><ArrowRight /></el-icon>
+                          </div>
+                        </div>
+                        <div v-if="msg.reportStageLog?.length" class="da-report-pipeline">
+                          <span class="da-report-pipeline-label">{{
+                            t('deep_analysis.report_pipeline')
+                          }}</span>
+                          <span
+                            v-for="(rs, ri) in msg.reportStageLog"
+                            :key="ri"
+                            class="da-report-pipeline-item"
+                            :class="'da-report-pipeline--' + (rs.status || '')"
+                          >
+                            {{ rs.stage }}: {{ rs.status }}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -514,9 +558,32 @@
 
           <!-- 报告模式 -->
           <template v-if="detailMode === 'report'">
-            <div class="da-detail-toolbar">
-              <span class="da-detail-tab active">{{ t('deep_analysis.report_title') }}</span>
+            <div class="da-report-mode-wrap">
+            <div class="da-detail-toolbar da-report-toolbar">
+              <div class="da-report-toolbar-left">
+                <span class="da-detail-tab active">{{ t('deep_analysis.report_title') }}</span>
+                <el-radio-group
+                  v-model="reportViewMode"
+                  size="small"
+                  class="da-report-view-mode"
+                  :disabled="!activeReportMd"
+                >
+                  <el-radio-button label="markdown">{{
+                    t('deep_analysis.view_markdown')
+                  }}</el-radio-button>
+                  <el-radio-button label="html">{{ t('deep_analysis.view_html') }}</el-radio-button>
+                </el-radio-group>
+              </div>
               <div class="da-detail-actions">
+                <el-button
+                  v-if="currentSessionId && activeReportMd && reportViewMode === 'html'"
+                  type="primary"
+                  plain
+                  size="small"
+                  @click="openHtmlReportNewWindow"
+                >
+                  {{ t('deep_analysis.open_html_new_window') }}
+                </el-button>
                 <el-button
                   v-if="activeReportMd"
                   type="primary"
@@ -528,9 +595,54 @@
                 </el-button>
               </div>
             </div>
-            <el-scrollbar class="da-detail-body-scroll">
+            <el-scrollbar
+              v-show="reportViewMode === 'markdown'"
+              class="da-detail-body-scroll da-report-scroll-md"
+            >
               <div class="markdown-body da-detail-body" v-html="activeReportHtml"></div>
+              <div v-if="activeReportEvidence.length" class="da-evidence-appendix">
+                <div class="da-evidence-appendix-title">
+                  {{ t('deep_analysis.data_sources_appendix') }}
+                </div>
+                <ul class="da-evidence-list">
+                  <li v-for="(ev, ei) in activeReportEvidence" :key="ei" class="da-evidence-row">
+                    <span class="da-evidence-meta"
+                      >E{{ ev.index ?? ei + 1 }} · {{ ev.rel_path || ev.path || '—' }}</span
+                    >
+                    <el-button
+                      v-if="ev.rel_path"
+                      link
+                      type="primary"
+                      size="small"
+                      @click="downloadWorkspaceEvidence(ev)"
+                    >
+                      {{ t('deep_analysis.download_csv') }}
+                    </el-button>
+                  </li>
+                </ul>
+              </div>
             </el-scrollbar>
+            <div
+              v-show="reportViewMode === 'html'"
+              v-loading="reportHtmlLoading"
+              class="da-detail-body-scroll da-report-html-panel"
+            >
+              <div v-if="reportHtmlLoadError" class="da-report-html-error markdown-body">
+                {{ reportHtmlLoadError }}
+              </div>
+              <iframe
+                v-else-if="reportHtmlBlobUrl"
+                :src="reportHtmlBlobUrl"
+                class="da-report-html-iframe"
+                title="SQLBot report"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+              />
+              <el-empty
+                v-else-if="!reportHtmlLoading"
+                :description="t('deep_analysis.html_report_empty_hint')"
+              />
+            </div>
+            </div>
           </template>
 
           <!-- 步骤详情模式：累计完整执行链，点击主列步骤仅高亮并滚动锚点 -->
@@ -615,9 +727,28 @@
                   :id="'da-cum-' + block.stepIndex"
                   :key="block.stepIndex"
                   class="da-cum-section"
-                  :class="{ 'da-cum-section--selected': selectedStepIdx === block.stepIndex }"
+                  :class="{
+                    'da-cum-section--selected': selectedStepIdx === block.stepIndex,
+                    'da-cum-section--narration': block.step.stepType === 'narration',
+                  }"
                 >
-                  <div class="da-cum-section-inner">
+                  <div
+                    v-if="block.step.stepType === 'narration'"
+                    class="da-cum-narration"
+                    role="button"
+                    tabindex="0"
+                    :title="safeAttrTitle(block.step.detailsMd)"
+                    @click="selectStep(selectedMsgIdx, block.stepIndex, block.step)"
+                    @keydown.enter="selectStep(selectedMsgIdx, block.stepIndex, block.step)"
+                  >
+                    <span class="da-cum-narration-label">{{
+                      t('deep_analysis.execution_note')
+                    }}</span>
+                    <span class="da-cum-narration-text">{{
+                      narrationOneLine(block.step.detailsMd)
+                    }}</span>
+                  </div>
+                  <div v-else class="da-cum-section-inner">
                     <header class="da-cum-section-head">
                       <span class="da-cum-section-title">{{ block.step.title }}</span>
                       <span v-if="block.step.durationMs != null" class="da-step-duration-header">{{
@@ -896,6 +1027,23 @@ interface StepItem {
   inlineExpanded?: boolean
 }
 
+interface EvidenceItem {
+  index?: number
+  datasource_id?: number
+  row_count?: number
+  path?: string
+  rel_path?: string
+  sql?: string
+  columns?: string[]
+  preview_rows?: unknown[]
+}
+
+interface ReportStageEntry {
+  stage: string
+  status: string
+  message?: string
+}
+
 interface ChatMessage {
   role: 'user' | 'agent'
   content: string
@@ -909,6 +1057,9 @@ interface ChatMessage {
   loading?: boolean
   thinkingLabel?: string
   steps?: StepItem[]
+  evidence?: EvidenceItem[]
+  reportHtmlRelpath?: string
+  reportStageLog?: ReportStageEntry[]
 }
 
 /** 右侧「累计执行详情」每一块对应一个时间线步骤 */
@@ -943,6 +1094,19 @@ const detailPanelOpen = ref(false)
 const detailMode = ref<'report' | 'step'>('step')
 const activeReportHtml = ref('')
 const activeReportMd = ref('')
+const activeReportEvidence = ref<EvidenceItem[]>([])
+/** 报告侧栏：Markdown 渲染版 vs 服务端整页 HTML */
+const reportViewMode = ref<'markdown' | 'html'>('markdown')
+const reportHtmlBlobUrl = ref<string | null>(null)
+const reportHtmlLoading = ref(false)
+const reportHtmlLoadError = ref('')
+
+function revokeReportHtmlBlob() {
+  if (reportHtmlBlobUrl.value) {
+    URL.revokeObjectURL(reportHtmlBlobUrl.value)
+    reportHtmlBlobUrl.value = null
+  }
+}
 const selectedMsgIdx = ref(-1)
 const selectedStepIdx = ref(-1)
 /** 为 true 时流式输出会同步右侧到最后一步（用户点选步骤后关闭） */
@@ -1026,6 +1190,7 @@ function onDetailPanelResizeStart(e: MouseEvent) {
 onUnmounted(() => {
   stopResizeMove?.()
   stopResizeUp?.()
+  revokeReportHtmlBlob()
 })
 
 // Rename
@@ -1145,13 +1310,39 @@ function getLastRunningStep(msg: ChatMessage): StepItem | null {
   return null
 }
 
+function escapeHtmlLite(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 function getStreamBlockHtml(step: StepItem): string {
+  if (step.stepType === 'narration' && step.detailsMd?.trim()) {
+    return `<p class="da-stream-narration-line" title="${escapeHtmlLite(
+      (step.detailsMd || '').replace(/\s+/g, ' ').trim()
+    )}">${escapeHtmlLite(narrationOneLine(step.detailsMd, 320))}</p>`
+  }
   if (step.details?.trim()) return step.details
   return '<div class="da-stream-placeholder">正在输出执行详情…</div>'
 }
 
-/** 时间线中排除已单独展示在「思考与计划」卡内的规划步 */
+/** 时间线中排除规划步，以及工具间隙的 LLM 旁白（仅右侧详情展示） */
 function agentExecutionSteps(msg: ChatMessage): { step: StepItem; index: number }[] {
+  if (!msg.steps?.length) return []
+  const out: { step: StepItem; index: number }[] = []
+  for (let i = 0; i < msg.steps.length; i++) {
+    const step = msg.steps[i]
+    if (step.stepType === 'plan') continue
+    if (step.stepType === 'narration') continue
+    out.push({ step, index: i })
+  }
+  return out
+}
+
+/** 右侧累计执行详情：含旁白条，不含 plan */
+function cumulativeExecutionSteps(msg: ChatMessage): { step: StepItem; index: number }[] {
   if (!msg.steps?.length) return []
   const out: { step: StepItem; index: number }[] = []
   for (let i = 0; i < msg.steps.length; i++) {
@@ -1160,6 +1351,36 @@ function agentExecutionSteps(msg: ChatMessage): { step: StepItem; index: number 
     out.push({ step, index: i })
   }
   return out
+}
+
+function narrationOneLine(text: string | undefined, maxLen = 240): string {
+  const s = (text || '').replace(/\s+/g, ' ').trim()
+  if (!s) return '—'
+  return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s
+}
+
+function safeAttrTitle(text: string | undefined, maxLen = 1200): string {
+  return (text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/"/g, '＂')
+    .slice(0, maxLen)
+}
+
+function stageBriefTitle(raw: string, stageKey: string, stageTool: string): string {
+  if (stageKey === 'report') return t('deep_analysis.stage_report_generate')
+  if (stageKey === 'report_correct') return t('deep_analysis.stage_report_correct')
+  if (stageKey === 'report_polish') return t('deep_analysis.stage_report_polish')
+  if (stageKey === 'report_html') return t('deep_analysis.stage_report_html')
+  if (stageKey === 'llm_report_draft') return t('deep_analysis.stage_report_draft')
+
+  if (stageTool === 'sqlbot_sync_datasource') return t('deep_analysis.stage_sync_meta')
+  if (stageTool === 'sqlbot_sql_dialect') return t('deep_analysis.stage_sql_dialect')
+  if (stageTool === 'sqlbot_execute_sql_csv') return t('deep_analysis.stage_sql_execute')
+  if (stageTool === 'execute') return t('deep_analysis.stage_execute_cmd')
+  if (stageTool === 'read_file') return t('deep_analysis.stage_read_file')
+
+  return classifyStageTitle(raw, stageTool || undefined)
 }
 
 function prevUserQuestionForMsg(agentIdx: number): string {
@@ -1192,7 +1413,7 @@ function openLatestExecDetail(msgIdx: number) {
   const pairs = agentExecutionSteps(msg)
   for (let i = pairs.length - 1; i >= 0; i--) {
     const { step, index } = pairs[i]
-    if (step.detailsMd || step.status === 'running') {
+    if (step.status === 'running' || step.detailsMd || step.stepType === 'finish') {
       selectStep(msgIdx, index, step)
       return
     }
@@ -1291,6 +1512,9 @@ function showCumulativeStepDetails(step: StepItem, events: EventItem[]): boolean
 /** 从 write_todos / Command(update=...) 类 repr 中解析 todos */
 function parseTodosFromWriteTodosRepr(content: string): TodoSnapshotItem[] | null {
   if (!content || (!content.includes('todos') && !content.includes("'content'"))) return null
+  // #region agent log (debug-7b561a H1)
+  fetch('http://127.0.0.1:7465/ingest/deb79cfa-0edf-48f7-b0f8-068f73ccd452',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7b561a'},body:JSON.stringify({sessionId:'7b561a',runId:'pre-fix',hypothesisId:'H1',location:'deep-analysis/index.vue:parseTodosFromWriteTodosRepr:entry',message:'parseTodos entry',data:{len:content.length,hasTodos:content.includes('todos'),hasSingleQuoteContent:content.includes("'content'"),hasDoubleQuoteContent:content.includes('"content"'),hasUpdatedMarker:content.includes('Updated todo list to '),hasCommandUpdate:(content.includes('Command(update=')&&content.includes("'todos':"))},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion agent log
   const out: TodoSnapshotItem[] = []
   const re = /\{'content':\s*'((?:[^'\\]|\\.)*)'\s*,\s*'status':\s*'([^']*)'\}/g
   let m: RegExpExecArray | null
@@ -1298,12 +1522,18 @@ function parseTodosFromWriteTodosRepr(content: string): TodoSnapshotItem[] | nul
     const c = m[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\')
     out.push({ content: c, status: m[2] })
   }
+  // #region agent log (debug-7b561a H1)
+  fetch('http://127.0.0.1:7465/ingest/deb79cfa-0edf-48f7-b0f8-068f73ccd452',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7b561a'},body:JSON.stringify({sessionId:'7b561a',runId:'pre-fix',hypothesisId:'H1',location:'deep-analysis/index.vue:parseTodosFromWriteTodosRepr:afterRe1',message:'after re1',data:{count:out.length,sample:out.slice(0,3)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion agent log
   if (out.length) return out
   const re2 = /"content":\s*"((?:[^"\\]|\\.)*)"\s*,\s*"status":\s*"([^"]*)"/g
   while ((m = re2.exec(content)) !== null) {
     const c = m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
     out.push({ content: c, status: m[2] })
   }
+  // #region agent log (debug-7b561a H1)
+  fetch('http://127.0.0.1:7465/ingest/deb79cfa-0edf-48f7-b0f8-068f73ccd452',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7b561a'},body:JSON.stringify({sessionId:'7b561a',runId:'pre-fix',hypothesisId:'H1',location:'deep-analysis/index.vue:parseTodosFromWriteTodosRepr:afterRe2',message:'after re2',data:{count:out.length,sample:out.slice(0,3)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion agent log
   return out.length ? out : null
 }
 
@@ -1313,10 +1543,15 @@ const cumulativeDetailBlocks = computed((): CumulativeStepBlock[] => {
   if (mi < 0 || mi >= messages.value.length) return []
   const msg = messages.value[mi]
   if (msg.role !== 'agent' || !msg.steps?.length) return []
-  return agentExecutionSteps(msg).map(({ step, index }) => ({
+  return cumulativeExecutionSteps(msg).map(({ step, index }) => ({
     stepIndex: index,
     step,
-    events: step.events.length ? step.events : buildEventsFromMd(step),
+    events:
+      step.stepType === 'narration'
+        ? []
+        : step.events.length
+          ? step.events
+          : buildEventsFromMd(step),
   }))
 })
 
@@ -1347,6 +1582,9 @@ function parseProcessContent(content: string, stepType: string, stageTool?: stri
     (content.includes('write_todos') && content.includes("'todos'"))
   if (likelyWriteTodos) {
     const todos = parseTodosFromWriteTodosRepr(content)
+    // #region agent log (debug-7b561a H2)
+    fetch('http://127.0.0.1:7465/ingest/deb79cfa-0edf-48f7-b0f8-068f73ccd452',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7b561a'},body:JSON.stringify({sessionId:'7b561a',runId:'pre-fix',hypothesisId:'H2',location:'deep-analysis/index.vue:parseProcessContent:writeTodosBranch',message:'write_todos branch',data:{stageTool:stageTool||'',stepType:(stepType||'').slice(0,80),parsedTodos:todos?todos.length:0,contentLen:content.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
     if (todos?.length) {
       events.push({
         type: 'info',
@@ -1754,24 +1992,46 @@ function buildStepsFromHistory(_plan?: string, process?: any[], report?: string)
 
       if (typ === 'stage') {
         if (currentStep) {
-          currentStep.details = renderMd(currentStep.detailsMd)
-          currentStep.events = parseProcessContent(
-            currentStep.detailsMd,
-            currentStep.stepType,
-            currentStep.stageTool
-          )
+          if (currentStep.stepType === 'narration') {
+            currentStep.events = []
+            currentStep.details = ''
+          } else {
+            currentStep.details = renderMd(currentStep.detailsMd)
+            currentStep.events = parseProcessContent(
+              currentStep.detailsMd,
+              currentStep.stepType,
+              currentStep.stageTool
+            )
+          }
         }
         const stTool = typeof item.tool === 'string' ? item.tool : undefined
-        const title = classifyStageTitle(c, stTool)
-        currentStep = {
-          title,
-          status: 'done',
-          detailsMd: '',
-          details: '',
-          expanded: false,
-          stepType: c,
-          stageTool: stTool,
-          events: [],
+        const stageKey = typeof item.stage === 'string' ? item.stage : ''
+        const isNarration =
+          stageKey === 'llm_reasoning_sql' ||
+          (/推理与生成\s*SQL/i.test(c) && stTool === 'llm')
+        if (isNarration) {
+          currentStep = {
+            title: t('deep_analysis.execution_note'),
+            status: 'done',
+            detailsMd: '',
+            details: '',
+            expanded: false,
+            stepType: 'narration',
+            stageTool: 'llm',
+            events: [],
+          }
+        } else {
+          const title = classifyStageTitle(c, stTool)
+          currentStep = {
+            title,
+            status: 'done',
+            detailsMd: '',
+            details: '',
+            expanded: false,
+            stepType: c,
+            stageTool: stTool,
+            events: [],
+          }
         }
         steps.push(currentStep)
         continue
@@ -1799,13 +2059,18 @@ function buildStepsFromHistory(_plan?: string, process?: any[], report?: string)
       }
     }
     if (currentStep) {
-      if (!currentStep.details) currentStep.details = renderMd(currentStep.detailsMd)
-      if (!currentStep.events.length) {
-        currentStep.events = parseProcessContent(
-          currentStep.detailsMd,
-          currentStep.stepType,
-          currentStep.stageTool
-        )
+      if (currentStep.stepType === 'narration') {
+        currentStep.events = []
+        currentStep.details = ''
+      } else {
+        if (!currentStep.details) currentStep.details = renderMd(currentStep.detailsMd)
+        if (!currentStep.events.length) {
+          currentStep.events = parseProcessContent(
+            currentStep.detailsMd,
+            currentStep.stepType,
+            currentStep.stageTool
+          )
+        }
       }
     }
   }
@@ -1864,6 +2129,12 @@ async function loadHistory(chatId: number) {
           agentMsg.reportMd = data.report
           agentMsg.contentHtml = renderMd('**分析完成** — 点击下方卡片查看完整报告')
         }
+        if (Array.isArray(data.evidence)) {
+          agentMsg.evidence = data.evidence as EvidenceItem[]
+        }
+        if (typeof data.report_html_relpath === 'string' && data.report_html_relpath) {
+          agentMsg.reportHtmlRelpath = data.report_html_relpath
+        }
         msgs.push(agentMsg)
       } catch {
         continue
@@ -1883,10 +2154,90 @@ function openReport(msg: ChatMessage) {
     detailPanelFullscreen.value = false
     activeReportHtml.value = msg.reportHtml
     activeReportMd.value = msg.reportMd || ''
+    activeReportEvidence.value = msg.evidence && msg.evidence.length ? msg.evidence : []
+    reportViewMode.value = 'markdown'
+    revokeReportHtmlBlob()
+    reportHtmlLoadError.value = ''
     detailMode.value = 'report'
     detailPanelOpen.value = true
     selectedMsgIdx.value = -1
     selectedStepIdx.value = -1
+  }
+}
+
+function openReportMarkdown(msg: ChatMessage) {
+  openReport(msg)
+  reportViewMode.value = 'markdown'
+}
+
+function openReportHtml(msg: ChatMessage) {
+  openReport(msg)
+  reportViewMode.value = 'html'
+  void loadReportHtmlForPanel()
+}
+
+async function loadReportHtmlForPanel() {
+  const id = currentSessionId.value
+  if (!id) {
+    reportHtmlLoadError.value = t('deep_analysis.select_session_for_html')
+    return
+  }
+  revokeReportHtmlBlob()
+  reportHtmlLoading.value = true
+  reportHtmlLoadError.value = ''
+  try {
+    const blob = await deepAnalysisApi.fetchSessionReportHtml(id)
+    reportHtmlBlobUrl.value = URL.createObjectURL(blob)
+  } catch (e: any) {
+    const msg = e?.message || t('deep_analysis.html_report_load_failed')
+    reportHtmlLoadError.value = msg
+    ElMessage.error(msg)
+  } finally {
+    reportHtmlLoading.value = false
+  }
+}
+
+watch(reportViewMode, (mode) => {
+  if (detailMode.value === 'report' && mode === 'html') {
+    void loadReportHtmlForPanel()
+  }
+})
+
+async function openHtmlReportNewWindow() {
+  const id = currentSessionId.value
+  if (!id) {
+    ElMessage.warning(t('deep_analysis.select_session_for_html'))
+    return
+  }
+  try {
+    const blob = await deepAnalysisApi.fetchSessionReportHtml(id)
+    const u = URL.createObjectURL(blob)
+    window.open(u, '_blank', 'noopener,noreferrer')
+    setTimeout(() => URL.revokeObjectURL(u), 120_000)
+  } catch (e: any) {
+    ElMessage.error(e?.message || t('deep_analysis.html_report_load_failed'))
+  }
+}
+
+async function downloadWorkspaceEvidence(ev: EvidenceItem) {
+  const id = currentSessionId.value
+  const rel = (ev.rel_path || '').trim()
+  if (!id || !rel) {
+    ElMessage.warning(t('deep_analysis.no_download_path'))
+    return
+  }
+  try {
+    const blob = await deepAnalysisApi.downloadWorkspaceFile(id, rel)
+    const name = rel.split('/').pop() || 'export.csv'
+    const u = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = u
+    a.download = name
+    a.click()
+    URL.revokeObjectURL(u)
+    ElMessage.success(t('deep_analysis.download_started'))
+  } catch (e: any) {
+    ElMessage.error(e?.message || '下载失败')
   }
 }
 
@@ -2001,6 +2352,14 @@ function buildExecutionChainMarkdown(): string {
   }
   for (const block of blocks) {
     const s = block.step
+    if (s.stepType === 'narration') {
+      parts.push(`## ${block.stepIndex + 1}. ${t('deep_analysis.execution_note')}`)
+      parts.push((s.detailsMd || '').replace(/\s+/g, ' ').trim() || '—')
+      parts.push('')
+      parts.push('---')
+      parts.push('')
+      continue
+    }
     parts.push(`## ${block.stepIndex + 1}. ${s.title}`)
     parts.push(
       `- ${t('deep_analysis.export_label_status')}: ${stepStatusLabelForExport(s.status)}`
@@ -2077,6 +2436,18 @@ function finalizeStep(step: StepItem) {
   if (step.startedAt != null && step.durationMs == null) {
     step.durationMs = Date.now() - step.startedAt
   }
+  if (step.stepType === 'narration') {
+    step.events = []
+    step.details = ''
+    return
+  }
+  if (step.stageTool === 'sqlbot_execute_sql_csv') {
+    step.title = t('deep_analysis.stage_sql_done')
+  } else if (step.stageTool === 'sqlbot_sync_datasource') {
+    step.title = t('deep_analysis.stage_sync_done')
+  } else if (step.stageTool === 'sqlbot_sql_dialect') {
+    step.title = t('deep_analysis.stage_sql_dialect_done')
+  }
   if (step.detailsMd) {
     step.details = renderMd(step.detailsMd)
     if (!step.events.length) {
@@ -2117,6 +2488,8 @@ async function sendMessage() {
   })
 
   let reportMd = ''
+  let reportEvidence: EvidenceItem[] = []
+  let reportHtmlRelpath = ''
   let currentStep: StepItem | null = null
 
   try {
@@ -2218,22 +2591,60 @@ async function sendMessage() {
 
           if (data.type === 'stage' && c) {
             const stTool =
-              typeof (data as { tool?: string }).tool === 'string' ? data.tool : undefined
-            const stageTitle = classifyStageTitle(c, stTool)
-            currentStage.value = stageTitle
+              typeof (data as { tool?: string }).tool === 'string'
+                ? ((data as { tool?: string }).tool || '')
+                : ''
+            const stageKey =
+              typeof (data as { stage?: string }).stage === 'string'
+                ? ((data as { stage?: string }).stage || '')
+                : ''
+            const isNarration = stageKey === 'llm_reasoning_sql'
+            const briefTitle = stageBriefTitle(c, stageKey, stTool)
 
             if (currentStep && currentStep.status === 'running') {
               finalizeStep(currentStep)
             }
-            currentStep = createStep(stageTitle, 'running', c, stTool)
+
+            if (isNarration) {
+              currentStep = createStep(
+                t('deep_analysis.execution_note'),
+                'running',
+                'narration',
+                'llm'
+              )
+              currentStage.value = t('deep_analysis.execution_note')
+            } else {
+              currentStage.value = briefTitle
+              currentStep = createStep(briefTitle, 'running', c, stTool)
+            }
             getAgentMsg().steps!.push(currentStep)
             scrollToBottom()
             nextTick(() => followExecutingStep())
             continue
           }
 
+          if (data.type === 'report_stage') {
+            const am = getAgentMsg()
+            if (!am.reportStageLog) am.reportStageLog = []
+            am.reportStageLog.push({
+              stage: String((data as { stage?: string }).stage || ''),
+              status: String((data as { status?: string }).status || ''),
+              message:
+                typeof (data as { message?: string }).message === 'string'
+                  ? (data as { message?: string }).message
+                  : '',
+            })
+            const m = (data as { message?: string }).message
+            if (m) currentStage.value = String(m)
+            continue
+          }
+
           if (data.type === 'report' && c) {
             reportMd += c
+            const ev = (data as { evidence?: EvidenceItem[] }).evidence
+            if (Array.isArray(ev)) reportEvidence = ev
+            const hr = (data as { report_html_relpath?: string }).report_html_relpath
+            if (typeof hr === 'string' && hr) reportHtmlRelpath = hr
             continue
           }
 
@@ -2284,6 +2695,9 @@ async function sendMessage() {
               Array.isArray(todosSnap) &&
               todosSnap.length
             ) {
+              // #region agent log (debug-7b561a H3)
+              fetch('http://127.0.0.1:7465/ingest/deb79cfa-0edf-48f7-b0f8-068f73ccd452',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7b561a'},body:JSON.stringify({sessionId:'7b561a',runId:'pre-fix',hypothesisId:'H3',location:'deep-analysis/index.vue:sendMessage:SSE:writeTodosTodosSnap',message:'SSE todos payload seen',data:{todosLen:todosSnap.length,sample:(todosSnap as any[]).slice(0,3)},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion agent log
               sessionTodos.value = normalizeTodoPayload(todosSnap)
             }
             scrollToBottom()
@@ -2310,11 +2724,19 @@ async function sendMessage() {
 
       amFinal.reportHtml = renderMd(reportMd)
       amFinal.reportMd = reportMd
+      amFinal.evidence = reportEvidence
+      amFinal.reportHtmlRelpath = reportHtmlRelpath
       amFinal.contentHtml = renderMd('**分析完成** — 点击下方卡片查看完整报告')
       amFinal.thinkingLabel = '分析完成'
+      activeReportEvidence.value = reportEvidence
     } else {
       amFinal.thinkingLabel = '分析完成'
     }
+
+    // 结束节点（可点击）
+    const finishStep = createStep(t('deep_analysis.exec_finished'), 'done', 'finish')
+    finishStep.detailsMd = t('deep_analysis.exec_finished_detail')
+    amFinal.steps!.push(finishStep)
   } catch (e: any) {
     if (e?.name !== 'AbortError') {
       const amErr = getAgentMsg()
@@ -3225,8 +3647,37 @@ onMounted(async () => {
 }
 
 /* Report card */
-.da-report-card {
+.da-report-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   margin-top: 12px;
+}
+.da-report-card-grid .da-report-card {
+  margin-top: 0;
+}
+.da-report-card--html {
+  border-style: dashed;
+}
+.da-report-card-icon--html {
+  background: linear-gradient(135deg, #eef6ff, #dbeafe);
+  color: #2563eb;
+}
+.da-report-card-desc {
+  font-size: 12px;
+  color: #646a73;
+  margin-top: 2px;
+}
+.da-report-card-body {
+  flex: 1;
+  min-width: 0;
+}
+.da-report-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2329;
+}
+.da-report-card {
   padding: 14px 16px;
   border-radius: 12px;
   border: 1px solid #e8e9eb;
@@ -3252,14 +3703,108 @@ onMounted(async () => {
   color: var(--ed-color-primary, #1cba90);
   flex-shrink: 0;
 }
-.da-report-card-body {
+@media (max-width: 960px) {
+  .da-report-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.da-report-mode-wrap {
+  display: flex;
+  flex-direction: column;
   flex: 1;
+  min-height: 0;
+}
+.da-report-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.da-report-toolbar-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
 }
-.da-report-card-title {
-  font-size: 14px;
+.da-report-view-mode {
+  flex-shrink: 0;
+}
+.da-report-scroll-md,
+.da-report-html-panel {
+  flex: 1;
+  min-height: 200px;
+}
+.da-report-html-panel {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.da-report-html-iframe {
+  flex: 1;
+  width: 100%;
+  min-height: 480px;
+  border: none;
+  background: #fff;
+}
+.da-report-html-error {
+  padding: 16px;
+  color: var(--el-color-danger);
+}
+
+.da-evidence-appendix {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+}
+.da-evidence-appendix-title {
   font-weight: 600;
-  color: #1f2329;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.da-evidence-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.da-evidence-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.da-evidence-meta {
+  word-break: break-all;
+  color: var(--el-text-color-secondary);
+}
+.da-report-pipeline {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.da-report-pipeline-label {
+  font-weight: 600;
+  margin-right: 4px;
+}
+.da-report-pipeline-item {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--el-fill-color);
+}
+.da-report-pipeline--done {
+  color: var(--el-color-success);
+}
+.da-report-pipeline--running {
+  color: var(--el-color-warning);
 }
 .da-report-card-desc {
   font-size: 12px;
@@ -3409,6 +3954,52 @@ onMounted(async () => {
 .da-cum-section--selected {
   background: rgba(28, 186, 144, 0.06);
   box-shadow: inset 3px 0 0 0 var(--ed-color-primary, #1cba90);
+}
+.da-cum-section--narration {
+  padding-left: 4px;
+}
+.da-cum-section--narration.da-cum-section--selected {
+  background: rgba(100, 106, 115, 0.06);
+  box-shadow: inset 3px 0 0 0 #94a3b8;
+}
+.da-cum-narration {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #646a73;
+  cursor: pointer;
+  padding: 8px 12px;
+  margin: 6px 0 8px;
+  border-radius: 8px;
+  background: #f5f7fa;
+  border: 1px solid #e8eaed;
+}
+.da-cum-narration:hover {
+  background: #eef1f5;
+}
+.da-cum-narration-label {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: #8f959e;
+}
+.da-cum-narration-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.da-stream-narration-line {
+  margin: 0;
+  padding: 2px 0;
+  font-size: 12px;
+  color: #646a73;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .da-cum-section-inner {
   position: relative;

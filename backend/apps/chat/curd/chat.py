@@ -914,12 +914,17 @@ def save_deep_analysis_result(
         chat.brief_generate = False
         session.add(chat)
 
+    cfg = config or {}
     payload = {
         "plan": plan_md or "",
         "report": report_md or "",
         "process": process_list or [],
-        "config": config or {},
+        "config": cfg,
     }
+    if "evidence" in cfg:
+        payload["evidence"] = cfg["evidence"]
+    if cfg.get("report_html_relpath"):
+        payload["report_html_relpath"] = cfg["report_html_relpath"]
     record = ChatRecord()
     record.chat_id = chat_id
     record.create_by = create_by

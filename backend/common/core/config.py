@@ -150,6 +150,13 @@ class Settings(BaseSettings):
     # Data Agent(技能)：是否在流式结束后调用 LLM 将报告草稿整理为固定章节结构（增加一次模型调用）
     DATA_AGENT_STRUCTURED_REPORT: bool = True
 
+    # Data Agent(技能)：是否在结构化报告后追加「纠错 → 润色 → HTML」流水线
+    DATA_AGENT_REPORT_CORRECT: bool = True
+    DATA_AGENT_REPORT_POLISH: bool = True
+    DATA_AGENT_REPORT_HTML: bool = True
+    # 是否将 HTML 写入 SQLBOT_HOME/<uid>/deep_analysis/<chat_id>/report.html（默认可仅从接口动态生成）
+    DATA_AGENT_REPORT_WRITE_HTML_FILE: bool = False
+
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'GENERATE_SQL_QUERY_LIMIT_ENABLED',
@@ -159,6 +166,10 @@ class Settings(BaseSettings):
                      'DEEP_ANALYSIS_USE_LANGGRAPH',
                      'DATA_AGENT_ENABLED',
                      'DATA_AGENT_STRUCTURED_REPORT',
+                     'DATA_AGENT_REPORT_CORRECT',
+                     'DATA_AGENT_REPORT_POLISH',
+                     'DATA_AGENT_REPORT_HTML',
+                     'DATA_AGENT_REPORT_WRITE_HTML_FILE',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:
