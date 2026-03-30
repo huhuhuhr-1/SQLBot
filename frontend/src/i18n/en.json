@@ -72,7 +72,17 @@
     "datasource_search_placeholder": "Search datasource",
     "analysis_cards": "Analysis records",
     "config_at_time": "Config at run time",
-    "delete_card_confirm": "Delete this analysis record? This cannot be undone."
+    "delete_card_confirm": "Delete this analysis record? This cannot be undone.",
+    "think_done_title": "Thinking complete",
+    "think_generating_plan": "Generating execution plan…",
+    "think_plan_ready_running": "Plan ready, executing…",
+    "status_kb_ready": "Knowledge base and context ready",
+    "status_plan_ready": "Execution plan generated",
+    "bridge_hint": "Tools and models will run next; this may take several minutes.",
+    "exec_card_done": "Agent finished",
+    "exec_card_running": "Agent running",
+    "exec_view_detail": "View details",
+    "deliver_intro": "Analysis complete — see the report below."
   },
   "variables": {
     "built_in": "Built-in",

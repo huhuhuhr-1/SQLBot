@@ -72,7 +72,17 @@
     "datasource_search_placeholder": "搜索数据源",
     "analysis_cards": "分析记录",
     "config_at_time": "当时配置",
-    "delete_card_confirm": "确定删除该条分析记录？删除后不可恢复。"
+    "delete_card_confirm": "确定删除该条分析记录？删除后不可恢复。",
+    "think_done_title": "思考完成",
+    "think_generating_plan": "正在生成执行规划…",
+    "think_plan_ready_running": "规划已就绪，执行中…",
+    "status_kb_ready": "知识库与上下文已就绪",
+    "status_plan_ready": "执行规划已生成",
+    "bridge_hint": "接下来将调用工具与模型持续推进分析，过程可能持续数分钟，请稍候。",
+    "exec_card_done": "Agent 执行完毕",
+    "exec_card_running": "Agent 正在执行",
+    "exec_view_detail": "查看详情",
+    "deliver_intro": "分析已完成，您可查看下方报告。"
   },
   "sync": {
     "integration": "需开启平台对接",
@@ -1083,11 +1093,11 @@
     "log_question": "本次提问",
     "log_answer": "AI 回答",
     "log_history": "历史记录",
-    "find_term_title":"匹配到 {0} 个术语",
-    "find_sql_sample_title":"匹配到 {0} 个SQL示例",
-    "find_custom_prompt_title":"匹配到 {0} 个自定义提示词",
-    "query_count_title":"查询到 {0} 条数据",
-    "generate_picture_success":"已生成图片"
+    "find_term_title": "匹配到 {0} 个术语",
+    "find_sql_sample_title": "匹配到 {0} 个SQL示例",
+    "find_custom_prompt_title": "匹配到 {0} 个自定义提示词",
+    "query_count_title": "查询到 {0} 条数据",
+    "generate_picture_success": "已生成图片"
   },
   "about": {
     "title": "关于",

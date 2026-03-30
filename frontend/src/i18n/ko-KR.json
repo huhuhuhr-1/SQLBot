@@ -72,7 +72,17 @@
     "datasource_search_placeholder": "데이터 소스 검색",
     "analysis_cards": "분석 기록",
     "config_at_time": "당시 설정",
-    "delete_card_confirm": "이 분석 기록을 삭제하시겠습니까? 되돌릴 수 없습니다."
+    "delete_card_confirm": "이 분석 기록을 삭제하시겠습니까? 되돌릴 수 없습니다.",
+    "think_done_title": "사고 완료",
+    "think_generating_plan": "실행 계획 생성 중…",
+    "think_plan_ready_running": "계획 준비됨, 실행 중…",
+    "status_kb_ready": "지식베이스 및 컨텍스트 준비됨",
+    "status_plan_ready": "실행 계획 생성됨",
+    "bridge_hint": "도구와 모델이 계속 실행됩니다. 수 분 걸릴 수 있습니다.",
+    "exec_card_done": "Agent 완료",
+    "exec_card_running": "Agent 실행 중",
+    "exec_view_detail": "상세 보기",
+    "deliver_intro": "분석이 완료되었습니다. 아래 보고서를 확인하세요."
   },
   "sync": {
     "integration": "플랫폼 통합을 활성화해야 합니다.",

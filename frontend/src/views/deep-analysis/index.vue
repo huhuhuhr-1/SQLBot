@@ -83,7 +83,10 @@
             </div>
             <div v-else class="da-session-list">
               <div v-for="group in sessionGroups" :key="group.key" class="da-group">
-                <div class="da-group-title" @click="groupExpand[group.key] = !groupExpand[group.key]">
+                <div
+                  class="da-group-title"
+                  @click="groupExpand[group.key] = !groupExpand[group.key]"
+                >
                   <el-icon :class="{ collapsed: !groupExpand[group.key] }" size="10">
                     <icon_expand_down_filled />
                   </el-icon>
@@ -111,22 +114,22 @@
                       popper-class="da-session-popover"
                       placement="bottom"
                     >
-                    <template #reference>
-                      <el-icon class="da-session-more" size="14" @click.stop>
-                        <icon_more_outlined />
-                      </el-icon>
-                    </template>
-                    <div class="da-popover-menu">
-                      <div class="da-popover-item" @click.stop="openRename(item)">
-                        <el-icon size="14"><icon_rename /></el-icon>{{ t('dashboard.rename') }}
+                      <template #reference>
+                        <el-icon class="da-session-more" size="14" @click.stop>
+                          <icon_more_outlined />
+                        </el-icon>
+                      </template>
+                      <div class="da-popover-menu">
+                        <div class="da-popover-item" @click.stop="openRename(item)">
+                          <el-icon size="14"><icon_rename /></el-icon>{{ t('dashboard.rename') }}
+                        </div>
+                        <div class="da-popover-item danger" @click.stop="deleteSession(item)">
+                          <el-icon size="14"><icon_delete /></el-icon>{{ t('dashboard.delete') }}
+                        </div>
                       </div>
-                      <div class="da-popover-item danger" @click.stop="deleteSession(item)">
-                        <el-icon size="14"><icon_delete /></el-icon>{{ t('dashboard.delete') }}
-                      </div>
-                    </div>
-                  </el-popover>
-                </div>
-              </template>
+                    </el-popover>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
@@ -191,9 +194,12 @@
                   <div class="da-agent-avatar">
                     <icon_ai class="da-avatar-svg" />
                   </div>
-                  <div class="da-msg-content">
-                    <!-- 状态标签 -->
-                    <div class="da-agent-status">
+                  <div class="da-msg-content da-agent-column">
+                    <!-- 无规划且无执行步骤时保留原状态条（错误、纯文本等） -->
+                    <div
+                      v-if="!msg.planHtml && agentExecutionSteps(msg).length === 0"
+                      class="da-agent-status"
+                    >
                       <span v-if="msg.loading" class="da-status-tag da-status-running">
                         <el-icon class="is-loading" size="12"><Loading /></el-icon>
                         <span class="da-status-main">Agent 正在执行...</span>
@@ -207,134 +213,219 @@
                       </span>
                       <span v-else class="da-status-tag da-status-done">
                         <el-icon size="12"><CircleCheckFilled /></el-icon>
-                        {{ msg.thinkingLabel || '思考完成' }}
+                        {{ msg.thinkingLabel || t('deep_analysis.think_done_title') }}
                       </span>
                     </div>
 
-                    <!-- 计划 — 可展开的思考区块 -->
-                    <div v-if="msg.planHtml" class="da-plan-wrapper">
-                      <div class="da-plan-toggle" @click="msg.planExpanded = !msg.planExpanded">
-                        <el-icon v-if="msg.loading" class="is-loading" size="14">
-                          <Loading />
+                    <!-- 思考与计划（同卡，对齐原型 v2） -->
+                    <div
+                      v-if="msg.planHtml || (msg.loading && !msg.planHtml)"
+                      class="da-think-card"
+                      :class="{ open: thinkCardIsOpen(msg) }"
+                    >
+                      <div class="da-think-head" @click="toggleThinkCard(msg)">
+                        <icon_mindnote_outlined class="da-think-icon-svg" />
+                        <span class="da-think-title">{{ thinkCardTitle(msg) }}</span>
+                        <el-icon
+                          v-if="msg.planHtml"
+                          class="da-think-chev"
+                          :class="{ 'da-think-chev--open': thinkCardIsOpen(msg) }"
+                        >
+                          <ArrowDown />
                         </el-icon>
-                        <el-icon v-else size="14" color="#1cba90">
-                          <CircleCheckFilled />
-                        </el-icon>
-                        <span class="da-plan-toggle-text">
-                          {{ msg.loading ? 'Agent 正在规划...' : '执行计划' }}
-                        </span>
-                        <span v-if="!msg.loading" class="da-plan-toggle-link">{{
-                          msg.planExpanded ? '收起' : '查看详情'
-                        }}</span>
                       </div>
-                      <div v-if="msg.planExpanded" class="da-plan-block markdown-body">
-                        <div v-html="msg.planHtml"></div>
+                      <div v-if="msg.planHtml" class="da-think-body">
+                        <div class="da-think-status-line da-think-status-line--done">
+                          {{ t('deep_analysis.status_kb_ready') }}
+                        </div>
+                        <div class="da-think-status-line da-think-status-line--done">
+                          {{ t('deep_analysis.status_plan_ready') }}
+                        </div>
+                        <div class="markdown-body da-think-plan-md" v-html="msg.planHtml"></div>
+                        <div class="da-think-bridge">{{ t('deep_analysis.bridge_hint') }}</div>
                       </div>
                     </div>
 
-                    <!-- 步骤时间线 -->
-                    <div v-if="msg.steps && msg.steps.length" class="da-steps-timeline">
-                      <div
-                        v-for="(step, sIdx) in msg.steps"
-                        :key="sIdx"
-                        class="da-step-item"
-                        :class="{
-                          'da-step-active': step.status === 'running',
-                          'da-step-done': step.status === 'done',
-                          'da-step-error': step.status === 'error',
-                          'da-step-selected': isStepSelected(idx, sIdx),
-                          'da-step-item--interactive':
-                            !!step.detailsMd || step.status === 'running',
-                        }"
-                        @click="
-                          (step.detailsMd || step.status === 'running') &&
-                            selectStep(idx, sIdx, step)
-                        "
-                      >
-                        <div class="da-step-indicator">
-                          <el-icon
-                            v-if="step.status === 'running'"
-                            class="is-loading da-step-icon-loading"
-                            size="16"
-                            ><Loading
-                          /></el-icon>
-                          <span v-else-if="step.status === 'done'" class="da-step-check">
-                            <el-icon size="12"><Check /></el-icon>
-                          </span>
-                          <span v-else-if="step.status === 'error'" class="da-step-error-dot">
-                            <el-icon size="12"><CloseBold /></el-icon>
-                          </span>
-                          <span v-else class="da-step-dot"></span>
+                    <!-- Agent 执行单元 -->
+                    <div v-if="agentExecutionSteps(msg).length > 0" class="da-exec-card">
+                      <div class="da-exec-head">
+                        <div class="da-exec-head-left">
+                          <icon_ai class="da-exec-robot" />
+                          <span class="da-exec-head-title">{{
+                            msg.loading
+                              ? t('deep_analysis.exec_card_running')
+                              : t('deep_analysis.exec_card_done')
+                          }}</span>
                         </div>
-                        <div class="da-step-body">
-                          <div class="da-step-header">
-                            <span class="da-step-label">{{ getStepDisplayTitle(step) }}</span>
-                            <span
-                              v-if="step.status !== 'running' && step.durationMs != null"
-                              class="da-step-duration"
-                              >{{ formatStepDuration(step.durationMs) }}</span
+                        <span
+                          class="da-exec-detail-link"
+                          role="button"
+                          tabindex="0"
+                          @click="openLatestExecDetail(idx)"
+                          >{{ t('deep_analysis.exec_view_detail') }}</span
+                        >
+                      </div>
+                      <div class="da-exec-steps">
+                        <template
+                          v-for="{ step, index: sIdx } in agentExecutionSteps(msg)"
+                          :key="sIdx"
+                        >
+                          <div class="da-exec-step-wrap">
+                            <div
+                              class="da-step-item da-exec-step-row"
+                              :class="{
+                                'da-step-active': step.status === 'running',
+                                'da-step-done': step.status === 'done',
+                                'da-step-error': step.status === 'error',
+                                'da-step-selected': isStepSelected(idx, sIdx),
+                                'da-step-item--interactive':
+                                  !!step.detailsMd || step.status === 'running',
+                              }"
                             >
+                              <div
+                                class="da-step-main-click"
+                                @click="
+                                  (step.detailsMd || step.status === 'running') &&
+                                  selectStep(idx, sIdx, step)
+                                "
+                              >
+                                <div class="da-step-indicator">
+                                  <el-icon
+                                    v-if="step.status === 'running'"
+                                    class="is-loading da-step-icon-loading"
+                                    size="16"
+                                    ><Loading
+                                  /></el-icon>
+                                  <span v-else-if="step.status === 'done'" class="da-step-check">
+                                    <el-icon size="12"><Check /></el-icon>
+                                  </span>
+                                  <span
+                                    v-else-if="step.status === 'error'"
+                                    class="da-step-error-dot"
+                                  >
+                                    <el-icon size="12"><CloseBold /></el-icon>
+                                  </span>
+                                  <span v-else class="da-step-dot"></span>
+                                </div>
+                                <div class="da-step-body">
+                                  <div class="da-step-header">
+                                    <span class="da-step-label">{{
+                                      getStepDisplayTitle(step)
+                                    }}</span>
+                                    <span
+                                      v-if="step.status !== 'running' && step.durationMs != null"
+                                      class="da-step-duration"
+                                      >{{ formatStepDuration(step.durationMs) }}</span
+                                    >
+                                  </div>
+                                  <div v-if="getStepDesc(step)" class="da-step-desc">
+                                    {{ getStepDesc(step) }}
+                                  </div>
+                                  <div v-if="step.resultSummary" class="da-step-result">
+                                    {{ step.resultSummary }}
+                                  </div>
+                                  <div
+                                    v-if="
+                                      step.status === 'done' &&
+                                      step.detailsMd &&
+                                      !step.inlineExpanded
+                                    "
+                                    class="da-step-substeps"
+                                  >
+                                    <template
+                                      v-for="(sub, subIdx) in getSubSteps(step)"
+                                      :key="subIdx"
+                                    >
+                                      <span v-if="subIdx > 0" class="da-substep-divider">›</span>
+                                      <span class="da-substep-item da-substep-done">{{ sub }}</span>
+                                    </template>
+                                  </div>
+                                  <div
+                                    v-else-if="step.status === 'running'"
+                                    class="da-step-substeps"
+                                  >
+                                    <span class="da-substep-item da-substep-done">开始执行</span>
+                                    <span class="da-substep-divider">›</span>
+                                    <span class="da-substep-item da-substep-active">
+                                      <el-icon class="is-loading" size="10"><Loading /></el-icon>
+                                      执行中...
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <el-icon
+                                v-if="stepHasInlineExpand(step)"
+                                class="da-step-row-chev"
+                                :class="{ 'is-open': step.inlineExpanded }"
+                                @click.stop="toggleStepInlineExpand($event, step)"
+                              >
+                                <ArrowDown />
+                              </el-icon>
+                            </div>
+                            <div
+                              v-if="step.inlineExpanded && stepInlinePreviewHtml(step)"
+                              class="da-step-inline-expand markdown-body"
+                              v-html="stepInlinePreviewHtml(step)"
+                            ></div>
                           </div>
-                          <div v-if="getStepDesc(step)" class="da-step-desc">
-                            {{ getStepDesc(step) }}
+                        </template>
+                        <div
+                          v-if="msg.loading && getLastRunningStep(msg)"
+                          class="da-stream-block markdown-body da-stream-block--in-exec"
+                          v-html="getStreamBlockHtml(getLastRunningStep(msg)!)"
+                        ></div>
+                      </div>
+                    </div>
+
+                    <!-- 本次分析主题 -->
+                    <div
+                      v-if="
+                        prevUserQuestionForMsg(idx) &&
+                        (msg.planHtml || agentExecutionSteps(msg).length > 0)
+                      "
+                      class="da-theme-bar"
+                    >
+                      {{ prevUserQuestionForMsg(idx) }}
+                    </div>
+
+                    <!-- 交付区：总结 + 报告卡片 -->
+                    <div
+                      v-if="
+                        !msg.loading &&
+                        (msg.reportHtml || msg.contentHtml) &&
+                        (msg.planHtml || agentExecutionSteps(msg).length > 0)
+                      "
+                      class="da-deliver-wrap"
+                    >
+                      <div class="da-deliver-avatar" aria-hidden="true" />
+                      <div class="da-deliver-main">
+                        <p class="da-deliver-intro">{{ t('deep_analysis.deliver_intro') }}</p>
+                        <div
+                          v-if="msg.contentHtml"
+                          class="markdown-body da-deliver-summary"
+                          v-html="msg.contentHtml"
+                        ></div>
+                        <div v-if="msg.reportHtml" class="da-report-card" @click="openReport(msg)">
+                          <div class="da-report-card-icon">
+                            <el-icon size="20"><Document /></el-icon>
                           </div>
-                          <div v-if="step.resultSummary" class="da-step-result">
-                            {{ step.resultSummary }}
+                          <div class="da-report-card-body">
+                            <div class="da-report-card-title">
+                              {{ t('deep_analysis.report_title') }}
+                            </div>
+                            <div class="da-report-card-desc">点击查看完整分析报告</div>
                           </div>
-                          <!-- 子流程指示 -->
-                          <div
-                            v-if="step.status === 'done' && step.detailsMd"
-                            class="da-step-substeps"
-                          >
-                            <template v-for="(sub, subIdx) in getSubSteps(step)" :key="subIdx">
-                              <span v-if="subIdx > 0" class="da-substep-divider">›</span>
-                              <span class="da-substep-item da-substep-done">{{ sub }}</span>
-                            </template>
-                          </div>
-                          <div v-else-if="step.status === 'running'" class="da-step-substeps">
-                            <span class="da-substep-item da-substep-done">开始执行</span>
-                            <span class="da-substep-divider">›</span>
-                            <span class="da-substep-item da-substep-active">
-                              <el-icon class="is-loading" size="10"><Loading /></el-icon>
-                              执行中...
-                            </span>
-                          </div>
+                          <el-icon size="16" color="#8f959e"><ArrowRight /></el-icon>
                         </div>
                       </div>
                     </div>
 
-                    <!-- Agent 流式文本 — 正在输出时展示当前 step 的内容 -->
+                    <!-- 无新布局时的兜底文案 -->
                     <div
-                      v-if="msg.loading && getLastRunningStep(msg)"
-                      class="da-stream-block markdown-body"
-                      v-html="getStreamBlockHtml(getLastRunningStep(msg)!)"
-                    ></div>
-
-                    <!-- 主文本（简短总结） -->
-                    <div
-                      v-if="!msg.loading && msg.contentHtml"
-                      class="markdown-body da-agent-text"
-                      v-html="msg.contentHtml"
-                    ></div>
-                    <div
-                      v-else-if="!msg.loading && msg.content && !msg.planHtml && !msg.steps?.length"
+                      v-if="!msg.loading && msg.content && !msg.planHtml && !msg.steps?.length"
                       class="da-agent-text"
                     >
                       {{ msg.content }}
-                    </div>
-
-                    <!-- 报告卡片 -->
-                    <div v-if="msg.reportHtml" class="da-report-card" @click="openReport(msg)">
-                      <div class="da-report-card-icon">
-                        <el-icon size="20"><Document /></el-icon>
-                      </div>
-                      <div class="da-report-card-body">
-                        <div class="da-report-card-title">
-                          {{ t('deep_analysis.report_title') }}
-                        </div>
-                        <div class="da-report-card-desc">点击查看完整分析报告</div>
-                      </div>
-                      <el-icon size="16" color="#8f959e"><ArrowRight /></el-icon>
                     </div>
                   </div>
                 </div>
@@ -406,7 +497,11 @@
               <el-button
                 link
                 class="da-icon-btn"
-                :title="detailPanelFullscreen ? t('deep_analysis.exit_fullscreen') : t('deep_analysis.fullscreen')"
+                :title="
+                  detailPanelFullscreen
+                    ? t('deep_analysis.exit_fullscreen')
+                    : t('deep_analysis.fullscreen')
+                "
                 @click="detailPanelFullscreen = !detailPanelFullscreen"
               >
                 <el-icon><Fold v-if="detailPanelFullscreen" /><FullScreen v-else /></el-icon>
@@ -642,6 +737,7 @@ import {
   Close,
   Promotion,
   ArrowRight,
+  ArrowDown,
   Document,
   Check,
   CloseBold,
@@ -736,6 +832,8 @@ interface StepItem {
   durationMs?: number
   /** 工具结束一行摘要（命令结果 / sqlbot 等） */
   resultSummary?: string
+  /** 主列手风琴：展开简要子日志 */
+  inlineExpanded?: boolean
 }
 
 interface ChatMessage {
@@ -820,9 +918,7 @@ const showDetailTodoStrip = computed(
     !allTodosTerminal(sessionTodos.value)
 )
 
-function todoStatusTagType(
-  status: string
-): 'success' | 'warning' | 'info' | 'primary' | 'danger' {
+function todoStatusTagType(status: string): 'success' | 'warning' | 'info' | 'primary' | 'danger' {
   const s = status.trim().toLowerCase()
   if (s === 'completed' || s === 'done') return 'success'
   if (s === 'in_progress' || s === 'in progress') return 'warning'
@@ -989,16 +1085,79 @@ function getStreamBlockHtml(step: StepItem): string {
   return '<div class="da-stream-placeholder">正在输出执行详情…</div>'
 }
 
+/** 时间线中排除已单独展示在「思考与计划」卡内的规划步 */
+function agentExecutionSteps(msg: ChatMessage): { step: StepItem; index: number }[] {
+  if (!msg.steps?.length) return []
+  const out: { step: StepItem; index: number }[] = []
+  for (let i = 0; i < msg.steps.length; i++) {
+    const step = msg.steps[i]
+    if (step.stepType === 'plan') continue
+    out.push({ step, index: i })
+  }
+  return out
+}
+
+function prevUserQuestionForMsg(agentIdx: number): string {
+  for (let i = agentIdx - 1; i >= 0; i--) {
+    const m = messages.value[i]
+    if (m.role === 'user' && m.content?.trim()) return m.content.trim()
+  }
+  return ''
+}
+
+function thinkCardTitle(msg: ChatMessage): string {
+  if (msg.loading && !msg.planHtml) return t('deep_analysis.think_generating_plan')
+  if (msg.planHtml && msg.loading) return t('deep_analysis.think_plan_ready_running')
+  return t('deep_analysis.think_done_title')
+}
+
+function thinkCardIsOpen(msg: ChatMessage): boolean {
+  if (!msg.planHtml) return false
+  return msg.planExpanded !== false
+}
+
+function toggleThinkCard(msg: ChatMessage) {
+  if (!msg.planHtml) return
+  msg.planExpanded = !(msg.planExpanded !== false)
+}
+
+function openLatestExecDetail(msgIdx: number) {
+  const msg = messages.value[msgIdx]
+  if (!msg?.steps?.length) return
+  const pairs = agentExecutionSteps(msg)
+  for (let i = pairs.length - 1; i >= 0; i--) {
+    const { step, index } = pairs[i]
+    if (step.detailsMd || step.status === 'running') {
+      selectStep(msgIdx, index, step)
+      return
+    }
+  }
+  const last = pairs[pairs.length - 1]
+  if (last) selectStep(msgIdx, last.index, last.step)
+}
+
+function stepHasInlineExpand(step: StepItem): boolean {
+  return step.status === 'running' || (step.detailsMd?.length ?? 0) > 60
+}
+
+function toggleStepInlineExpand(e: Event, step: StepItem) {
+  e.stopPropagation()
+  step.inlineExpanded = !step.inlineExpanded
+}
+
+function stepInlinePreviewHtml(step: StepItem): string {
+  const md = step.detailsMd || ''
+  if (!md.trim()) return ''
+  const cap = 2400
+  const slice = md.length > cap ? `${md.slice(0, cap)}\n\n…` : md
+  return renderMd(slice)
+}
+
 function isStepSelected(msgIdx: number, stepIdx: number): boolean {
   return selectedMsgIdx.value === msgIdx && selectedStepIdx.value === stepIdx
 }
 
-function selectStep(
-  msgIdx: number,
-  stepIdx: number,
-  step: StepItem,
-  fromAutoFollow = false
-) {
+function selectStep(msgIdx: number, stepIdx: number, step: StepItem, fromAutoFollow = false) {
   if (!fromAutoFollow) {
     liveFollowLatest.value = false
   }
@@ -1044,11 +1203,7 @@ function sqlbotBadgeFromStepType(stepType: string): string | undefined {
 }
 
 // ===== Parse process content for structured events =====
-function parseProcessContent(
-  content: string,
-  stepType: string,
-  stageTool?: string
-): EventItem[] {
+function parseProcessContent(content: string, stepType: string, stageTool?: string): EventItem[] {
   const events: EventItem[] = []
   const durationMatch = content.match(/耗时[为：:]\s*(\d+[.\d]*\s*(?:ms|毫秒|秒|s))/i)
   const durationStr = durationMatch ? durationMatch[1] : undefined
@@ -1279,7 +1434,9 @@ function toggleSelectAll() {
 
 type ClearScope = 'before_today' | 'before_7_days' | 'all'
 
-function getCleanParamsByScope(scope: ClearScope): { start_time?: string; end_time?: string } | undefined {
+function getCleanParamsByScope(
+  scope: ClearScope
+): { start_time?: string; end_time?: string } | undefined {
   if (scope === 'all') return undefined
   if (scope === 'before_today') {
     const end = dayjs().format('YYYY-MM-DD') + 'T00:00:00'
@@ -1391,8 +1548,14 @@ function classifyStageTitle(raw: string, stageTool?: string): string {
   if (stageTool === 'write_todos') {
     if (s.startsWith('更新任务列表')) return s
     if (s === '任务规划' || /^任务规划[：:]?/.test(s)) {
-      const tail = s.includes('：') ? s.slice(s.indexOf('：')) : s.includes(':') ? s.slice(s.indexOf(':')) : ''
-      return tail ? `${t('deep_analysis.todo_list_update')}${tail}` : t('deep_analysis.todo_list_update')
+      const tail = s.includes('：')
+        ? s.slice(s.indexOf('：'))
+        : s.includes(':')
+          ? s.slice(s.indexOf(':'))
+          : ''
+      return tail
+        ? `${t('deep_analysis.todo_list_update')}${tail}`
+        : t('deep_analysis.todo_list_update')
     }
     return s
   }
@@ -1416,27 +1579,8 @@ function classifyStageTitle(raw: string, stageTool?: string): string {
 }
 
 // ===== History =====
-function buildStepsFromHistory(plan?: string, process?: any[], report?: string): StepItem[] {
+function buildStepsFromHistory(_plan?: string, process?: any[], report?: string): StepItem[] {
   const steps: StepItem[] = []
-
-  if (plan) {
-    steps.push({
-      title: '任务规划',
-      status: 'done',
-      detailsMd: plan,
-      details: renderMd(plan),
-      expanded: false,
-      stepType: 'plan',
-      events: [
-        {
-          type: 'info',
-          title: '任务规划',
-          contentHtml: renderMd(plan),
-          expanded: true,
-        },
-      ],
-    })
-  }
 
   if (process && Array.isArray(process)) {
     let currentStep: StepItem | null = null
@@ -1753,25 +1897,18 @@ async function sendMessage() {
 
           if (data.type === 'plan' && c) {
             if (currentStep) finalizeStep(currentStep)
-            currentStep = createStep('任务规划', 'done', 'plan')
-            currentStep.detailsMd = c
-            currentStep.details = renderMd(c)
-            currentStep.events = [
-              { type: 'info', title: '任务规划', contentHtml: renderMd(c), expanded: true },
-            ]
+            currentStep = null
             const am = getAgentMsg()
-            am.steps!.push(currentStep)
             am.planHtml = renderMd(c)
             am.planMd = c
             am.planExpanded = true
-            currentStep = null
             scrollToBottom()
-            nextTick(() => followExecutingStep())
             continue
           }
 
           if (data.type === 'stage' && c) {
-            const stTool = typeof (data as { tool?: string }).tool === 'string' ? data.tool : undefined
+            const stTool =
+              typeof (data as { tool?: string }).tool === 'string' ? data.tool : undefined
             const stageTitle = classifyStageTitle(c, stTool)
             currentStage.value = stageTitle
 
@@ -1818,7 +1955,8 @@ async function sendMessage() {
             const mi = messages.value.length - 1
             const si = am.steps!.indexOf(currentStep!)
             const lastStepIdx = am.steps!.length - 1
-            const isLastStreamStep = si >= 0 && si === lastStepIdx && mi === messages.value.length - 1
+            const isLastStreamStep =
+              si >= 0 && si === lastStepIdx && mi === messages.value.length - 1
             const selectionMatches =
               si >= 0 && selectedMsgIdx.value === mi && selectedStepIdx.value === si
             if (si >= 0 && (selectionMatches || (liveFollowLatest.value && isLastStreamStep))) {
@@ -2504,6 +2642,233 @@ onMounted(async () => {
 .da-substep-divider {
   color: #c0c4cc;
   font-size: 12px;
+}
+
+/* ---- Data Agent 主列：思考卡 + 执行卡（对齐原型 v2） ---- */
+.da-agent-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.da-think-card {
+  background: #fff;
+  border: 1px solid #e8e9eb;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.da-think-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.da-think-head:hover {
+  background: #fafbfc;
+}
+.da-think-icon-svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: #646a73;
+}
+.da-think-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 15px;
+  color: #1f2329;
+}
+.da-think-chev {
+  color: #8f959e;
+  font-size: 14px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.da-think-chev--open,
+.da-think-card.open .da-think-chev {
+  transform: rotate(180deg);
+}
+.da-think-body {
+  display: none;
+  padding: 0 14px 16px;
+  border-top: 1px solid #e8e9eb;
+}
+.da-think-card.open .da-think-body {
+  display: block;
+}
+.da-think-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #8f959e;
+  padding-top: 10px;
+}
+.da-think-status-line::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3370ff;
+  opacity: 0.55;
+}
+.da-think-status-line--done {
+  color: #4e5969;
+}
+.da-think-status-line--done::before {
+  background: #1cba90;
+  opacity: 1;
+}
+.da-think-plan-md {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  max-height: 480px;
+  overflow-y: auto;
+}
+.da-think-bridge {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: #fafbfc;
+  border: 1px solid #e8e9eb;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #646a73;
+}
+.da-exec-card {
+  background: #f7f8fa;
+  border: 1px solid #e8e9eb;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.da-exec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #fff;
+  border-bottom: 1px solid #e8e9eb;
+}
+.da-exec-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.da-exec-robot {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.da-exec-head-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #3370ff;
+}
+.da-exec-detail-link {
+  font-size: 13px;
+  color: #3370ff;
+  cursor: pointer;
+  font-weight: 500;
+}
+.da-exec-detail-link:hover {
+  text-decoration: underline;
+}
+.da-exec-steps {
+  padding: 6px 0 10px;
+}
+.da-exec-step-wrap {
+  margin: 0 8px;
+}
+.da-exec-step-row.da-step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  position: relative;
+  padding: 8px 6px;
+}
+.da-step-main-click {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.da-exec-card .da-step-check {
+  background: #c8ccd3;
+}
+.da-exec-card .da-step-item:not(:last-child)::before {
+  left: 19px;
+  background: #dfe3e8;
+}
+.da-exec-card .da-step-done:not(:last-child)::before {
+  background: #c8ccd3;
+}
+.da-step-row-chev {
+  flex-shrink: 0;
+  margin-top: 4px;
+  padding: 4px;
+  color: #8f959e;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.da-step-row-chev.is-open {
+  transform: rotate(180deg);
+}
+.da-step-inline-expand {
+  margin: 0 8px 8px 44px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e8e9eb;
+  border-radius: 8px;
+  border-left: 3px solid #dfe3e8;
+  font-size: 12px;
+  line-height: 1.55;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.da-stream-block--in-exec {
+  margin: 8px 12px 4px;
+}
+.da-theme-bar {
+  text-align: center;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: #eef0f3;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #646a73;
+}
+.da-deliver-wrap {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.da-deliver-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #7eb6ff, #b8d4ff);
+}
+.da-deliver-main {
+  flex: 1;
+  min-width: 0;
+}
+.da-deliver-intro {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #1f2329;
+  line-height: 1.5;
+}
+.da-deliver-summary {
+  margin-bottom: 10px;
+  font-size: 13px;
 }
 
 /* Stream block — realtime agent output */
