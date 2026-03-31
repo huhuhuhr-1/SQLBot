@@ -62,6 +62,15 @@ def data_explorer_skill_dir() -> Path:
     return container
 
 
+def csv_explorer_skill_dir() -> Path:
+    """csv-explorer 技能目录（与 data-explorer 同属 skills 容器下兄弟目录）。"""
+    container = skills_container_dir()
+    csv_skill = container / "csv-explorer"
+    if csv_skill.is_dir():
+        return csv_skill
+    return container
+
+
 def skills_middleware_dir() -> Path:
     """与 skills_container_dir 相同：始终指向技能集合根目录。"""
     return skills_container_dir()

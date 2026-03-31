@@ -7,6 +7,7 @@ import csv as csv_module
 import json
 import os
 import re
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,10 +21,7 @@ from apps.datasource.crud.datasource import (
     get_table_schema,
 )
 from apps.openapi.agent import sqlbot_workspace as sw
-from apps.openapi.agent.data_agent_report_html import (
-    build_report_html,
-    sanitize_evidence_for_json,
-)
+from apps.openapi.agent.data_agent_report_html import sanitize_evidence_for_json
 from apps.openapi.agent.data_agent_tool_format import (
     _extract_first_json_object,
     extract_write_todos_list,
@@ -41,6 +39,14 @@ from common.utils.utils import SQLBotLogUtil
 
 # 预规划用的 schema 总长度上限，避免撑爆上下文
 _DATA_AGENT_SCHEMA_BUDGET = 22000
+
+# 证据与输出截断长度
+_SQL_TRUNCATE_LEN = 2000
+_STEP_DESC_TRUNCATE_LEN = 240
+_ERROR_TRUNCATE_LEN = 4000
+_OUTPUT_TRUNCATE_LEN = 12000
+_CSV_PREVIEW_ROWS = 20
+_CSV_MAX_COLUMNS = 64
 
 
 class DataAgentRunner:
@@ -208,11 +214,14 @@ class DataAgentRunner:
         if mid.is_dir():
             skills_arg = [str(mid) + "/"]
 
+        csv_skill_path = sw.csv_explorer_skill_dir()
+
         sys_lines = [
             f"工作区账号目录名: {uid}（与 CLI 使用相同 account 时共用缓存）",
             f"本地根目录 SQLBOT_HOME: {sqlbot_home}",
             f"元数据与 CSV: {sqlbot_home / uid}",
             f"技能包目录（Shell cwd）: {skill_dir}",
+            f"csv-explorer 技能目录：{csv_skill_path}",
             f"API 根 URL（供子进程/脚本）: {api_base}",
             "用户消息开头包含「系统自动生成的执行规划」：必须按步骤推进，避免跳步；每步说明正在完成规划中的哪一条。",
             "阶段建议：① 确认数据源与 .sqlbot 元数据（list/sync/read_file/grep）② sqlbot_sql_dialect ③ sqlbot_execute_sql_csv 导出证据 ④ execute+Python 做复杂统计或制图。",
@@ -223,6 +232,15 @@ class DataAgentRunner:
             "所有输出使用中文。",
         ]
 
+        shell_env = {
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "HOME": os.environ.get("HOME", "/root"),
+            "XAN_PATH": os.environ.get("XAN_PATH", "/usr/local/bin:/usr/bin:/bin"),
+            "SQLBOT_URL": self._api_v1_prefix(),
+            "SQLBOT_HOME": str(sqlbot_home),
+            "SQLBOT_WORKSPACE_UID": uid,
+        }
+
         return create_deep_agent(
             model=await create_llm(use_tool=True),
             system_prompt="\n".join(sys_lines),
@@ -230,13 +248,7 @@ class DataAgentRunner:
             backend=LocalShellBackend(
                 root_dir=str(skill_dir),
                 timeout=120,
-                env={
-                    "PATH": "/usr/local/bin:/usr/bin:/bin",
-                    "HOME": os.environ.get("HOME", "/root"),
-                    "SQLBOT_URL": self._api_v1_prefix(),
-                    "SQLBOT_HOME": str(sqlbot_home),
-                    "SQLBOT_WORKSPACE_UID": uid,
-                },
+                env=shell_env,
                 inherit_env=False,
             ),
             skills=skills_arg,
@@ -345,10 +357,10 @@ class DataAgentRunner:
             return None
         step_desc = ""
         if isinstance(tool_input, dict):
-            step_desc = str(tool_input.get("step_description", "") or "")[:240]
-        sql = str(obj.get("sql") or "")[:2000]
+            step_desc = str(tool_input.get("step_description", "") or "")[:_STEP_DESC_TRUNCATE_LEN]
+        sql = str(obj.get("sql") or "")[:_SQL_TRUNCATE_LEN]
         path = str(obj.get("path") or "")[:500]
-        err = str(obj.get("error") or "")[:500]
+        err = str(obj.get("error") or "")[:_ERROR_TRUNCATE_LEN]
         rel_path = ""
         if path:
             try:
@@ -359,7 +371,7 @@ class DataAgentRunner:
                 rel_path = ""
         cols = obj.get("columns")
         columns_out = (
-            [str(x)[:200] for x in cols[:64]] if isinstance(cols, list) else None
+            [str(x)[:200] for x in cols[:_CSV_MAX_COLUMNS]] if isinstance(cols, list) else None
         )
         pr = obj.get("preview_rows")
         preview_out = None
@@ -379,7 +391,7 @@ class DataAgentRunner:
                     return [_norm_cell(x) for x in r]
                 return _norm_cell(r)
 
-            preview_out = [_norm_row(r) for r in pr[:20]]
+            preview_out = [_norm_row(r) for r in pr[:_CSV_PREVIEW_ROWS]]
         rec: dict = {
             "datasource_id": obj.get("datasource_id"),
             "row_count": obj.get("row_count"),
@@ -461,20 +473,16 @@ class DataAgentRunner:
                 reader = csv_module.DictReader(f)
                 cols = list(reader.fieldnames or [])
                 preview: list[dict] = []
+                row_count = 0
                 for i, row in enumerate(reader):
-                    if i >= 20:
+                    row_count = i + 1
+                    if i >= _CSV_PREVIEW_ROWS:
                         break
                     preview.append(
                         {k: ("" if v is None else str(v)[:500]) for k, v in row.items()}
                     )
         except Exception:
             return None
-        try:
-            with path.open(encoding="utf-8-sig", errors="replace", newline="") as f:
-                n_lines = sum(1 for _ in f)
-            row_count = max(0, n_lines - 1)
-        except Exception:
-            row_count = len(preview)
         rec: dict = {
             "datasource_id": None,
             "row_count": row_count,
@@ -483,10 +491,10 @@ class DataAgentRunner:
             "ok": True,
             "error": "",
             "sql": "",
-            "step_description": (step_description or "")[:240],
+            "step_description": (step_description or "")[:_STEP_DESC_TRUNCATE_LEN],
         }
         if cols:
-            rec["columns"] = [str(c)[:200] for c in cols[:64]]
+            rec["columns"] = [str(c)[:200] for c in cols[:_CSV_MAX_COLUMNS]]
         if preview:
             rec["preview_rows"] = preview
         return rec
@@ -531,172 +539,41 @@ class DataAgentRunner:
             ev["index"] = len(evidence_log) + 1
             evidence_log.append(ev)
 
-    def _build_report_bundle(
+    async def _skill_render_report_html(
         self,
         *,
+        markdown_path: Path,
+        evidence_path: Path,
+        html_out: Path,
         chat_id: int,
-        question: str,
-        report_md: str,
-        evidence_json: list[dict],
-    ) -> dict:
-        """生成离线 HTML 的结构化数据包（可落盘复现渲染）。"""
-        now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
-        return {
-            "version": 1,
-            "generated_at": now,
-            "chat_id": chat_id,
-            "question": (question or "").strip(),
-            "report_markdown": report_md or "",
-            "evidence": evidence_json or [],
-        }
-
-    async def _finalize_structured_report(
-        self,
-        *,
-        question: str,
-        plan_excerpt: str,
-        evidence_log: list[dict],
-        draft: str,
-    ) -> str:
-        """将模型草稿整理为固定章节 Markdown（对标正式分析报告）。"""
-        if not getattr(settings, "DATA_AGENT_STRUCTURED_REPORT", True):
-            return draft
-        text = (draft or "").strip()
-        if not text:
-            return draft
-        try:
-            ev_text = json.dumps(evidence_log, ensure_ascii=False)
-            if len(ev_text) > 8000:
-                ev_text = ev_text[:8000] + "\n…（证据列表已截断）"
-            plan_x = (plan_excerpt or "")[:6000]
-            draft_x = text[:14000]
-            if len(text) > 14000:
-                draft_x += "\n\n…（草稿已截断，整理时请保留核心结论）"
-
-            system = (
-                "你是数据分析报告编辑。请将「分析草稿」改写为正式 Markdown 分析报告，"
-                "必须使用以下章节标题（按顺序，使用 # / ##）：\n"
-                "# 分析摘要\n"
-                "## 数据与证据\n"
-                "## 主要发现\n"
-                "## 建议与后续\n"
-                "## 附录（SQL 与导出索引）\n\n"
-                "写作要求：\n"
-                "- 「分析摘要」用 3～6 句话概括业务问题、数据范围与核心结论。\n"
-                "- 「数据与证据」用 Markdown 表格或有序列表，为每条证据编号（E1,E2…），"
-                "列出数据源 id、行数、CSV 路径、SQL 摘要；内容须与「证据 JSON」一致，禁止编造路径或行数。\n"
-                "- 「主要发现」分条列出，每条尽量对应证据编号或 CSV 路径。\n"
-                "- 「建议与后续」写可执行建议或数据/口径待办。\n"
-                "- 「附录」汇总关键 SQL（可截断）与导出文件路径。\n"
-                "- 禁止空洞套话；若证据不足须在摘要或发现中明确说明限制。\n"
-                "- 全文使用中文。\n"
-            )
-            human = (
-                f"用户问题：\n{question}\n\n"
-                f"执行规划（摘录）：\n{plan_x}\n\n"
-                f"证据 JSON：\n{ev_text}\n\n"
-                f"---\n分析草稿：\n{draft_x}"
-            )
-            llm = await create_llm(use_tool=False)
-            resp = await llm.ainvoke(
-                [SystemMessage(content=system), HumanMessage(content=human)]
-            )
-            out = getattr(resp, "content", None) or ""
-            if isinstance(out, list):
-                out = "".join(getattr(b, "text", str(b)) for b in out if b is not None)
-            polished = (out or "").strip()
-            if len(polished) < 120:
-                return draft
-            return polished
-        except Exception as e:
-            SQLBotLogUtil.error(f"Data Agent 结构化报告失败，使用草稿: {e}")
-            return draft
-
-    async def _emit_report_stage(
-        self, stage: str, status: str, message: str = ""
-    ) -> None:
-        await self.queue.put(
-            {
-                "type": "report_stage",
-                "stage": stage,
-                "status": status,
-                "message": message,
-            }
+    ) -> bool:
+        """调用 data-explorer 技能包内脚本生成 HTML。"""
+        script = sw.data_explorer_skill_dir() / "scripts" / "render_report_html.py"
+        if not script.is_file():
+            SQLBotLogUtil.error(f"未找到技能脚本：{script}")
+            return False
+        env = os.environ.copy()
+        env["SQLBOT_BACKEND"] = str((sw.repo_root_path() / "backend").resolve())
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            str(script),
+            "--markdown", str(markdown_path),
+            "--evidence-json", str(evidence_path),
+            "--out", str(html_out),
+            "--chat-id", str(chat_id),
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-
-    def _evidence_summary_text(self, evidence_log: list[dict]) -> str:
-        lines: list[str] = []
-        for ev in evidence_log:
-            if not isinstance(ev, dict):
-                continue
-            idx = ev.get("index", "")
-            lines.append(
-                f"E{idx}: ds={ev.get('datasource_id')} rows={ev.get('row_count')} "
-                f"path={ev.get('rel_path') or ev.get('path')} "
-                f"cols={ev.get('columns')}"
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            err = (stderr or b"").decode("utf-8", errors="replace")[:_ERROR_TRUNCATE_LEN]
+            out = (stdout or b"").decode("utf-8", errors="replace")[:1000]
+            SQLBotLogUtil.error(
+                f"render_report_html.py 失败 code={proc.returncode} stderr={err} stdout={out}"
             )
-            sql = str(ev.get("sql") or "")
-            if sql:
-                lines.append("  sql: " + sql[:400].replace("\n", " "))
-        return "\n".join(lines)[:12000]
-
-    async def _report_correct(
-        self, *, question: str, body: str, evidence_summary: str
-    ) -> str:
-        system = (
-            "你是数据分析报告审校员。对照「证据摘要」检查下面 Markdown 报告中的事实、数字与结论，"
-            "修正明显错误、矛盾或夸大表述；不得编造证据中不存在的路径或行数。"
-            "保持原有章节结构（# 分析摘要、## 数据与证据 等）；如证据不足，将相关句改为谨慎表述。"
-            "全文使用中文，直接输出修正后的完整 Markdown。"
-        )
-        human = (
-            f"用户问题：\n{question[:4000]}\n\n"
-            f"证据摘要：\n{evidence_summary}\n\n"
-            f"---\n待审校报告：\n{body[:20000]}"
-        )
-        if len(body) > 20000:
-            human += "\n\n…（报告已截断，请仅就可见部分审校并保持结构）"
-        try:
-            llm = await create_llm(use_tool=False)
-            resp = await llm.ainvoke(
-                [SystemMessage(content=system), HumanMessage(content=human)]
-            )
-            out = getattr(resp, "content", None) or ""
-            if isinstance(out, list):
-                out = "".join(
-                    getattr(b, "text", str(b)) for b in out if b is not None
-                )
-            corrected = (out or "").strip()
-            if len(corrected) < 80:
-                return body
-            return corrected
-        except Exception as e:
-            SQLBotLogUtil.error(f"Data Agent 报告纠错失败，沿用上一版: {e}")
-            return body
-
-    async def _report_polish(self, body: str) -> str:
-        system = (
-            "你是专业中文技术编辑。在不改变事实、数字、路径与 SQL 的前提下，润色下面 Markdown："
-            "段落衔接、用词统一、标题层级清晰。禁止新增数据或结论。直接输出润色后的完整 Markdown。"
-        )
-        human = f"待润色报告：\n{body[:22000]}"
-        try:
-            llm = await create_llm(use_tool=False)
-            resp = await llm.ainvoke(
-                [SystemMessage(content=system), HumanMessage(content=human)]
-            )
-            out = getattr(resp, "content", None) or ""
-            if isinstance(out, list):
-                out = "".join(
-                    getattr(b, "text", str(b)) for b in out if b is not None
-                )
-            polished = (out or "").strip()
-            if len(polished) < 80:
-                return body
-            return polished
-        except Exception as e:
-            SQLBotLogUtil.error(f"Data Agent 报告润色失败，沿用上一版: {e}")
-            return body
+            return False
+        return True
 
     async def _emit_buffered_llm_text(
         self, buffer_parts: list[str], *, title: str, stage_key: str
@@ -734,15 +611,16 @@ class DataAgentRunner:
 
             sqlbot_home = sw.sqlbot_root_path()
             skill_path = sw.data_explorer_skill_dir()
+            csv_skill_path = sw.csv_explorer_skill_dir()
             schema_digest = self._aggregate_schema_digest()
             execution_plan_md = await self._generate_data_agent_execution_plan(
                 schema_digest
             )
 
             methodology = (
-                "### 工作方法提示（data-explorer）\n\n"
+                "### 工作方法提示（data-explorer + csv-explorer）\n\n"
                 "1. **元数据** — `.sqlbot` 本地缓存与 schema 文件是生成 SQL 的依据。\n"
-                "2. **证据链** — 用 `sqlbot_execute_sql_csv` 导出 CSV，再决定是否用 Python 深入分析。\n"
+                "2. **证据链** — 用 `sqlbot_execute_sql_csv` 导出 CSV，或用 csv-explorer 技能直接分析现有 CSV。\n"
                 "3. **界面** — 左侧为步骤时间线，右侧详情含 SQL、JSON 与命令输出；请保持步骤描述与规划一致。\n"
             )
             await self.queue.put(
@@ -755,12 +633,12 @@ class DataAgentRunner:
                         f"**环境**\n\n"
                         f"- 工作区: `{uid}`\n"
                         f"- SQLBOT_HOME: `{sqlbot_home}`\n"
-                        f"- 技能目录: `{skill_path}`\n"
-                        f"- 技能: `data-explorer`\n"
+                        f"- 技能目录：`{skill_path}` (data-explorer), `{csv_skill_path}` (csv-explorer)\n"
+                        f"- 技能：`data-explorer`, `csv-explorer`\n"
                     ),
                     "plan": {
                         "mode": "data-agent",
-                        "skills": ["data-explorer"],
+                        "skills": ["data-explorer", "csv-explorer"],
                         "sqlbot_home": str(sqlbot_home),
                         "workspace_uid": uid,
                         "plan_source": "llm",
@@ -915,52 +793,46 @@ class DataAgentRunner:
             )
             accumulate_post_tool_llm = False
 
-            # 最终报告：只输出 HTML（离线文件），并将证据写入 report_bundle.json
-            await self.queue.put({"type": "stage", "content": "汇总证据", "stage": "report_bundle"})
+            final_md = (report_text or "").strip()
+            if not final_md:
+                final_md = "（本次运行未产生报告正文草稿，请结合上方步骤与证据查阅。）"
+
             ev_json = sanitize_evidence_for_json(evidence_log)
             html_relpath: str | None = None
-            html_doc = build_report_html("", ev_json, chat_id=int(self.chat_question.chat_id or 0))
-            if getattr(settings, "DATA_AGENT_REPORT_WRITE_HTML_FILE", False) and (
-                self.chat_question.chat_id
-            ):
-                da_dir = sw.user_dir(uid) / "deep_analysis" / str(self.chat_question.chat_id)
-                da_dir.mkdir(parents=True, exist_ok=True)
-                (da_dir / "report.html").write_text(html_doc, encoding="utf-8")
-                try:
-                    bundle = self._build_report_bundle(
-                        chat_id=int(self.chat_question.chat_id),
-                        question=user_q,
-                        report_md="",
-                        evidence_json=ev_json,
-                    )
-                    (da_dir / "report_bundle.json").write_text(
-                        json.dumps(bundle, ensure_ascii=False, indent=2),
-                        encoding="utf-8",
-                    )
-                except Exception as e:
-                    SQLBotLogUtil.error(f"写 report_bundle.json 失败: {e}")
+
+            await self.queue.put(
+                {"type": "stage", "content": "调用技能生成 HTML 报告", "stage": "report_html"}
+            )
+            da_dir = sw.user_dir(uid) / "deep_analysis" / str(self.chat_question.chat_id or "tmp")
+            da_dir.mkdir(parents=True, exist_ok=True)
+            md_path = da_dir / "report.md"
+            ev_path = da_dir / "evidence.json"
+            html_path = da_dir / "report.html"
+
+            md_path.write_text(final_md, encoding="utf-8")
+            ev_path.write_text(
+                json.dumps(ev_json, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            ok = await self._skill_render_report_html(
+                markdown_path=md_path,
+                evidence_path=ev_path,
+                html_out=html_path,
+                chat_id=int(self.chat_question.chat_id or 0),
+            )
+            if ok:
                 html_relpath = f"deep_analysis/{self.chat_question.chat_id}/report.html"
 
             await self.queue.put(
                 {
-                    "type": "stage",
-                    "content": "生成 HTML 报告",
-                    "stage": "report_html",
-                }
-            )
-            await self.queue.put(
-                {
                     "type": "process",
-                    "content": (
-                        "离线 HTML 报告已生成。\n"
-                        f"- 证据条数：{len(ev_json)}\n"
-                        f"- HTML 字符数：{len(html_doc)}\n"
-                    ),
+                    "content": f"HTML 报告已生成：{html_relpath or '（无 chat_id，仅临时文件）'}\n",
                 }
             )
             payload = {
                 "reasoning_content": "",
-                "content": "",
+                "content": final_md,
                 "type": "report",
                 "evidence": ev_json,
             }

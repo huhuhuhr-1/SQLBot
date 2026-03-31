@@ -147,12 +147,13 @@ class Settings(BaseSettings):
     # 写入 ~/.sqlbot/<account>/config.json 的 host，及 CLI curl 使用的公网可达 API 根（不含路径后缀）
     # 例：http://localhost:8000 ；空则回退 DATA_AGENT_API_PUBLIC_BASE_DEFAULT 逻辑（见 data_agent 内解析）
     DATA_AGENT_PUBLIC_API_BASE: str = ""
-    # Data Agent(技能)：是否在流式结束后调用 LLM 将报告草稿整理为固定章节结构（增加一次模型调用）
+    # Data Agent：xan 可执行文件路径；非空时注入 execute 子进程环境变量 XAN_PATH（见 csv-explorer 技能）
+    DATA_AGENT_XAN_PATH: str = ""
+    # 以下三项已由 Data Agent Runner 移除逻辑（保留字段以免破坏既有 .env）；报告结构由 Agent 按技能文档自行组织。
     DATA_AGENT_STRUCTURED_REPORT: bool = True
-
-    # Data Agent(技能)：是否在结构化报告后追加「纠错 → 润色 → HTML」流水线
     DATA_AGENT_REPORT_CORRECT: bool = True
     DATA_AGENT_REPORT_POLISH: bool = True
+    # 为 False 时跳过 build_report_html（不写 report.html，但仍可输出 Markdown report + evidence）
     DATA_AGENT_REPORT_HTML: bool = True
     # 是否将 HTML 写入 SQLBOT_HOME/<uid>/deep_analysis/<chat_id>/report.html（默认可仅从接口动态生成）
     DATA_AGENT_REPORT_WRITE_HTML_FILE: bool = True
