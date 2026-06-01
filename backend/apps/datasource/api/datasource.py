@@ -539,7 +539,7 @@ async def parse_excel(file: UploadFile = File(..., description=f"{PLACEHOLDER_PR
         raise HTTPException(400, "Only support .xlsx/.xls/.csv")
 
     os.makedirs(path, exist_ok=True)
-    filename = f"{file.filename.split('.')[0]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}.{file.filename.split('.')[-1]}"
+    filename = f"{file.filename.split('.')[0].split('/')[-1]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}.{file.filename.split('.')[-1]}"
     save_path = os.path.join(path, filename)
     with open(save_path, "wb") as f:
         f.write(await file.read())
