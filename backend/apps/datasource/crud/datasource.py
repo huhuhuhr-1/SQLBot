@@ -366,10 +366,6 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{table.table_name}"
             {where}
             LIMIT 100"""
-    elif ds.type == "sqlite":
-        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{table.table_name}"
-            {where}
-            LIMIT 100"""
     return exec_sql(ds, sql, True)
 
 

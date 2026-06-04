@@ -90,8 +90,6 @@ def get_uri_from_config(type: str, conf: DatasourceConf) -> str:
             db_url = f"clickhouse+http://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{conf.database}?{conf.extraJdbc}"
         else:
             db_url = f"clickhouse+http://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{conf.database}"
-    elif equals_ignore_case(type, "sqlite"):
-        db_url = f"sqlite:///{conf.filename}"
     else:
         raise 'The datasource type not support.'
     return db_url
@@ -162,8 +160,6 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
         ssl_mode = {"require": True} if conf.ssl else None
         engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout, "ssl": ssl_mode},
                                poolclass=NullPool)
-    elif equals_ignore_case(ds.type, 'sqlite'):
-        engine = create_engine(get_uri(ds), connect_args={"check_same_thread": False}, poolclass=NullPool)
     else:  # ck
         engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, poolclass=NullPool)
     return engine
@@ -357,8 +353,6 @@ def get_schema(ds: CoreDatasource):
             elif equals_ignore_case(ds.type, "oracle"):
                 sql = """select *
                          from all_users"""
-            elif equals_ignore_case(ds.type, "sqlite"):
-                return ['main']
             with session.execute(text(sql)) as result:
                 res = result.fetchall()
                 res_list = [item[0] for item in res]
@@ -464,10 +458,7 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
         with get_session(ds) as session:
             with session.execute(text(sql), {"param1": p1, "param2": p2}) as result:
                 res = result.fetchall()
-                if equals_ignore_case(ds.type, "sqlite"):
-                    res_list = [ColumnSchema(item[1], item[2], '') for item in res]
-                else:
-                    res_list = [ColumnSchema(*item) for item in res]
+                res_list = [ColumnSchema(*item) for item in res]
                 return res_list
     else:
         extra_config_dict = get_extra_config(conf)

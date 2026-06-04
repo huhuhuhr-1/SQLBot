@@ -162,13 +162,6 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
               """, conf.dbSchema
     elif equals_ignore_case(ds.type, "es"):
         return "", None
-    elif equals_ignore_case(ds.type, "sqlite"):
-        return """
-                SELECT name AS TABLE_NAME, ''
-                FROM sqlite_master
-                WHERE type='table'
-                ORDER BY name
-                """, None
     elif equals_ignore_case(ds.type, "hive"):
         return """
                 SHOW TABLES
@@ -323,9 +316,6 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
         return sql1 + sql2, conf.dbSchema, table_name
     elif equals_ignore_case(ds.type, "es"):
         return "", None, None
-    elif equals_ignore_case(ds.type, "sqlite"):
-        sql1 = f"PRAGMA table_info({table_name})"
-        return sql1, None, None
     elif equals_ignore_case(ds.type, "hive"):
         sql1 = f"DESCRIBE {table_name}"
         return sql1, None, None
