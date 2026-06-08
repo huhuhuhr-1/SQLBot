@@ -49,7 +49,6 @@ def list_all(session: SessionDep, trans: Trans, variable: SystemVariable):
         data = SystemVariable(**r.__dict__)
         if data.type == 'system':
             data.name = trans(data.name)
-        del data.value
         res.append(data)
     return res
 
