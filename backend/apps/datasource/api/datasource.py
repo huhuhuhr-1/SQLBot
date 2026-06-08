@@ -4,6 +4,7 @@ import io
 import os
 import traceback
 import uuid
+import re
 from io import StringIO
 from typing import List
 from urllib.parse import quote
@@ -567,7 +568,7 @@ async def import_to_db(session: SessionDep, trans: Trans, import_req: ImportRequ
 
         for sheet_info in import_req.sheets:
             sheet_name = sheet_info.sheetName
-            table_name = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+            table_name = f"excel_{filter_string(sheet_name)}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
             fields = sheet_info.fields
 
             field_mapping = {f.fieldName: f.fieldType for f in fields}
@@ -617,3 +618,9 @@ async def import_to_db(session: SessionDep, trans: Trans, import_req: ImportRequ
         return {"filename": import_req.filePath, "sheets": results}
 
     return await asyncio.to_thread(inner)
+
+
+# only allow chinese, a-z, A-Z, 0-9
+def filter_string(text):
+    pattern = r'[^\u4e00-\u9fa5a-zA-Z0-9]'
+    return re.sub(pattern, '', text)
