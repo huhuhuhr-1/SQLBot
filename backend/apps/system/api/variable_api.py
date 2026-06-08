@@ -33,7 +33,7 @@ async def list_all_data(session: SessionDep, trans: Trans, variable: SystemVaria
 
 
 @router.post("/listPage/{pageNum}/{pageSize}",response_model=None, summary=f"{PLACEHOLDER_PREFIX}variable_page")
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['admin']))
 async def pager(session: SessionDep, trans: Trans, pageNum: int, pageSize: int,
                         variable: SystemVariable = None):
     return await list_page(session, trans, pageNum, pageSize, variable)
