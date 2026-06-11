@@ -105,9 +105,14 @@ async def ws_list(session: SessionDep, trans: Trans, token: str):
 
 
 @router.post("/mcp_ds_list", operation_id="mcp_datasource_list")
-async def datasource_list(session: SessionDep, mcp_ds: McpDs):
+async def datasource_list(session: SessionDep, trans: Trans, mcp_ds: McpDs):
     session_user = get_user(session, mcp_ds.token)
     if mcp_ds.oid:
+        w_list = await user_ws_options(session, session_user.id, trans)
+        oid_list = [item.id for item in w_list]
+        if int(mcp_ds.oid) not in oid_list:
+            raise HTTPException(status_code=400, detail="This user not in current workspace")
+
         session_user.oid = int(mcp_ds.oid)
     ds_list = get_datasource_list(session=session, user=session_user)
     result = []
@@ -129,12 +134,17 @@ async def datasource_list(session: SessionDep, mcp_ds: McpDs):
 
 
 @router.post("/mcp_question", operation_id="mcp_question")
-async def mcp_question(session: SessionDep, chat: McpQuestion):
+async def mcp_question(session: SessionDep, trans: Trans, chat: McpQuestion):
     session_user = get_user(session, chat.token)
     lang = chat.lang
     if lang in ["zh-CN", "zh-TW", "en", "ko-KR"]:
         session_user.language = lang
     if chat.oid:
+        w_list = await user_ws_options(session, session_user.id, trans)
+        oid_list = [item.id for item in w_list]
+        if int(chat.oid) not in oid_list:
+            raise HTTPException(status_code=400, detail="This user not in current workspace")
+
         session_user.oid = int(chat.oid)
     ds_id: Optional[int] = None
     if chat.datasource_id:
