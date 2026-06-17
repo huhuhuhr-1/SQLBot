@@ -65,6 +65,7 @@ async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
 
 
 @router.get("/check/{ds_id}", response_model=bool, summary=f"{PLACEHOLDER_PREFIX}ds_check")
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="ds_id"))
 async def check_by_id(session: SessionDep, trans: Trans,
                       ds_id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     def inner():
