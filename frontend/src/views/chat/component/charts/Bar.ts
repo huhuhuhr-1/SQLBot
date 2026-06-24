@@ -7,6 +7,7 @@ import {
   getAxesWithFilter,
   processMultiQuotaData,
 } from '@/views/chat/component/charts/utils.ts'
+import { some } from 'lodash-es'
 
 export class Bar extends BaseG2Chart {
   constructor(id: string) {
@@ -106,7 +107,7 @@ export class Bar extends BaseG2Chart {
           labelAutoWrap: true,
           labelAutoEllipsis: true,
           labelFormatter: (value: any) => {
-            const formatted = axes.y[0].formatNumber ? formatNumber(value) : value
+            const formatted = some(axes.y, 'formatNumber') ? formatNumber(value) : value
             return String(formatted)
           },
         },
@@ -125,7 +126,11 @@ export class Bar extends BaseG2Chart {
         tooltip: { series: series.length > 0, shared: true },
       },
       tooltip: (data: any) => {
-        const v = y[0].formatNumber ? formatNumber(data[y[0].value]) : data[y[0].value]
+        let isFormat = y[0].formatNumber
+        if (axes.multiQuota.length > 0) {
+          isFormat = data['sqlbot_axis_format']
+        }
+        const v = isFormat ? formatNumber(data[y[0].value]) : data[y[0].value]
         if (series.length > 0) {
           const s = series[0].formatNumber
             ? formatNumber(data[series[0].value])
@@ -146,10 +151,14 @@ export class Bar extends BaseG2Chart {
             {
               text: (data: any) => {
                 const value = data[y[0].value]
+                let isFormat = y[0].formatNumber
+                if (axes.multiQuota.length > 0) {
+                  isFormat = data['sqlbot_axis_format']
+                }
                 if (value === undefined || value === null) {
                   return ''
                 }
-                const v = y[0].formatNumber ? formatNumber(value) : value
+                const v = isFormat ? formatNumber(value) : value
                 return `${v}${_data.isPercent ? '%' : ''}`
               },
               position: (data: any) => {

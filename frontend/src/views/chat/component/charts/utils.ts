@@ -84,9 +84,9 @@ export function processMultiQuotaData(
   data: Array<ChartData>
 ) {
   const _list: Array<ChartData> = []
-  const _map: { [propName: string]: string } = {}
+  const _map: { [propName: string]: ChartAxis } = {}
   y.forEach((axis) => {
-    _map[axis.value] = axis.name
+    _map[axis.value] = axis
   })
   for (const datum of data) {
     multiQuota.forEach((quota) => {
@@ -95,7 +95,8 @@ export function processMultiQuotaData(
         _data[xAxis.value] = datum[xAxis.value]
       }
       _data['sqlbot_auto_quota'] = datum[quota]
-      _data['sqlbot_auto_series'] = _map[quota]
+      _data['sqlbot_auto_series'] = _map[quota].name
+      _data['sqlbot_axis_format'] = _map[quota].formatNumber
       _list.push(_data)
     })
   }
