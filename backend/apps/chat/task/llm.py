@@ -137,11 +137,14 @@ class LLMService:
             raise SingleMessageError(f"Chat with id {chat_id} not found")
         self.oid = chat.oid
 
-        if self.oid:
+        if self.oid and not current_assistant:
             w_list = user_ws_list(session, self.current_user.id)
             oid_list = [item.id for item in w_list]
             if int(self.oid) not in oid_list:
                 raise SingleMessageError("Current user cannot not access this chat")
+        if self.oid and current_assistant:
+            if self.oid != self.current_user.oid:
+                raise SingleMessageError("Current assistant user cannot not access this chat")
 
         self.current_user.oid = chat.oid
         ds: CoreDatasource | AssistantOutDsSchema | None = None
