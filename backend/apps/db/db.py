@@ -881,6 +881,11 @@ def build_fields_info_from_cursor(cursor, origin_column, db_type='postgresql'):
                 1700,  # numeric
             )
         elif db_type == 'dm':
+            try:
+                print(col_info)
+                SQLBotLogUtil.info('dm:' + str(col_info))
+            except Exception as ex:
+                pass
             # 达梦数据库类型码
             is_numeric = col_info[1] in (
                 2,  # NUMBER
