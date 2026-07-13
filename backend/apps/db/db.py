@@ -2,7 +2,6 @@ import base64
 import json
 import os
 import platform
-import re
 import urllib.parse
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
@@ -19,7 +18,8 @@ if platform.system() != "Darwin":
     import dmPython
 import pymysql
 import redshift_connector
-from sqlalchemy import create_engine, text, Engine, types
+from sqlalchemy import create_engine, text, Engine
+from sqlalchemy.types import Integer, Float, Numeric, Boolean
 from sqlalchemy.orm import sessionmaker
 
 from apps.datasource.models.datasource import DatasourceConf, CoreDatasource, TableSchema, ColumnSchema
@@ -582,6 +582,19 @@ def convert_value(value, datetime_format='space'):
         return value
 
 
+NUMERIC_BASE_TYPES = (Integer, Numeric, Boolean)
+
+def get_numeric_type_codes(dialect_name):
+    """根据数据库方言获取数值类型的 type_code 集合"""
+    type_codes = {
+        'postgresql': {20, 21, 23, 700, 701, 1700, 16},  # int8, int2, int4, float4, float8, numeric, bool
+        'mysql': {1, 2, 3, 4, 5, 8, 9, 16, 246},  # tinyint, smallint, int, float, double, bigint, mediumint, bit, decimal
+        'mssql': {38, 48, 52, 56, 58, 59, 60, 61, 62, 104, 106, 108, 122, 127},  # SQL Server 类型码
+        'oracle': {2, 4, 6, 8, 168},  # NUMBER, FLOAT, BINARY_FLOAT, BINARY_DOUBLE, etc.
+        'sqlite': {1, 2, 3, 4, 5},  # SQLite 类型码
+    }
+    return type_codes.get(dialect_name, set())
+
 def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
     while sql.endswith(';'):
         sql = sql[:-1]
@@ -598,24 +611,20 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                     columns = result.keys()._keys if origin_column else [item.lower() for item in result.keys()._keys]
 
                     fields_info = []
-                    for col_info in result.cursor.description:
-                        # col_info 是 (name, type_code, display_size, internal_size, precision, scale, null_ok)
-                        col_name = col_info[0]
 
-                        # 根据 type_code 判断是否为数值类型
-                        # psycopg2 的类型 OID 常量
-                        is_numeric = col_info[1] in (
-                            20,  # int8
-                            21,  # int2
-                            23,  # int4
-                            700,  # float4
-                            701,  # float8
-                            1700,  # numeric
-                            16,  # boolean
-                        )
+                    # 获取当前数据库方言
+                    dialect_name = session.bind.dialect.name
+                    numeric_codes = get_numeric_type_codes(dialect_name)
+
+                    for col_idx, col_name in enumerate(columns):
+                        try:
+                            type_code = result.cursor.description[col_idx][1]
+                            is_numeric = type_code in numeric_codes
+                        except (IndexError, AttributeError):
+                            is_numeric = False
 
                         fields_info.append({
-                            "name": col_name if origin_column else col_name.lower(),
+                            "name": col_name,
                             "is_numeric": is_numeric
                         })
 
