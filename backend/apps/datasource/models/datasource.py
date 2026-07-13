@@ -122,6 +122,7 @@ class DatasourceConf(BaseModel):
     timeout: int = 30
     lowVersion: bool = False
     ssl: bool = False
+    poolSize: int = 5
 
     def to_dict(self):
         return {
@@ -138,7 +139,8 @@ class DatasourceConf(BaseModel):
             "mode": self.mode,
             "timeout": self.timeout,
             "lowVersion": self.lowVersion,
-            "ssl": self.ssl
+            "ssl": self.ssl,
+            "poolSize": self.poolSize
         }
 
 
