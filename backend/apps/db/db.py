@@ -881,25 +881,17 @@ def build_fields_info_from_cursor(cursor, origin_column, db_type='postgresql'):
                 1700,  # numeric
             )
         elif db_type == 'dm':
-            try:
-                print(col_info)
-                SQLBotLogUtil.info('dm:' + str(col_info))
-            except Exception as ex:
-                pass
-            # 达梦数据库类型码
-            is_numeric = col_info[1] in (
-                2,  # NUMBER
-                3,  # DECIMAL
-                4,  # INTEGER
-                5,  # INT
-                6,  # BIGINT
-                7,  # TINYINT
-                8,  # BYTE
-                9,  # FLOAT
-                10,  # DOUBLE
-                11,  # REAL
-                12,  # BOOLEAN
-            )
+            # 达梦数据库类型码 <class 'dmPython.DECIMAL'>
+            # 获取类型类名
+            type_name = col_info[1].__name__.upper() if hasattr(col_info[1], '__name__') else str(col_info[1]).upper()
+
+            is_numeric = type_name in {
+                'INT', 'INTEGER',
+                'BIGINT', 'SMALLINT', 'TINYINT',
+                'NUMBER', 'NUMERIC', 'DECIMAL',
+                'FLOAT', 'DOUBLE', 'REAL',
+                'BIT', 'BOOLEAN',
+            }
         elif db_type == 'hive':
             # Hive 类型对象转字符串判断
             type_str = str(col_info[1]).lower()
