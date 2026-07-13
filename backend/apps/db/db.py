@@ -19,7 +19,6 @@ if platform.system() != "Darwin":
 import pymysql
 import redshift_connector
 from sqlalchemy import create_engine, text, Engine
-from sqlalchemy.types import Integer, Float, Numeric, Boolean
 from sqlalchemy.orm import sessionmaker
 
 from apps.datasource.models.datasource import DatasourceConf, CoreDatasource, TableSchema, ColumnSchema
@@ -593,18 +592,76 @@ def convert_value(value, datetime_format='space'):
         return value
 
 
-NUMERIC_BASE_TYPES = (Integer, Numeric, Boolean)
+def is_numeric_type_code(type_code, dialect_name: str) -> bool:
+    """
+    根据数据库方言和 type_code 判断是否为数值类型
 
-def get_numeric_type_codes(dialect_name):
-    """根据数据库方言获取数值类型的 type_code 集合"""
-    type_codes = {
-        'postgresql': {20, 21, 23, 700, 701, 1700, 16},  # int8, int2, int4, float4, float8, numeric, bool
-        'mysql': {1, 2, 3, 4, 5, 8, 9, 16, 246},  # tinyint, smallint, int, float, double, bigint, mediumint, bit, decimal
-        'mssql': {38, 48, 52, 56, 58, 59, 60, 61, 62, 104, 106, 108, 122, 127},  # SQL Server 类型码
-        'oracle': {2, 4, 6, 8, 168},  # NUMBER, FLOAT, BINARY_FLOAT, BINARY_DOUBLE, etc.
-        'sqlite': {1, 2, 3, 4, 5},  # SQLite 类型码
-    }
-    return type_codes.get(dialect_name, set())
+    Args:
+        type_code: cursor.description[col_idx][1] 的值
+        dialect_name: SQLAlchemy dialect name (mysql/postgresql/mssql/oracle/sqlite 等)
+
+    Returns:
+        bool: 是否为数值类型
+    """
+    dialect_name = dialect_name.lower()
+
+    # ---------- MySQL (pymysql) ----------
+    if dialect_name == 'mysql':
+        if isinstance(type_code, int):
+            return type_code in {
+                1,  # TINYINT
+                2,  # SMALLINT
+                3,  # INT
+                4,  # FLOAT
+                5,  # DOUBLE
+                8,  # BIGINT
+                9,  # MEDIUMINT
+                16,  # BIT
+                246,  # DECIMAL/NEWDECIMAL
+            }
+        return False
+
+    # ---------- PostgreSQL (psycopg2) ----------
+    if dialect_name == 'postgresql':
+        if isinstance(type_code, int):
+            return type_code in {
+                20,  # int8
+                21,  # int2
+                23,  # int4
+                700,  # float4
+                701,  # float8
+                1700,  # numeric
+                16,  # boolean
+            }
+        return False
+
+    # ---------- Oracle (cx_Oracle / oracledb) ----------
+    if dialect_name == 'oracle':
+        type_str = str(type_code).upper()
+        return any(kw in type_str for kw in ['NUMBER', 'FLOAT', 'INTEGER', 'BINARY_FLOAT', 'BINARY_DOUBLE'])
+
+    # ---------- SQL Server (pyodbc / pymssql) ----------
+    if dialect_name == 'mssql':
+        if isinstance(type_code, int):
+            # SQL Server (pyodbc / ODBC) 数值类型码
+            return type_code in {
+                2,  # smallint
+                3,  # int
+                4,  # tinyint
+                5,  # float / real / decimal / numeric / money / smallmoney
+                6,  # bit
+                7,  # bigint
+            }
+
+    # ---------- SQLite ----------
+    if dialect_name == 'sqlite':
+        if isinstance(type_code, int):
+            return type_code in {1, 2, 3, 4, 5}  # INTEGER, FLOAT, NUMERIC, etc.
+        return False
+
+    # ---------- 未知数据库，保守返回 False ----------
+    return False
+
 
 def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
     while sql.endswith(';'):
@@ -617,22 +674,22 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
     db = DB.get_db(ds.type)
     if db.connect_type == ConnectType.sqlalchemy:
         with get_session(ds) as session:
+            # 获取当前数据库方言
+            dialect_name = session.bind.dialect.name
+
             with session.execute(text(sql)) as result:
                 try:
                     columns = result.keys()._keys if origin_column else [item.lower() for item in result.keys()._keys]
 
                     fields_info = []
 
-                    # 获取当前数据库方言
-                    dialect_name = session.bind.dialect.name
-                    numeric_codes = get_numeric_type_codes(dialect_name)
-
                     for col_idx, col_name in enumerate(columns):
+                        is_numeric = False
                         try:
                             type_code = result.cursor.description[col_idx][1]
-                            is_numeric = type_code in numeric_codes
+                            is_numeric = is_numeric_type_code(type_code, dialect_name)
                         except (IndexError, AttributeError):
-                            is_numeric = False
+                            pass
 
                         fields_info.append({
                             "name": col_name,
