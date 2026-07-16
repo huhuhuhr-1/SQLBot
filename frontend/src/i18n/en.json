@@ -413,7 +413,8 @@
       "address": "Address",
       "low_version": "Compatible with lower versions",
       "ssl": "Enable SSL",
-      "file_path": "File Path"
+      "file_path": "File Path",
+      "pool_size": "Connection Pool Size"
     },
     "sync_fields": "Sync Fields",
     "sync_fields_success": "Sync fields successfully",
