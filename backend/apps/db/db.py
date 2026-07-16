@@ -35,6 +35,8 @@ from common.core.config import settings
 import sqlglot
 from sqlglot import expressions as exp
 from pyhive import hive
+from sqlalchemy.pool import NullPool
+from dbutils.pooled_db import PooledDB
 
 try:
     if os.path.exists(settings.ORACLE_CLIENT_PATH):
@@ -134,7 +136,7 @@ def get_origin_connect(type: str, conf: DatasourceConf):
 
 
 # use sqlalchemy
-def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
+def get_engine(ds: CoreDatasource, timeout: int = 0, use_pool: bool = False) -> Engine:
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if not equals_ignore_case(ds.type,
                                                                                                  "excel") else get_engine_config()
     if conf.timeout is None:
@@ -146,6 +148,8 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
         'pool_size': conf.poolSize if conf.poolSize else 5,
         'max_overflow': 20,
         'pool_recycle': 3600
+    } if use_pool else {
+        'poolclass': NullPool
     }
 
     if equals_ignore_case(ds.type, "pg"):
@@ -169,10 +173,6 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
     return engine
 
 
-def get_connection(ds: CoreDatasource | AssistantOutDsSchema, db_config):
-    pass
-
-
 def get_session(ds: CoreDatasource | AssistantOutDsSchema):
     # engine = get_engine(ds) if isinstance(ds, CoreDatasource) else get_ds_engine(ds)
     if isinstance(ds, AssistantOutDsSchema):
@@ -185,6 +185,108 @@ def get_session(ds: CoreDatasource | AssistantOutDsSchema):
     # get session from pool
     session = pool_manager.get_pool(ds=ds, **{})
     return session()
+
+
+def get_driver_connection(ds: CoreDatasource | AssistantOutDsSchema, db_config: dict = {}, use_pool: bool = False):
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+    extra_config_dict = get_extra_config(conf)
+
+    pool_config = {
+        'maxconnections': conf.poolSize if conf.poolSize else 5,
+        'mincached': 5,
+        'maxcached': 10,
+        'blocking': True,
+        'maxusage': 100,
+        'ping': 1,
+    } if use_pool else {}
+    conn_conf = extra_config_dict | db_config | pool_config
+
+    conn = None
+    if equals_ignore_case(ds.type, 'dm'):
+        if not use_pool:
+            conn = dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
+                                    port=conf.port, **conn_conf)
+        else:
+            conn = PooledDB(
+                creator=dmPython,
+                user=conf.username,
+                password=conf.password,
+                server=conf.host,
+                port=conf.port,
+                **conn_conf
+            )
+    elif equals_ignore_case(ds.type, 'doris', 'starrocks'):
+        ssl_args = {'ssl': {'ssl_mode': 'REQUIRE'}} if conf.ssl else {}
+        args = conn_conf | ssl_args
+        if not use_pool:
+            conn = pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
+                                   port=conf.port, db=conf.database, connect_timeout=conf.timeout,
+                                   read_timeout=conf.timeout, **conn_conf,
+                                   **args)
+        else:
+            conn = PooledDB(
+                creator=pymysql,
+                user=conf.username,
+                passwd=conf.password,
+                host=conf.host,
+                port=conf.port,
+                db=conf.database,
+                connect_timeout=conf.timeout,
+                read_timeout=conf.timeout,
+                **args
+            )
+    elif equals_ignore_case(ds.type, 'redshift'):
+        if not use_pool:
+            conn = redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
+                                              password=conf.password,
+                                              timeout=conf.timeout, **conn_conf)
+        else:
+            conn = PooledDB(
+                creator=redshift_connector,
+                host=conf.host,
+                port=conf.port,
+                database=conf.database,
+                user=conf.username,
+                password=conf.password,
+                timeout=conf.timeout,
+                **conn_conf
+            )
+    elif equals_ignore_case(ds.type, 'kingbase'):
+        if not use_pool:
+            conn = psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
+                                    password=conf.password,
+                                    options=f"-c statement_timeout={conf.timeout * 1000}",
+                                    **conn_conf)
+        else:
+            conn = PooledDB(
+                creator=psycopg2,
+                host=conf.host,
+                port=conf.port,
+                database=conf.database,
+                user=conf.username,
+                password=conf.password,
+                options=f"-c statement_timeout={conf.timeout * 1000}",
+                **conn_conf
+            )
+    elif equals_ignore_case(ds.type, 'hive'):
+        if not use_pool:
+            conn = hive.connect(host=conf.host, port=conf.port, username=conf.username,
+                                database=conf.database, **conn_conf)
+        else:
+            conn = PooledDB(
+                creator=hive,
+                host=conf.host,
+                port=conf.port,
+                username=conf.username,
+                database=conf.database, **conn_conf
+            )
+
+    return conn
+
+
+def get_driver_pool(ds: CoreDatasource | AssistantOutDsSchema, db_config: dict = {}):
+    pool = driver_pool_manager.get_pool(ds, db_config)
+    return pool
 
 
 def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDsSchema, is_raise: bool = False):
@@ -327,16 +429,13 @@ def get_version(ds: CoreDatasource | AssistantOutDsSchema):
         else:
             extra_config_dict = get_extra_config(conf)
             if equals_ignore_case(ds.type, 'dm'):
-                with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
-                                      port=conf.port) as conn, conn.cursor() as cursor:
+                with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                     cursor.execute(sql, timeout=10, **extra_config_dict)
                     res = cursor.fetchall()
                     version = res[0][0]
             elif equals_ignore_case(ds.type, 'doris', 'starrocks'):
-                ssl_args = {'ssl': {'ssl_mode': 'REQUIRE'}} if conf.ssl else {}
-                with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
-                                     port=conf.port, db=conf.database, connect_timeout=10,
-                                     read_timeout=10, **extra_config_dict, **ssl_args) as conn, conn.cursor() as cursor:
+                t_conf = {'connect_timeout': 10, 'read_timeout': 10}
+                with get_driver_pool(ds, t_conf).connection() as conn, conn.cursor() as cursor:
                     cursor.execute(sql)
                     res = cursor.fetchall()
                     version = res[0][0]
@@ -352,7 +451,7 @@ def get_schema(ds: CoreDatasource):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     db = DB.get_db(ds.type)
     if db.connect_type == ConnectType.sqlalchemy:
-        with get_session(ds) as session:
+        with sessionmaker(bind=get_engine(ds))() as session:
             sql: str = ''
             if equals_ignore_case(ds.type, "sqlServer"):
                 sql = """select name
@@ -368,10 +467,9 @@ def get_schema(ds: CoreDatasource):
                 res_list = [item[0] for item in res]
                 return res_list
     else:
-        extra_config_dict = get_extra_config(conf)
+        # extra_config_dict = get_extra_config(conf)
         if equals_ignore_case(ds.type, 'dm'):
-            with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
-                                  port=conf.port, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_connection(ds) as conn, conn.cursor() as cursor:
                 cursor.execute("""select OBJECT_NAME
                                   from all_objects
                                   where object_type = 'SCH'""", timeout=conf.timeout)
@@ -379,19 +477,14 @@ def get_schema(ds: CoreDatasource):
                 res_list = [item[0] for item in res]
                 return res_list
         elif equals_ignore_case(ds.type, 'redshift'):
-            with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
-                                            password=conf.password,
-                                            timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_connection(ds) as conn, conn.cursor() as cursor:
                 cursor.execute("""SELECT nspname
                                   FROM pg_namespace""")
                 res = cursor.fetchall()
                 res_list = [item[0] for item in res]
                 return res_list
         elif equals_ignore_case(ds.type, 'kingbase'):
-            with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
-                                  password=conf.password,
-                                  options=f"-c statement_timeout={conf.timeout * 1000}",
-                                  **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_connection(ds) as conn, conn.cursor() as cursor:
                 cursor.execute("""SELECT nspname
                                   FROM pg_namespace""")
                 res = cursor.fetchall()
@@ -405,43 +498,34 @@ def get_tables(ds: CoreDatasource):
     db = DB.get_db(ds.type)
     sql, sql_param = get_table_sql(ds, conf, get_version(ds))
     if db.connect_type == ConnectType.sqlalchemy:
-        with get_session(ds) as session:
+        with sessionmaker(bind=get_engine(ds))() as session:
             with session.execute(text(sql), {"param": sql_param}) as result:
                 res = result.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
     else:
-        extra_config_dict = get_extra_config(conf)
+        # extra_config_dict = get_extra_config(conf)
         if equals_ignore_case(ds.type, 'dm'):
-            with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
-                                  port=conf.port, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_connection(ds) as conn, conn.cursor() as cursor:
                 cursor.execute(sql, {"param": sql_param}, timeout=conf.timeout)
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
         elif equals_ignore_case(ds.type, 'doris', 'starrocks'):
-            ssl_args = {'ssl': {'ssl_mode': 'REQUIRE'}} if conf.ssl else {}
-            with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
-                                 port=conf.port, db=conf.database, connect_timeout=conf.timeout,
-                                 read_timeout=conf.timeout, **extra_config_dict,
-                                 **ssl_args) as conn, conn.cursor() as cursor:
+            # ssl_args = {'ssl': {'ssl_mode': 'REQUIRE'}} if conf.ssl else {}
+            with get_driver_connection(ds) as conn, conn.cursor() as cursor:
                 cursor.execute(sql, (sql_param,))
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
         elif equals_ignore_case(ds.type, 'redshift'):
-            with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
-                                            password=conf.password,
-                                            timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_connection(ds) as conn, conn.cursor() as cursor:
                 cursor.execute(sql, (sql_param,))
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
         elif equals_ignore_case(ds.type, 'kingbase'):
-            with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
-                                  password=conf.password,
-                                  options=f"-c statement_timeout={conf.timeout * 1000}",
-                                  **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_connection(ds) as conn, conn.cursor() as cursor:
                 cursor.execute(sql.format(sql_param))
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
@@ -451,8 +535,7 @@ def get_tables(ds: CoreDatasource):
             res_list = [TableSchema(*item) for item in res]
             return res_list
         elif equals_ignore_case(ds.type, 'hive'):
-            with hive.connect(host=conf.host, port=conf.port, username=conf.username,
-                              database=conf.database, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_connection(ds) as conn, conn.cursor() as cursor:
                 cursor.execute(sql)
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
@@ -471,37 +554,28 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
     else:
-        extra_config_dict = get_extra_config(conf)
+        # extra_config_dict = get_extra_config(conf)
         if equals_ignore_case(ds.type, 'dm'):
-            with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
-                                  port=conf.port, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 cursor.execute(sql, {"param1": p1, "param2": p2}, timeout=conf.timeout)
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
         elif equals_ignore_case(ds.type, 'doris', 'starrocks'):
-            ssl_args = {'ssl': {'ssl_mode': 'REQUIRE'}} if conf.ssl else {}
-            with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
-                                 port=conf.port, db=conf.database, connect_timeout=conf.timeout,
-                                 read_timeout=conf.timeout, **extra_config_dict,
-                                 **ssl_args) as conn, conn.cursor() as cursor:
+            # ssl_args = {'ssl': {'ssl_mode': 'REQUIRE'}} if conf.ssl else {}
+            with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 cursor.execute(sql, (p1, p2))
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
         elif equals_ignore_case(ds.type, 'redshift'):
-            with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
-                                            password=conf.password,
-                                            timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 cursor.execute(sql, (p1, p2))
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
         elif equals_ignore_case(ds.type, 'kingbase'):
-            with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
-                                  password=conf.password,
-                                  options=f"-c statement_timeout={conf.timeout * 1000}",
-                                  **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 cursor.execute(sql.format(p1, p2))
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
@@ -511,8 +585,7 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
             res_list = [ColumnSchema(*item) for item in res]
             return res_list
         elif equals_ignore_case(ds.type, 'hive'):
-            with hive.connect(host=conf.host, port=conf.port, username=conf.username,
-                              database=conf.database, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 cursor.execute(sql)
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
@@ -721,10 +794,9 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                     raise ParseSQLResultError(str(ex))
     else:
         conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
-        extra_config_dict = get_extra_config(conf)
+        # extra_config_dict = get_extra_config(conf)
         if equals_ignore_case(ds.type, 'dm'):
-            with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
-                                  port=conf.port, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute(sql, timeout=conf.timeout)
                     res = cursor.fetchall()
@@ -741,11 +813,7 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'doris', 'starrocks'):
-            ssl_args = {'ssl': {'ssl_mode': 'REQUIRE'}} if conf.ssl else {}
-            with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
-                                 port=conf.port, db=conf.database, connect_timeout=conf.timeout,
-                                 read_timeout=conf.timeout, **extra_config_dict,
-                                 **ssl_args) as conn, conn.cursor() as cursor:
+            with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute(sql)
                     res = cursor.fetchall()
@@ -762,9 +830,7 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'redshift'):
-            with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
-                                            password=conf.password,
-                                            timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute(sql)
                     res = cursor.fetchall()
@@ -781,10 +847,7 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'kingbase'):
-            with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
-                                  password=conf.password,
-                                  options=f"-c statement_timeout={conf.timeout * 1000}",
-                                  **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute(sql)
                     res = cursor.fetchall()
@@ -817,8 +880,7 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
             except Exception as ex:
                 raise Exception(str(ex))
         elif equals_ignore_case(ds.type, 'hive'):
-            with hive.connect(host=conf.host, port=conf.port, username=conf.username,
-                              database=conf.database, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 try:
                     # Hive uses backticks for identifiers; normalize quoted identifiers as a compatibility fallback.
                     hive_sql = re.sub(r'"([A-Za-z_][A-Za-z0-9_]*)"', r'`\1`', sql)
@@ -1107,7 +1169,7 @@ class ConnectionPoolManager:
                     print(f"[LRU] remove oldest: {oldest_id}")
 
             # 3. 创建新连接池并放入字典末尾
-            engine = get_engine(ds)
+            engine = get_engine(ds, use_pool=True)
             new_pool = sessionmaker(bind=engine)
             self._pools[ds.id] = new_pool
             print(f"[LRU] create: {ds.id}")
@@ -1122,3 +1184,48 @@ class ConnectionPoolManager:
 
 
 pool_manager = ConnectionPoolManager(max_pools=500)
+
+
+class DriverConnectionPoolManager:
+    def __init__(self, max_pools=500):
+        """
+        init
+        :param max_pools: max pool
+        """
+        self.max_pools = max_pools
+        self._pools = OrderedDict()  # 使用有序字典实现 LRU
+        self._lock = threading.Lock()  # 保证多线程安全
+
+    def get_pool(self, ds: CoreDatasource | AssistantOutDsSchema, db_config):
+        """
+        get connection pool（lazy load + LRU update）
+        """
+        with self._lock:
+            if ds.id:
+                # 1. 如果连接池已存在，将其移动到字典末尾（标记为最近使用）
+                if ds.id in self._pools:
+                    self._pools.move_to_end(ds.id)
+                    print(f"[LRU] return: {ds.id}")
+                    return self._pools[ds.id]
+
+                # 2. 如果连接池不存在，检查是否达到上限，若达到则淘汰最久未使用的（字典头部）
+                if len(self._pools) >= self.max_pools:
+                    oldest_id, oldest_pool = self._pools.popitem(last=False)
+                    oldest_pool.close()  # 安全关闭被驱逐的连接池
+                    print(f"[LRU] remove oldest: {oldest_id}")
+
+            # 3. 创建新连接池并放入字典末尾
+            new_pool = get_driver_connection(ds, db_config, use_pool=True)
+            self._pools[ds.id] = new_pool
+            print(f"[LRU] create: {ds.id}")
+            return new_pool
+
+    def close_all(self):
+        """stop"""
+        with self._lock:
+            for pool in self._pools.values():
+                pool.close()
+            self._pools.clear()
+
+
+driver_pool_manager = DriverConnectionPoolManager(max_pools=500)

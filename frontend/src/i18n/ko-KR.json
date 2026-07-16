@@ -413,7 +413,8 @@
       "address": "주소",
       "low_version": "낮은 버전 호환",
       "ssl": "SSL 활성화",
-      "file_path": "파일 경로"
+      "file_path": "파일 경로",
+      "pool_size": "연결 풀 크기"
     },
     "sync_fields": "동기화된 테이블 구조",
     "sync_fields_success": "테이블 구조 동기화 성공",

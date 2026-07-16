@@ -128,6 +128,7 @@ const form = ref<any>({
   timeout: 30,
   lowVersion: false,
   ssl: false,
+  poolSize: 5,
 })
 
 const close = () => {
@@ -177,6 +178,10 @@ const initForm = (item: any, editTable: boolean = false) => {
           : true
       form.value.ssl =
         configuration.ssl !== null && configuration.ssl !== undefined ? configuration.ssl : false
+      form.value.poolSize =
+        configuration.poolSize !== null && configuration.poolSize !== undefined
+          ? configuration.poolSize
+          : 5
     }
 
     if (editTable) {
@@ -250,6 +255,7 @@ const initForm = (item: any, editTable: boolean = false) => {
       timeout: 30,
       lowVersion: false,
       ssl: false,
+      poolSize: 5,
     }
   }
   dialogVisible.value = true
@@ -339,6 +345,7 @@ const buildConf = () => {
       timeout: form.value.timeout,
       lowVersion: form.value.lowVersion,
       ssl: form.value.ssl,
+      poolSize: form.value.poolSize,
     })
   )
   const obj = JSON.parse(JSON.stringify(form.value))
@@ -356,6 +363,7 @@ const buildConf = () => {
   delete obj.timeout
   delete obj.lowVersion
   delete obj.ssl
+  delete obj.poolSize
   return obj
 }
 
@@ -659,7 +667,9 @@ defineExpose({
             <el-input
               v-model="form.filename"
               clearable
-              :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.file_path')"
+              :placeholder="
+                $t('datasource.please_enter') + $t('common.empty') + t('ds.form.file_path')
+              "
             />
           </el-form-item>
         </div>
@@ -735,7 +745,11 @@ defineExpose({
           >
             <el-checkbox v-model="form.lowVersion" :label="t('ds.form.low_version')" />
           </el-form-item>
-          <el-form-item v-if="form.type === 'mysql' || form.type === 'doris'" :label="t('ds.form.ssl')" prop="ssl">
+          <el-form-item
+            v-if="form.type === 'mysql' || form.type === 'doris'"
+            :label="t('ds.form.ssl')"
+            prop="ssl"
+          >
             <el-switch v-model="form.ssl" />
           </el-form-item>
           <el-form-item v-if="form.type !== 'es'" :label="t('ds.form.extra_jdbc')">
@@ -778,6 +792,15 @@ defineExpose({
               clearable
               :min="0"
               :max="300"
+              controls-position="right"
+            />
+          </el-form-item>
+          <el-form-item v-if="form.type !== 'es'" :label="t('ds.form.pool_size')" prop="poolSize">
+            <el-input-number
+              v-model="form.poolSize"
+              clearable
+              :min="1"
+              :max="500"
               controls-position="right"
             />
           </el-form-item>
