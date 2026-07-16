@@ -28,7 +28,7 @@ def upgrade():
                     existing_type=sa.Text(),
                     type_=postgresql.JSONB(astext_type=sa.Text()),
                     existing_nullable=True,
-                    postgresql_using='permission_list::jsonb')
+                    postgresql_using='user_list::jsonb')
     # ### end Alembic commands ###
 
 
