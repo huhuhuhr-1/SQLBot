@@ -1,6 +1,7 @@
 import json
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import List, Optional
 
 from fastapi import APIRouter, Form, HTTPException, Path, Query, Request, Response, UploadFile
@@ -22,30 +23,83 @@ from common.core.deps import CurrentAssistant, SessionDep, Trans, CurrentUser
 from common.core.security import create_access_token
 from common.core.sqlbot_cache import clear_cache
 from common.utils.utils import get_origin_from_referer, origin_match_domain
-
 router = APIRouter(tags=["system_assistant"], prefix="/system/assistant")
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
-
+from sqlbot_xpack.core import decrypt_embedded_sign
 
 @router.get("/info/{id}", include_in_schema=False)
-async def info(request: Request, response: Response, session: SessionDep, trans: Trans, id: int) -> AssistantModel:
+async def info(request: Request, response: Response, session: SessionDep, trans: Trans, id: int, virtual: Optional[int] = Query(None)):
     if not id:
         raise Exception('miss assistant id')
     db_model = await get_assistant_info(session=session, assistant_id=id)
     if not db_model:
         raise RuntimeError(f"assistant application not exist")
     db_model = AssistantModel.model_validate(db_model)
-    
-    origin = request.headers.get("origin") or get_origin_from_referer(request)
-    if not origin:
-        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
-    origin = origin.rstrip('/')
-    if not origin_match_domain(origin, db_model.domain):
-        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
-    
+
+    # 校验 SQLBOT-EMBEDDED-SIGN 请求头
+    sign_header = request.headers.get("SQLBOT-EMBEDDED-SIGN")
+    if not sign_header:
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=''))
+
+    sign_data = await decrypt_embedded_sign(sign_header)
+
+    # 校验 assistant_id 与 id 参数一致
+    if str(sign_data.get("assistant_id")) != str(id):
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=''))
+
+    # 校验 target（来源域名）是否合法
+    target = sign_data.get("target", "")
+    if not origin_match_domain(target, db_model.domain):
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=target or ''))
+
+    # 校验 sign_time 是否在 10 秒内
+    sign_time_str = sign_data.get("sign_time", "")
+    sign_time = datetime.fromisoformat(sign_time_str)
+    now_utc = datetime.now(timezone.utc)
+    sign_time_utc = sign_time.astimezone(timezone.utc)
+    if abs((now_utc - sign_time_utc).total_seconds()) > 10:
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=target or ''))
+
+    # 校验是否为真实浏览器请求（非自动化工具）
+    if sign_data.get("webdriver", False):
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=target or ''))
+
+    # 校验 User-Agent 一致性（签名中的 navigator.userAgent 与请求头一致）
+    sign_user_agent = sign_data.get("user_agent", "")
+    request_user_agent = request.headers.get("User-Agent", "")
+    if sign_user_agent != request_user_agent:
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=target or ''))
+
+    # 校验 timezone 与 sign_time 偏移一致性（防时区伪造）
+    tz_name = sign_data.get("timezone", "")
+    tz = ZoneInfo(tz_name)
+    sign_time_naive = sign_time.replace(tzinfo=None)
+    if tz.utcoffset(sign_time_naive) != sign_time.utcoffset():
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=target or ''))
+
+    origin = target.rstrip('/')
+
     response.headers["Access-Control-Allow-Origin"] = origin
-    return db_model
+
+
+    assistant_oid = 1
+    if (db_model.type == 0):
+        configuration = db_model.configuration
+        config_obj = json.loads(configuration) if configuration else {}
+        assistant_oid = config_obj.get('oid', 1)
+
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    assistantDict = {
+        "id": virtual, "account": 'sqlbot-inner-assistant', "oid": assistant_oid, "assistant_id": id
+    }
+    access_token = create_access_token(
+        assistantDict, expires_delta=access_token_expires
+    )
+
+    result = db_model.model_dump()
+    result["token"] = access_token
+    return result
 
 
 @router.get("/app/{appId}", include_in_schema=False)
@@ -67,7 +121,7 @@ async def getApp(request: Request, response: Response, session: SessionDep, tran
     return db_model
 
 
-@router.get("/validator", response_model=AssistantValidator, include_in_schema=False)
+""" @router.get("/validator", response_model=AssistantValidator, include_in_schema=False)
 async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query(None)):
     if not id:
         raise Exception('miss assistant id')
@@ -89,7 +143,7 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
     access_token = create_access_token(
         assistantDict, expires_delta=access_token_expires
     )
-    return AssistantValidator(True, True, True, access_token)
+    return AssistantValidator(True, True, True, access_token) """
 
 
 @router.get('/picture/{file_id}', summary=f"{PLACEHOLDER_PREFIX}assistant_picture_api", description=f"{PLACEHOLDER_PREFIX}assistant_picture_api")
@@ -111,6 +165,7 @@ async def picture(file_id: str = Path(description="file_id")):
 
 
 @router.patch('/ui', summary=f"{PLACEHOLDER_PREFIX}assistant_ui_api", description=f"{PLACEHOLDER_PREFIX}assistant_ui_api")
+@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.APPLICATION, result_id_expr="id"))
 async def ui(session: SessionDep, data: str = Form(), files: List[UploadFile] = []):
     json_data = json.loads(data)
@@ -130,7 +185,7 @@ async def ui(session: SessionDep, data: str = Form(), files: List[UploadFile] = 
             file.filename = file_name
             if flag_name == 'logo' or flag_name == 'float_icon':
                 try:
-                    SQLBotFileUtils.check_file(file=file, file_types=[".jpg", ".png", ".svg"],
+                    SQLBotFileUtils.check_file(file=file, file_types=[".jpg", ".jpeg", ".png"],
                                                limit_file_size=(10 * 1024 * 1024))
                 except ValueError as e:
                     error_msg = str(e)
@@ -222,6 +277,8 @@ def get_db_type(type):
 async def query(session: SessionDep, current_user: CurrentUser):
     list_result = session.exec(select(AssistantModel).where(AssistantModel.oid == current_user.oid, AssistantModel.type != 4).order_by(AssistantModel.name,
                                                                                                AssistantModel.create_time)).all()
+    for model in list_result:
+        model.enable_custom_model = model.enable_custom_model or False
     return list_result
 
 
@@ -257,13 +314,13 @@ async def update(request: Request, session: SessionDep, editor: AssistantDTO):
     dynamic_upgrade_cors(request=request, session=session)
 
 
-@router.get("/{id}", response_model=AssistantModel, summary=f"{PLACEHOLDER_PREFIX}assistant_query_api", description=f"{PLACEHOLDER_PREFIX}assistant_query_api")
+""" @router.get("/{id}", response_model=AssistantModel, summary=f"{PLACEHOLDER_PREFIX}assistant_query_api", description=f"{PLACEHOLDER_PREFIX}assistant_query_api")
 async def get_one(session: SessionDep, id: int = Path(description="ID")):
     db_model = await get_assistant_info(session=session, assistant_id=id)
     if not db_model:
         raise ValueError(f"AssistantModel with id {id} not found")
     db_model = AssistantModel.model_validate(db_model)
-    return db_model
+    return db_model """
 
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}assistant_del_api", description=f"{PLACEHOLDER_PREFIX}assistant_del_api")

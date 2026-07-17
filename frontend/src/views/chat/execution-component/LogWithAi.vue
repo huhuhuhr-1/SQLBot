@@ -51,46 +51,44 @@ const recordsBeforeCurrentQuestion = computed(() =>
     <template v-if="item.error">
       {{ error }}
     </template>
-    <template v-else>
-      <div class="item-list">
-        <div class="inner-title">{{ t('chat.log_system') }}</div>
-        <div class="inner-item">
-          <div class="inner-item-title">
-            {{ systemRecord.type }}
-          </div>
-          <div class="inner-item-description">
-            <SQLComponent :sql="systemRecord.content" />
-          </div>
+    <div class="item-list flex-gap-fallback flex-col">
+      <div class="inner-title">{{ t('chat.log_system') }}</div>
+      <div class="inner-item flex-gap-fallback flex-col">
+        <div class="inner-item-title">
+          {{ systemRecord.type }}
         </div>
-        <template v-if="recordsBeforeCurrentQuestion.length > 0">
-          <div class="inner-title">{{ t('chat.log_history') }}</div>
-          <div class="inner-item">
-            <div v-for="(ele, index) in recordsBeforeCurrentQuestion" :key="index">
-              <div class="inner-item-title">
-                {{ ele.type }}
-              </div>
-              <div class="inner-item-description">
-                <SQLComponent :sql="ele.content" />
-              </div>
-            </div>
-          </div>
-        </template>
-        <div class="inner-title">{{ t('chat.log_question') }}</div>
-        <div class="inner-item">
-          <div class="inner-item-description">
-            <SQLComponent :sql="lastHumanRecord.content" />
-          </div>
+        <div class="inner-item-description">
+          <SQLComponent :sql="systemRecord.content" />
         </div>
-        <template v-if="lastAiAfterHuman">
-          <div class="inner-title">{{ t('chat.log_answer') }}</div>
-          <div class="inner-item">
-            <div class="inner-item-description">
-              <SQLComponent :sql="lastAiAfterHuman.content" />
-            </div>
-          </div>
-        </template>
       </div>
-    </template>
+      <template v-if="recordsBeforeCurrentQuestion.length > 0">
+        <div class="inner-title">{{ t('chat.log_history') }}</div>
+        <div class="inner-item flex-gap-fallback flex-col">
+          <div v-for="(ele, index) in recordsBeforeCurrentQuestion" :key="index">
+            <div class="inner-item-title">
+              {{ ele.type }}
+            </div>
+            <div class="inner-item-description">
+              <SQLComponent :sql="ele.content" />
+            </div>
+          </div>
+        </div>
+      </template>
+      <div class="inner-title">{{ t('chat.log_question') }}</div>
+      <div class="inner-item flex-gap-fallback flex-col">
+        <div class="inner-item-description">
+          <SQLComponent :sql="lastHumanRecord.content" />
+        </div>
+      </div>
+      <template v-if="lastAiAfterHuman">
+        <div class="inner-title">{{ t('chat.log_answer') }}</div>
+        <div class="inner-item flex-gap-fallback flex-col">
+          <div class="inner-item-description">
+            <SQLComponent :sql="lastAiAfterHuman.content" />
+          </div>
+        </div>
+      </template>
+    </div>
   </BaseContent>
 </template>
 
@@ -105,6 +103,7 @@ const recordsBeforeCurrentQuestion = computed(() =>
 .item-list {
   display: flex;
   flex-direction: column;
+  --gap-size: 8px;
   gap: 8px;
   align-items: stretch;
   flex-wrap: nowrap;
@@ -112,6 +111,7 @@ const recordsBeforeCurrentQuestion = computed(() =>
     border: 1px solid #dee0e3;
     display: flex;
     flex-direction: column;
+    --gap-size: 8px;
     gap: 8px;
     border-radius: 12px;
     padding: 16px;

@@ -59,6 +59,10 @@ const languageList = computed(() => [
     value: 'zh-CN',
   },
   {
+    name: '繁體中文',
+    value: 'zh-TW',
+  },
+  {
     name: '한국인',
     value: 'ko-KR',
   },
@@ -341,7 +345,7 @@ const logout = async () => {
       position: relative;
       cursor: pointer;
       margin: 0 4px;
-      border-radius: 4px;
+      border-radius: 6px;
       &:hover {
         background-color: #1f23291a;
       }
@@ -378,7 +382,7 @@ const logout = async () => {
       padding-right: 8px;
       margin-bottom: 2px;
       position: relative;
-      border-radius: 4px;
+      border-radius: 6px;
       cursor: pointer;
       &:not(.empty):hover {
         background: #1f23291a;

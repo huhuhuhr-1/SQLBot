@@ -1,6 +1,39 @@
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import { endsWith, filter, replace } from 'lodash-es'
 
+/**
+ * 为数值添加千分符，保持原有小数位数不变
+ * 纯字符串处理，避免精度丢失
+ * 支持：正负整数、小数、字符串格式的数值
+ */
+export function formatNumber(value: any): string | number {
+  if (value === null || value === undefined || value === '') {
+    return value
+  }
+
+  let str: string
+  if (typeof value === 'string') {
+    str = value.trim()
+  } else if (typeof value === 'number') {
+    str = String(value)
+  } else {
+    return value
+  }
+
+  const match = str.match(/^([+-])?(\d+)(\.(\d+))?$/)
+  if (!match) {
+    return value
+  }
+
+  const sign = match[1] || ''
+  const intPart = match[2]
+  const decPart = match[3] || ''
+
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
+  return sign + formattedInt + decPart
+}
+
 interface CheckedData {
   isPercent: boolean
   data: Array<ChartData>
@@ -51,9 +84,9 @@ export function processMultiQuotaData(
   data: Array<ChartData>
 ) {
   const _list: Array<ChartData> = []
-  const _map: { [propName: string]: string } = {}
+  const _map: { [propName: string]: ChartAxis } = {}
   y.forEach((axis) => {
-    _map[axis.value] = axis.name
+    _map[axis.value] = axis
   })
   for (const datum of data) {
     multiQuota.forEach((quota) => {
@@ -62,7 +95,8 @@ export function processMultiQuotaData(
         _data[xAxis.value] = datum[xAxis.value]
       }
       _data['sqlbot_auto_quota'] = datum[quota]
-      _data['sqlbot_auto_series'] = _map[quota]
+      _data['sqlbot_auto_series'] = _map[quota].name
+      _data['sqlbot_axis_format'] = _map[quota].formatNumber
       _list.push(_data)
     })
   }

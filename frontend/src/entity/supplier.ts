@@ -46,6 +46,10 @@ export const supplierList: Array<{
           { key: 'extra_body', val: '{"enable_thinking": false}', type: 'json' },
         ],
         model_options: [
+          { name: 'qwen3.6-plus' },
+          { name: 'qwen3.5-plus' },
+          { name: 'qwen3.5-flash' },
+          { name: 'qwen3-coder-next' },
           { name: 'qwen3-coder-plus' },
           { name: 'qwen3-coder-flash' },
           { name: 'qwen-plus' },
@@ -272,7 +276,7 @@ export const supplierList: Array<{
           { name: 'doubao-1-5-pro-32k-character-250715' },
           { name: 'kimi-k2-250711' },
           { name: 'deepseek-v3-250324' },
-          { name: 'deepseek-r1' },
+          { name: 'deepseek-v4-pro-260425' },
         ],
       },
     },
@@ -286,11 +290,7 @@ export const supplierList: Array<{
       0: {
         api_domain: 'https://api.minimax.io/v1',
         common_args: [{ key: 'temperature', val: 0.7, type: 'number', range: '[0, 1]' }],
-        model_options: [
-          { name: 'MiniMax-M2.7' },
-          { name: 'MiniMax-M2.5' },
-          { name: 'MiniMax-M2.5-highspeed' },
-        ],
+        model_options: [{ name: 'MiniMax-M3' }, { name: 'MiniMax-M2.7' }],
       },
     },
   },

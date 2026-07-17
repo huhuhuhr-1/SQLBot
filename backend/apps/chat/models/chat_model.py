@@ -1,8 +1,9 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Union
+from typing import List, Optional, Any, Union
 
 from fastapi import Body
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, Text, BigInteger, DateTime, Identity, Boolean
 from sqlalchemy import Enum as SQLAlchemyEnum
@@ -174,6 +175,9 @@ class RenameChat(BaseModel):
     brief: str = ''
     brief_generate: bool = True
 
+class SimpleChat(BaseModel):
+    id: int = None
+    brief: str = ''
 
 class ChatInfo(BaseModel):
     id: Optional[int] = None
@@ -228,8 +232,11 @@ class AiModelQuestion(BaseModel):
     custom_prompt: str = ""
     error_msg: str = ""
     regenerate_record_id: Optional[int] = None
+    sample_data: str = ""
+    sqlbot_name: str = "SQLBot"
 
     def sql_sys_question(self, db_type: Union[str, DB], enable_query_limit: bool = True):
+        templates: dict[str, str] = {}
         _sql_template = get_sql_example_template(db_type)
         _base_template = get_sql_template()
         _process_check = _sql_template.get('process_check') if _sql_template.get('process_check') else _base_template[
@@ -245,66 +252,91 @@ class AiModelQuestion(BaseModel):
             'example_answer_2']
         _example_answer_3 = _sql_template['example_answer_3_with_limit'] if enable_query_limit else _sql_template[
             'example_answer_3']
-        return _base_template['system'].format(engine=self.engine, schema=self.db_schema, question=self.question,
-                                               lang=self.lang, terminologies=self.terminologies,
-                                               data_training=self.data_training, custom_prompt=self.custom_prompt,
-                                               process_check=_process_check,
-                                               base_sql_rules=_base_sql_rules,
-                                               basic_sql_examples=_sql_examples,
-                                               example_engine=_example_engine,
-                                               example_answer_1=_example_answer_1,
-                                               example_answer_2=_example_answer_2,
-                                               example_answer_3=_example_answer_3)
+
+        templates['system'] = _base_template['system'].format(lang=self.lang, process_check=_process_check,
+                                                              sqlbot_name=self.sqlbot_name)
+        templates['rules'] = _base_template['generate_rules'].format(lang=self.lang,
+                                                                     sqlbot_name=self.sqlbot_name,
+                                                                     base_sql_rules=_base_sql_rules,
+                                                                     basic_sql_examples=_sql_examples,
+                                                                     example_engine=_example_engine,
+                                                                     example_answer_1=_example_answer_1,
+                                                                     example_answer_2=_example_answer_2,
+                                                                     example_answer_3=_example_answer_3)
+        templates['schema'] = _base_template['generate_basic_info'].format(engine=self.engine, schema=self.db_schema,
+                                                                           sample_data=self.sample_data)
+
+        if self.terminologies:
+            templates['terminologies'] = _base_template['generate_terminologies_info'].format(
+                terminologies=self.terminologies)
+
+        if self.data_training:
+            templates['data_training'] = _base_template['generate_data_training_info'].format(
+                data_training=self.data_training)
+
+        if self.custom_prompt:
+            templates['custom_prompt'] = _base_template['generate_custom_prompt_info'].format(
+                custom_prompt=self.custom_prompt)
+
+        return templates
 
     def sql_user_question(self, current_time: str, change_title: bool):
         _question = self.question
         if self.regenerate_record_id:
             _question = get_sql_template()['regenerate_hint'] + self.question
-        return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=_question,
+        return get_sql_template()['user'].format(lang=self.lang, engine=self.engine, schema=self.db_schema,
+                                                 question=_question,
                                                  rule=self.rule, current_time=current_time, error_msg=self.error_msg,
                                                  change_title=change_title)
 
     def chart_sys_question(self):
-        return get_chart_template()['system'].format(sql=self.sql, question=self.question, lang=self.lang)
+        templates: dict[str, str] = {
+            'system': get_chart_template()['system'].format(lang=self.lang, sqlbot_name=self.sqlbot_name),
+            'rules': get_chart_template()['generate_rules'].format(lang=self.lang)
+        }
+        return templates
 
     def chart_user_question(self, chart_type: Optional[str] = '', schema: Optional[str] = ''):
-        return get_chart_template()['user'].format(sql=self.sql, question=self.question, rule=self.rule,
+        return get_chart_template()['user'].format(lang=self.lang, sql=self.sql, question=self.question, rule=self.rule,
                                                    chart_type=chart_type, schema=schema)
 
     def analysis_sys_question(self):
         return get_analysis_template()['system'].format(lang=self.lang, terminologies=self.terminologies,
-                                                        custom_prompt=self.custom_prompt)
+                                                        custom_prompt=self.custom_prompt, sqlbot_name=self.sqlbot_name)
 
     def analysis_user_question(self):
         return get_analysis_template()['user'].format(fields=self.fields, data=self.data)
 
     def predict_sys_question(self):
-        return get_predict_template()['system'].format(lang=self.lang, custom_prompt=self.custom_prompt)
+        return get_predict_template()['system'].format(lang=self.lang, custom_prompt=self.custom_prompt,
+                                                       sqlbot_name=self.sqlbot_name)
 
     def predict_user_question(self):
         return get_predict_template()['user'].format(fields=self.fields, data=self.data)
 
     def datasource_sys_question(self):
-        return get_datasource_template()['system'].format(lang=self.lang)
+        return get_datasource_template()['system'].format(lang=self.lang, sqlbot_name=self.sqlbot_name)
 
     def datasource_user_question(self, datasource_list: str = "[]"):
-        return get_datasource_template()['user'].format(question=self.question, data=datasource_list)
+        return get_datasource_template()['user'].format(lang=self.lang, question=self.question, data=datasource_list)
 
     def guess_sys_question(self, articles_number: int = 4):
-        return get_guess_question_template()['system'].format(lang=self.lang, articles_number=articles_number)
+        return get_guess_question_template()['system'].format(lang=self.lang, articles_number=articles_number,
+                                                              sqlbot_name=self.sqlbot_name)
 
     def guess_user_question(self, old_questions: str = "[]"):
         return get_guess_question_template()['user'].format(question=self.question, schema=self.db_schema,
                                                             old_questions=old_questions)
 
     def filter_sys_question(self):
-        return get_permissions_template()['system'].format(lang=self.lang, engine=self.engine)
+        return get_permissions_template()['system'].format(lang=self.lang, engine=self.engine,
+                                                           sqlbot_name=self.sqlbot_name)
 
     def filter_user_question(self):
         return get_permissions_template()['user'].format(sql=self.sql, filter=self.filter)
 
     def dynamic_sys_question(self):
-        return get_dynamic_template()['system'].format(lang=self.lang, engine=self.engine)
+        return get_dynamic_template()['system'].format(lang=self.lang, engine=self.engine, sqlbot_name=self.sqlbot_name)
 
     def dynamic_user_question(self):
         return get_dynamic_template()['user'].format(sql=self.sql, sub_query=self.sub_query)
@@ -324,20 +356,30 @@ class McpDs(BaseModel):
     oid: Optional[str] = Body(description='组织ID，如果不传则为最后一次登录SQLBot时所使用的组织ID', default=None)
 
 
-class ChatStart(BaseModel):
+class ChatToken(BaseModel):
     username: str = Body(description='用户名')
     password: str = Body(description='密码')
 
 
-class McpQuestion(BaseModel):
-    question: str = Body(description='用户提问')
-    chat_id: int = Body(description='会话ID')
-    token: str = Body(description='token')
-    stream: Optional[bool] = Body(description='是否流式输出，默认为true开启, 关闭false则返回JSON对象', default=True)
-    lang: Optional[str] = Body(description='语言：zh-CN|en|ko-KR', default='zh-CN')
-    datasource_id: Optional[int | str] = Body(description='数据源ID，仅当当前对话没有确定数据源时有效', default=None)
+class ChatStart(BaseModel):
+    username: str = Body(description='用户名', default=None)
+    password: str = Body(description='密码', default=None)
+    token: str = Body(description='token', default=None)
     oid: Optional[str] = Body(
         description='组织ID，仅当数据源ID为空时有效，如果不传则为最后一次登录SQLBot时所使用的组织ID', default=None)
+
+
+class ChatQuestionBase(BaseModel):
+    question: str = Body(description='用户提问')
+    chat_id: int = Body(description='会话ID')
+
+
+class McpQuestion(ChatQuestionBase):
+    token: str = Body(description='token')
+    stream: Optional[bool] = Body(description='是否流式输出，默认为true开启, 关闭false则返回JSON对象', default=True)
+    lang: Optional[str] = Body(description='语言：zh-CN|zh-TW|en|ko-KR', default='zh-CN')
+    datasource_id: Optional[int | str] = Body(description='数据源ID，仅当当前对话没有确定数据源时有效', default=None)
+    return_img: Optional[bool] = Body(description='是否返回图表，默认为true开启, 关闭false则仅返回数据', default=True)
 
 
 class AxisObj(BaseModel):
@@ -357,3 +399,30 @@ class McpAssistant(BaseModel):
     url: str = Body(description='第三方数据接口')
     authorization: str = Body(description='第三方接口凭证')
     stream: Optional[bool] = Body(description='是否流式输出，默认为true开启, 关闭false则返回JSON对象', default=True)
+
+
+class SystemPromptMessage(SystemMessage):
+    sqlbot_system: bool = True
+
+    def __init__(
+            self, content: Union[str, list[Union[str, dict]]], **kwargs: Any
+    ) -> None:
+        super().__init__(content=content, **kwargs)
+
+
+class HumanPromptMessage(HumanMessage):
+    sqlbot_system: bool = True
+
+    def __init__(
+            self, content: Union[str, list[Union[str, dict]]], **kwargs: Any
+    ) -> None:
+        super().__init__(content=content, **kwargs)
+
+
+class AIPromptMessage(AIMessage):
+    sqlbot_system: bool = True
+
+    def __init__(
+            self, content: Union[str, list[Union[str, dict]]], **kwargs: Any
+    ) -> None:
+        super().__init__(content=content, **kwargs)

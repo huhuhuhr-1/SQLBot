@@ -31,17 +31,28 @@
   </div>
 </template>
 <script setup lang="ts">
-import { onBeforeMount, nextTick, onBeforeUnmount, ref, onMounted, reactive, computed } from 'vue'
+import {
+  onBeforeMount,
+  nextTick,
+  onBeforeUnmount,
+  ref,
+  onMounted,
+  reactive,
+  computed,
+  watch,
+} from 'vue'
 import ChatComponent from '@/views/chat/index.vue'
-import { request } from '@/utils/request'
 import LOGO from '@/assets/svg/logo-custom_small.svg'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useRoute } from 'vue-router'
-import { assistantApi } from '@/api/assistant'
+// import { assistantApi } from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistant'
 import { setCurrentColor } from '@/utils/utils'
 import { useI18n } from 'vue-i18n'
+import { i18n } from '@/i18n'
+import { useUserStore } from '@/stores/user'
+const userStore = useUserStore()
 
 const { t } = useI18n()
 const assistantStore = useAssistantStore()
@@ -60,19 +71,29 @@ const openHistory = () => {
   chatRef.value?.showFloatPopover()
 }
 
-const validator = ref({
+/* const validator = ref({
   id: '',
   valid: false,
   id_match: false,
   token: '',
-})
+}) */
 const appName = ref('')
 const loading = ref(true)
 const eventName = 'sqlbot_assistant_event'
+
+let resolveTokenReady: ((data: any) => any) | null = null
+const tokenReadyPromise = new Promise<any>((resolve) => {
+  resolveTokenReady = resolve
+})
 const communicationCb = async (event: any) => {
   if (event.data?.eventName === eventName) {
     if (event.data?.messageId !== route.query.id) {
       return
+    }
+    if (event.data['sqlbot_embedded_token']) {
+      assistantStore.setToken(event.data['sqlbot_embedded_token'])
+      const originData = event.data['sqlbot_origin_data']
+      resolveTokenReady?.(originData)
     }
     if (event.data?.busi == 'certificate') {
       const certificate = event.data['certificate']
@@ -91,6 +112,9 @@ const communicationCb = async (event: any) => {
     }
     if (event.data?.busi == 'createConversation') {
       createChat()
+    }
+    if (event.data?.busi == 'setLang') {
+      userStore.setLanguage(event.data.lang)
     }
   }
 }
@@ -128,6 +152,24 @@ const customSet = reactive({
   theme: '#1CBA90',
   header_font_color: '#1F2329',
 }) as { [key: string]: any }
+
+// 记录哪些字段被服务端 API 配置覆盖过，避免被 locale watcher 覆盖
+const configuredKeys = new Set<string>()
+
+// 监听 locale 变化，动态更新未被子定义覆盖的翻译字段
+watch(
+  () => i18n.global.locale.value,
+  () => {
+    if (!configuredKeys.has('welcome')) {
+      customSet.welcome = t('embedded.i_am_sqlbot')
+    }
+    if (!configuredKeys.has('welcome_desc')) {
+      customSet.welcome_desc = t('embedded.data_analysis_now')
+    }
+  },
+  { immediate: true }
+)
+
 const logo = ref()
 const basePath = import.meta.env.VITE_API_BASE_URL
 const baseUrl = basePath + '/system/assistant/picture/'
@@ -140,7 +182,14 @@ const setPageHeaderFontColor = (val: any) => {
   const ele = document.querySelector('body') as HTMLElement
   ele.style.setProperty('--ed-text-color-primary', val)
 }
+const setParamLanguage = () => {
+  const lang = route.query.lang
+  if (lang) {
+    userStore.setLanguage(lang as string)
+  }
+}
 onBeforeMount(async () => {
+  setParamLanguage()
   const assistantId = route.query.id
   if (!assistantId) {
     ElMessage.error('Miss assistant id, please check assistant url')
@@ -158,19 +207,15 @@ onBeforeMount(async () => {
   const history: boolean = route.query.history !== 'false'
   assistantStore.setHistory(history)
 
-  const now = Date.now()
-  assistantStore.setFlag(now)
   assistantStore.setId(assistantId?.toString() || '')
-  const param = {
+  /* const param = {
     id: assistantId,
     virtual: userFlag || assistantStore.getFlag,
     online,
   }
   validator.value = await assistantApi.validate(param)
-  assistantStore.setToken(validator.value.token)
+  assistantStore.setToken(validator.value.token) */
   assistantStore.setAssistant(true)
-  loading.value = false
-
   window.addEventListener('message', communicationCb)
   const readyData = {
     eventName: 'sqlbot_assistant_event',
@@ -180,43 +225,44 @@ onBeforeMount(async () => {
   }
   window.parent.postMessage(readyData, '*')
 
-  request.get(`/system/assistant/${assistantId}`).then((res) => {
-    if (res.name) {
-      appName.value = res.name
+  const res = await tokenReadyPromise
+  loading.value = false
+  if (res?.name) {
+    appName.value = res.name
+  }
+  if (res?.configuration) {
+    const rawData = JSON.parse(res?.configuration)
+    assistantStore.setAutoDs(rawData?.auto_ds)
+    if (rawData.logo) {
+      logo.value = baseUrl + rawData.logo
     }
-    if (res?.configuration) {
-      const rawData = JSON.parse(res?.configuration)
-      assistantStore.setAutoDs(rawData?.auto_ds)
-      if (rawData.logo) {
-        logo.value = baseUrl + rawData.logo
-      }
 
-      for (const key in customSet) {
-        if (
-          Object.prototype.hasOwnProperty.call(customSet, key) &&
-          ![null, undefined].includes(rawData[key])
-        ) {
-          customSet[key] = rawData[key]
-        }
+    for (const key in customSet) {
+      if (
+        Object.prototype.hasOwnProperty.call(customSet, key) &&
+        ![null, undefined].includes(rawData[key])
+      ) {
+        customSet[key] = rawData[key]
+        configuredKeys.add(key)
       }
-
-      if (!rawData.theme) {
-        const { customColor, themeColor } = appearanceStore
-        const currentColor =
-          themeColor === 'custom' && customColor
-            ? customColor
-            : themeColor === 'blue'
-              ? '#3370ff'
-              : '#1CBA90'
-        customSet.theme = currentColor || customSet.theme
-      }
-
-      nextTick(() => {
-        setPageCustomColor(customSet.theme)
-        setPageHeaderFontColor(customSet.header_font_color)
-      })
     }
-  })
+
+    if (!rawData.theme) {
+      const { customColor, themeColor } = appearanceStore
+      const currentColor =
+        themeColor === 'custom' && customColor
+          ? customColor
+          : themeColor === 'blue'
+            ? '#3370ff'
+            : '#1CBA90'
+      customSet.theme = currentColor || customSet.theme
+    }
+
+    nextTick(() => {
+      setPageCustomColor(customSet.theme)
+      setPageHeaderFontColor(customSet.header_font_color)
+    })
+  }
 })
 
 onBeforeUnmount(() => {

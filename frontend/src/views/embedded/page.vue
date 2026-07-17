@@ -4,7 +4,7 @@
     :class="dynamicType === 4 ? 'sqlbot--embedded-page' : 'sqlbot-embedded-assistant-page'"
   >
     <chat-component
-      v-if="!loading"
+      v-if="!loading && tokenReady"
       ref="chatRef"
       :welcome="customSet.welcome"
       :welcome-desc="customSet.welcome_desc"
@@ -18,11 +18,11 @@
 import ChatComponent from '@/views/chat/index.vue'
 import { nextTick, onBeforeMount, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { assistantApi } from '@/api/assistant'
+// import { assistantApi } from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistant'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useI18n } from 'vue-i18n'
-import { request } from '@/utils/request'
+import { i18n } from '@/i18n'
 import { setCurrentColor } from '@/utils/utils'
 import { useUserStore } from '@/stores/user'
 const userStore = useUserStore()
@@ -41,22 +41,58 @@ const customSet = reactive({
   theme: '#1CBA90',
   header_font_color: '#1F2329',
 }) as { [key: string]: any }
+
+// 记录哪些字段被服务端 API 配置覆盖过，避免被 locale watcher 覆盖
+const configuredKeys = new Set<string>()
+
+// 监听 locale 变化，动态更新未被子定义覆盖的翻译字段
+watch(
+  () => i18n.global.locale.value,
+  () => {
+    if (!configuredKeys.has('welcome')) {
+      customSet.welcome = t('embedded.i_am_sqlbot')
+    }
+    if (!configuredKeys.has('welcome_desc')) {
+      customSet.welcome_desc = t('embedded.data_analysis_now')
+    }
+  },
+  { immediate: true }
+)
+
 const logo = ref()
 const basePath = import.meta.env.VITE_API_BASE_URL
 const baseUrl = basePath + '/system/assistant/picture/'
-const validator = ref({
+/* const validator = ref({
   id: '',
   valid: false,
   id_match: false,
   token: '',
-})
+}) */
 const loading = ref(true)
 const divLoading = ref(true)
+const tokenReady = ref(false)
 const eventName = 'sqlbot_embedded_event'
+
+let resolveTokenReady: ((data: any) => void) | null = null
+const tokenReadyPromise = new Promise<any>((resolve) => {
+  resolveTokenReady = resolve
+})
 const communicationCb = async (event: any) => {
   if (event.data?.eventName === eventName) {
     if (event.data?.messageId !== route.query.id) {
       return
+    }
+    const assistantTypeObj = event.data['type']
+    if (
+      assistantTypeObj !== null &&
+      assistantTypeObj !== undefined &&
+      parseInt(event.data['type']) !== 4 &&
+      event.data['sqlbot_embedded_token']
+    ) {
+      assistantStore.setToken(event.data['sqlbot_embedded_token'])
+      const originData = event.data['sqlbot_origin_data']
+      resolveTokenReady?.(originData)
+      tokenReady.value = true
     }
     if (event.data?.busi == 'certificate') {
       const type = parseInt(event.data['type'])
@@ -65,7 +101,13 @@ const communicationCb = async (event: any) => {
       if (type === 4) {
         assistantStore.setToken(certificate)
         assistantStore.setAssistant(true)
-        await userStore.info()
+        tokenReady.value = true
+        try {
+          await userStore.info()
+        } catch (e) {
+          console.error('Failed to fetch user info in embedded page:', e)
+        }
+        setParamLanguage()
         loading.value = false
         return
       }
@@ -83,6 +125,9 @@ const communicationCb = async (event: any) => {
     }
     if (event.data?.busi == 'createConversation') {
       createChat()
+    }
+    if (event.data?.busi == 'setLang') {
+      userStore.setLanguage(event.data.lang)
     }
   }
 }
@@ -132,8 +177,15 @@ const setPageCustomColor = (val: any) => {
   setCurrentColor(val, ele)
 }
 
+const setParamLanguage = () => {
+  const lang = route.query.lang
+  if (lang) {
+    userStore.setLanguage(lang as string)
+  }
+}
 onBeforeMount(async () => {
   const assistantId = route.query.id
+  setParamLanguage()
   if (!assistantId) {
     ElMessage.error('Miss embedded id, please check embedded url')
     return
@@ -159,59 +211,58 @@ onBeforeMount(async () => {
   if (userFlag && userFlag === '1') {
     userFlag = '100001'
   }
-  const now = Date.now()
-  assistantStore.setFlag(now)
   assistantStore.setId(assistantId?.toString() || '')
   if (assistantType === 4) {
     assistantStore.setAssistant(true)
     registerReady(assistantId)
     return
   }
-  const param = {
+  /* const param = {
     id: assistantId,
     virtual: userFlag || assistantStore.getFlag,
     online,
   }
   validator.value = await assistantApi.validate(param)
-  assistantStore.setToken(validator.value.token)
+  assistantStore.setToken(validator.value.token) */
   assistantStore.setAssistant(true)
-  loading.value = false
 
   registerReady(assistantId)
 
-  request.get(`/system/assistant/${assistantId}`).then((res) => {
-    if (res?.configuration) {
-      const rawData = JSON.parse(res?.configuration)
-      assistantStore.setAutoDs(rawData?.auto_ds)
-      if (rawData.logo) {
-        logo.value = baseUrl + rawData.logo
-      }
+  const res = await tokenReadyPromise
+  loading.value = false
 
-      for (const key in customSet) {
-        if (
-          Object.prototype.hasOwnProperty.call(customSet, key) &&
-          ![null, undefined].includes(rawData[key])
-        ) {
-          customSet[key] = rawData[key]
-        }
-      }
-
-      if (!rawData.theme) {
-        const { customColor, themeColor } = appearanceStore
-        const currentColor =
-          themeColor === 'custom' && customColor
-            ? customColor
-            : themeColor === 'blue'
-              ? '#3370ff'
-              : '#1CBA90'
-        customSet.theme = currentColor || customSet.theme
-      }
-
-      nextTick(() => {
-        setPageCustomColor(customSet.theme)
-      })
+  if (res?.configuration) {
+    const rawData = JSON.parse(res?.configuration)
+    assistantStore.setAutoDs(rawData?.auto_ds)
+    if (rawData.logo) {
+      logo.value = baseUrl + rawData.logo
     }
-  })
+    rawData['name'] = rawData['name'] || res['name']
+    for (const key in customSet) {
+      if (
+        Object.prototype.hasOwnProperty.call(customSet, key) &&
+        ![null, undefined].includes(rawData[key])
+      ) {
+        customSet[key] = rawData[key]
+        configuredKeys.add(key)
+      }
+    }
+
+    if (!rawData.theme) {
+      const { customColor, themeColor } = appearanceStore
+      const currentColor =
+        themeColor === 'custom' && customColor
+          ? customColor
+          : themeColor === 'blue'
+            ? '#3370ff'
+            : '#1CBA90'
+      customSet.theme = currentColor || customSet.theme
+    }
+
+    nextTick(() => {
+      setPageCustomColor(customSet.theme)
+    })
+  }
 })
 
 onBeforeUnmount(() => {

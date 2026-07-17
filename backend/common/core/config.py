@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     SCRIPT_DIR: str = f"{BASE_DIR}/scripts"
     UPLOAD_DIR: str = "/opt/sqlbot/data/file"
     SQLBOT_KEY_EXPIRED: int = 100  # License key expiration timestamp, 0 means no expiration
+    
+    SQLBOT_DOC_ENABLED: bool = True
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -110,6 +112,10 @@ class Settings(BaseSettings):
     # 是否启用SQL查询行数限制，默认值，可被参数配置覆盖
     GENERATE_SQL_QUERY_LIMIT_ENABLED: bool = True
     GENERATE_SQL_QUERY_HISTORY_ROUND_COUNT: int = 3
+
+    # 安全配置：是否允许元数据查询（SHOW/DESCRIBE/DESC/EXPLAIN）
+    # 默认关闭，防止通过元数据查询泄露数据库结构
+    SQLBOT_ALLOW_METADATA_QUERIES: bool = False
 
     PARSE_REASONING_BLOCK_ENABLED: bool = True
     DEFAULT_REASONING_CONTENT_START: str = '<think>'

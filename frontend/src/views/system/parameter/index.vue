@@ -9,8 +9,12 @@ const { t } = useI18n()
 
 const state = reactive({
   parameterForm: reactive<any>({
+    'chat.sqlbot_name': 'SQLBot',
+    'chat.hide_thinking_block': false,
     'chat.expand_thinking_block': false,
     'chat.limit_rows': false,
+    'chat.show_sql': false,
+    'chat.show_log': false,
   }),
 })
 provide('parameterForm', state.parameterForm)
@@ -23,7 +27,13 @@ const loadData = () => {
           item.pkey?.startsWith('login') ||
           item.pkey?.startsWith('platform')
         ) {
-          state.parameterForm[item.pkey] = formatArg(item.pval)
+          if (item.pkey === 'chat.sqlbot_name') {
+            if (item.pval && item.pval.trim().length > 0) {
+              state.parameterForm[item.pkey] = item.pval
+            }
+          } else {
+            state.parameterForm[item.pkey] = formatArg(item.pval)
+          }
         }
       })
       console.log(state.parameterForm)
@@ -96,7 +106,25 @@ onMounted(() => {
           {{ t('parameter.question_count_settings') }}
         </div>
         <el-row>
+          <div class="card-item" style="width: 100%">
+            <div class="label">
+              {{ t('parameter.sqlbot_name') }}
+            </div>
+            <div class="value">
+              <el-input v-model="state.parameterForm['chat.sqlbot_name']" />
+            </div>
+          </div>
+        </el-row>
+        <div style="display: grid; grid-template-columns: 1fr 1fr">
           <div class="card-item">
+            <div class="label">
+              {{ t('parameter.hide_model_thinking_process') }}
+            </div>
+            <div class="value">
+              <el-switch v-model="state.parameterForm['chat.hide_thinking_block']" />
+            </div>
+          </div>
+          <div v-if="!state.parameterForm['chat.hide_thinking_block']" class="card-item">
             <div class="label">
               {{ t('parameter.model_thinking_process') }}
 
@@ -110,7 +138,7 @@ onMounted(() => {
               <el-switch v-model="state.parameterForm['chat.expand_thinking_block']" />
             </div>
           </div>
-          <div class="card-item" style="margin-left: 16px">
+          <div class="card-item">
             <div class="label">
               {{ t('parameter.rows_of_data') }}
               <el-tooltip
@@ -130,8 +158,22 @@ onMounted(() => {
               />
             </div>
           </div>
-        </el-row>
-        <el-row>
+          <div class="card-item">
+            <div class="label">
+              {{ t('parameter.show_sql') }}
+            </div>
+            <div class="value">
+              <el-switch v-model="state.parameterForm['chat.show_sql']" />
+            </div>
+          </div>
+          <div class="card-item">
+            <div class="label">
+              {{ t('parameter.show_log') }}
+            </div>
+            <div class="value">
+              <el-switch v-model="state.parameterForm['chat.show_log']" />
+            </div>
+          </div>
           <div class="card-item">
             <div class="label">
               {{ t('parameter.context_record_count') }}
@@ -154,7 +196,7 @@ onMounted(() => {
               />
             </div>
           </div>
-        </el-row>
+        </div>
       </div>
 
       <platform-param />

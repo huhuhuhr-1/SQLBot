@@ -28,6 +28,7 @@
         </el-input>
         <div class="mt-8 max-height_workspace">
           <el-checkbox
+            v-if="workspaceWithKeywords.length"
             v-model="checkAll"
             class="mb-8"
             style="margin-left: 16px"
@@ -186,7 +187,7 @@ const open = async (id: any) => {
   checkTableList.value = []
   checkAll.value = false
   isIndeterminate.value = false
-  const systemWorkspaceList = await workspaceOptionUserList({ oid }, 1, 1000)
+  const systemWorkspaceList = await workspaceOptionUserList({ oid }, 1, 1000000)
   workspace.value = JSON.parse(
     JSON.stringify(systemWorkspaceList.items.filter((ele: any) => +ele.id !== 1) as any)
   )

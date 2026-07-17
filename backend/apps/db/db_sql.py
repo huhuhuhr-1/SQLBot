@@ -29,7 +29,7 @@ def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
         return """
                 SELECT * FROM v$version
                 """
-    elif equals_ignore_case(ds.type, "redshift"):
+    elif equals_ignore_case(ds.type, "redshift", "sqlite", "hive"):
         return ''
 
 
@@ -162,6 +162,10 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
               """, conf.dbSchema
     elif equals_ignore_case(ds.type, "es"):
         return "", None
+    elif equals_ignore_case(ds.type, "hive"):
+        return """
+                SHOW TABLES
+                """, None
 
 
 def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = None):
@@ -271,11 +275,10 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                     c.DATA_TYPE      AS "DATA_TYPE",
                     COALESCE(com.COMMENTS, '') AS "COMMENTS"
                 FROM 
-                    ALL_TAB_COLS c
+                    ALL_TAB_COLUMNS c
                 LEFT JOIN 
                     ALL_COL_COMMENTS com 
-                    ON c.OWNER = com.OWNER 
-                   AND c.TABLE_NAME = com.TABLE_NAME 
+                    ON c.TABLE_NAME = com.TABLE_NAME 
                    AND c.COLUMN_NAME = com.COLUMN_NAME
                 WHERE 
                     c.OWNER = :param1
@@ -313,3 +316,6 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
         return sql1 + sql2, conf.dbSchema, table_name
     elif equals_ignore_case(ds.type, "es"):
         return "", None, None
+    elif equals_ignore_case(ds.type, "hive"):
+        sql1 = f"DESCRIBE {table_name}"
+        return sql1, None, None

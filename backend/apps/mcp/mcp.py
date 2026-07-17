@@ -13,7 +13,7 @@ from sqlmodel import select
 
 from apps.chat.api.chat import create_chat, question_answer_inner
 from apps.chat.models.chat_model import ChatMcp, CreateChat, ChatStart, McpQuestion, McpAssistant, ChatQuestion, \
-    ChatFinishStep, McpDs
+    ChatFinishStep, McpDs, ChatToken
 from apps.datasource.crud.datasource import get_datasource_list
 from apps.system.crud.user import authenticate, user_ws_options
 from apps.system.crud.user import get_db_user
@@ -21,6 +21,9 @@ from apps.system.models.system_model import UserWsModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.system_schema import BaseUserDTO, AssistantHeader
 from apps.system.schemas.system_schema import UserInfoDTO
+from common.audit.models.log_model import OperationType, OperationModules
+from common.audit.schemas.logger_decorator import LogConfig, system_log
+from common.audit.schemas.request_context import RequestContext
 from common.core import security
 from common.core.config import settings
 from common.core.deps import SessionDep, Trans
@@ -34,19 +37,21 @@ reusable_oauth2 = XOAuth2PasswordBearer(
 router = APIRouter(tags=["mcp"], prefix="/mcp")
 
 
-# @router.post("/access_token", operation_id="access_token")
-# def local_login(
-#         session: SessionDep,
-#         form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
-# ) -> Token:
-#     user = authenticate(session=session, account=form_data.username, password=form_data.password)
-#     if not user:
-#         raise HTTPException(status_code=400, detail="Incorrect account or password")
-#     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-#     user_dict = user.to_dict()
-#     return Token(access_token=create_access_token(
-#         user_dict, expires_delta=access_token_expires
-#     ))
+@router.post("/access_token", operation_id="access_token")
+async def access_token(session: SessionDep, chat: ChatToken):
+    user: BaseUserDTO = authenticate(session=session, account=chat.username, password=chat.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="Incorrect account or password")
+
+    if not user.oid or user.oid == 0:
+        raise HTTPException(status_code=400, detail="No associated workspace, Please contact the administrator")
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    user_dict = user.to_dict()
+    t = Token(access_token=create_access_token(
+        user_dict, expires_delta=access_token_expires
+    ))
+    # c = create_chat(session, user, CreateChat(origin=1), False)
+    return {"access_token": t.access_token}
 
 
 def get_user(session: SessionDep, token: str):
@@ -82,20 +87,45 @@ def get_user(session: SessionDep, token: str):
 
 
 @router.post("/mcp_start", operation_id="mcp_start")
-async def mcp_start(session: SessionDep, chat: ChatStart):
-    user: BaseUserDTO = authenticate(session=session, account=chat.username, password=chat.password)
-    if not user:
-        raise HTTPException(status_code=400, detail="Incorrect account or password")
+@system_log(LogConfig(
+    operation_type=OperationType.CREATE,
+    module=OperationModules.CHAT,
+    result_id_expr="id",
+    save_on_success_only=True
+))
+async def mcp_start(session: SessionDep, trans: Trans, chat: ChatStart):
+    res_token = None
+    user = None
+    if chat.token:
+        res_token = chat.token
+        user = get_user(session, chat.token)
+    else:
+        user = authenticate(session=session, account=chat.username, password=chat.password)
+        if not user:
+            raise HTTPException(status_code=400, detail="Incorrect account or password")
 
-    if not user.oid or user.oid == 0:
-        raise HTTPException(status_code=400, detail="No associated workspace, Please contact the administrator")
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    user_dict = user.to_dict()
-    t = Token(access_token=create_access_token(
-        user_dict, expires_delta=access_token_expires
-    ))
+        if not user.oid or user.oid == 0:
+            raise HTTPException(status_code=400, detail="No associated workspace, Please contact the administrator")
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        user_dict = user.to_dict()
+        t = Token(access_token=create_access_token(
+            user_dict, expires_delta=access_token_expires
+        ))
+        res_token = t.access_token
+
+    if chat.oid:
+        w_list = await user_ws_options(session, user.id, trans)
+        oid_list = [item.id for item in w_list]
+        if int(chat.oid) not in oid_list:
+            raise HTTPException(status_code=400, detail="The current user is not in the selected workspace")
+
+        user.oid = int(chat.oid)
+
+    request = RequestContext.get_request()
+    request.state.current_user = user
+
     c = create_chat(session, user, CreateChat(origin=1), False)
-    return {"access_token": t.access_token, "chat_id": c.id}
+    return {"access_token": res_token, "chat_id": c.id}
 
 
 @router.post("/mcp_ws_list", operation_id="mcp_ws_list")
@@ -105,9 +135,14 @@ async def ws_list(session: SessionDep, trans: Trans, token: str):
 
 
 @router.post("/mcp_ds_list", operation_id="mcp_datasource_list")
-async def datasource_list(session: SessionDep, mcp_ds: McpDs):
+async def datasource_list(session: SessionDep, trans: Trans, mcp_ds: McpDs):
     session_user = get_user(session, mcp_ds.token)
     if mcp_ds.oid:
+        w_list = await user_ws_options(session, session_user.id, trans)
+        oid_list = [item.id for item in w_list]
+        if int(mcp_ds.oid) not in oid_list:
+            raise HTTPException(status_code=400, detail="The current user is not in the selected workspace")
+
         session_user.oid = int(mcp_ds.oid)
     ds_list = get_datasource_list(session=session, user=session_user)
     result = []
@@ -129,10 +164,18 @@ async def datasource_list(session: SessionDep, mcp_ds: McpDs):
 
 
 @router.post("/mcp_question", operation_id="mcp_question")
-async def mcp_question(session: SessionDep, chat: McpQuestion):
+async def mcp_question(session: SessionDep, trans: Trans, chat: McpQuestion):
     session_user = get_user(session, chat.token)
-    if chat.oid:
-        session_user.oid = int(chat.oid)
+    lang = chat.lang
+    if lang in ["zh-CN", "zh-TW", "en", "ko-KR"]:
+        session_user.language = lang
+    # if chat.oid:
+    #     w_list = await user_ws_options(session, session_user.id, trans)
+    #     oid_list = [item.id for item in w_list]
+    #     if int(chat.oid) not in oid_list:
+    #         raise HTTPException(status_code=400, detail="The current user is not in the selected workspace")
+    #
+    #     session_user.oid = int(chat.oid)
     ds_id: Optional[int] = None
     if chat.datasource_id:
         if isinstance(chat.datasource_id, str):
@@ -151,7 +194,7 @@ async def mcp_question(session: SessionDep, chat: McpQuestion):
     mcp_chat = ChatMcp(token=chat.token, chat_id=chat.chat_id, question=chat.question, datasource_id=ds_id)
 
     return await question_answer_inner(session=session, current_user=session_user, request_question=mcp_chat,
-                                       in_chat=False, stream=chat.stream)
+                                       in_chat=False, stream=chat.stream, return_img=chat.return_img)
 
 
 # Cordys crm

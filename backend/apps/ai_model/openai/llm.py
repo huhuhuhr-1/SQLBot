@@ -91,19 +91,20 @@ class BaseChatOpenAI(ChatOpenAI):
         if max_tokens:
             params["max_tokens"] = max_tokens
         return params
-    
+
     def _get_request_payload(
-        self,
-        input_: LanguageModelInput,
-        *,
-        stop: Optional[list[str]] = None,
-        **kwargs: Any,
+            self,
+            input_: LanguageModelInput,
+            *,
+            stop: Optional[list[str]] = None,
+            **kwargs: Any,
     ) -> dict:
         max_tokens = self.max_tokens
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
         if max_tokens:
             payload["max_tokens"] = max_tokens
         return payload
+
     usage_metadata: dict = {}
 
     # custom_get_token_ids = custom_get_token_ids
@@ -119,10 +120,10 @@ class BaseChatOpenAI(ChatOpenAI):
             yield chunk
 
     def _convert_chunk_to_generation_chunk(
-        self,
-        chunk: dict,
-        default_chunk_class: type,
-        base_generation_info: dict | None,
+            self,
+            chunk: dict,
+            default_chunk_class: type,
+            base_generation_info: dict | None,
     ) -> ChatGenerationChunk | None:
         if chunk.get("type") == "content.delta":  # from beta.chat.completions.stream
             return None
@@ -174,12 +175,12 @@ class BaseChatOpenAI(ChatOpenAI):
         return generation_chunk
 
     def invoke(
-        self,
-        input: LanguageModelInput,
-        config: RunnableConfig | None = None,
-        *,
-        stop: list[str] | None = None,
-        **kwargs: Any,
+            self,
+            input: LanguageModelInput,
+            config: RunnableConfig | None = None,
+            *,
+            stop: list[str] | None = None,
+            **kwargs: Any,
     ) -> BaseMessage:
         config = ensure_config(config)
         chat_result = cast(

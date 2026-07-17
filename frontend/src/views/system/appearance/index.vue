@@ -89,7 +89,7 @@
                         :name="ele.type"
                         :show-file-list="false"
                         class="upload-demo"
-                        accept=".jpeg,.jpg,.png,.gif,.svg"
+                        accept=".jpeg,.jpg,.png"
                         :before-upload="(e: any) => beforeUpload(e, ele)"
                         :http-request="uploadImg"
                       >
@@ -179,14 +179,14 @@
                         </el-icon>
                       </div>
                     </div>
-                    <div class="welcome-content">
-                      <div class="greeting">
+                    <div class="welcome-content flex-gap-fallback flex-col">
+                      <div class="greeting flex-gap-fallback">
                         <img v-if="pageLogin" height="32" width="32" :src="pageLogin" alt="" />
                         <el-icon v-else size="32"
                           ><custom_small v-if="themeColor !== 'default'"></custom_small>
                           <LOGO_fold v-else></LOGO_fold
                         ></el-icon>
-                        {{ topForm.pc_welcome }}
+                        <span>{{ topForm.pc_welcome }}</span>
                       </div>
                       <div class="sub">
                         {{ topForm.pc_welcome_desc }}
@@ -260,7 +260,7 @@
                       "
                       type="textarea"
                       show-word-limit
-                      maxlength="50"
+                      maxlength="250"
                     />
                   </div>
                 </div>
@@ -377,8 +377,8 @@ const defaultTopForm = {
   help: 'https://dataease.cn/sqlbot/v1/',
   showDoc: '0',
   showAbout: '0',
-  pc_welcome: '你好，我是 SQLBot ',
-  pc_welcome_desc: `我可以查询数据、生成图表、检测数据异常、预测数据等赶快开启智能问数吧～`,
+  pc_welcome: t('embedded.i_am_sqlbot'),
+  pc_welcome_desc: t('qa.hint_description'),
 }
 
 const topForm = reactive<{
@@ -909,6 +909,7 @@ onUnmounted(() => {
               .welcome-content {
                 width: calc(100% - 240px);
                 display: flex;
+                --gap-size: 16px;
                 gap: 16px;
                 align-items: center;
                 flex-direction: column;
@@ -920,6 +921,7 @@ onUnmounted(() => {
                 .greeting {
                   display: flex;
                   align-items: center;
+                  --gap-size: 16px;
                   gap: 16px;
                   line-height: 32px;
                   font-size: 24px;

@@ -3,17 +3,19 @@ import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import {
   checkIsPercent,
+  formatNumber,
   getAxesWithFilter,
   processMultiQuotaData,
 } from '@/views/chat/component/charts/utils.ts'
+import { some } from 'lodash-es'
 
 export class Line extends BaseG2Chart {
   constructor(id: string) {
     super(id, 'line')
   }
 
-  init(axis: Array<ChartAxis>, data: Array<ChartData>) {
-    super.init(axis, data)
+  init(axis: Array<ChartAxis>, data: Array<ChartData>, formatNumberFields: Array<string>) {
+    super.init(axis, data, formatNumberFields)
 
     const axes = getAxesWithFilter(this.axis)
 
@@ -69,6 +71,10 @@ export class Line extends BaseG2Chart {
         },
         y: {
           title: false, // y[0].name,
+          labelFormatter: (value: any) => {
+            const formatted = some(axes.y, 'formatNumber') ? formatNumber(value) : value
+            return String(formatted)
+          },
         },
       },
       scale: {
@@ -91,10 +97,15 @@ export class Line extends BaseG2Chart {
                 {
                   text: (data: any) => {
                     const value = data[y[0].value]
+                    let isFormat = y[0].formatNumber
+                    if (axes.multiQuota.length > 0) {
+                      isFormat = data['sqlbot_axis_format']
+                    }
                     if (value === undefined || value === null) {
                       return ''
                     }
-                    return `${value}${_data.isPercent ? '%' : ''}`
+                    const v = isFormat ? formatNumber(value) : value
+                    return `${v}${_data.isPercent ? '%' : ''}`
                   },
                   style: {
                     dx: -10,
@@ -109,13 +120,24 @@ export class Line extends BaseG2Chart {
               ]
             : [],
           tooltip: (data: any) => {
+            let isFormat = y[0].formatNumber
+            if (axes.multiQuota.length > 0) {
+              isFormat = data['sqlbot_axis_format']
+            }
+            const v = isFormat ? formatNumber(data[y[0].value]) : data[y[0].value]
             if (series.length > 0) {
+              const s = series[0].formatNumber
+                ? formatNumber(data[series[0].value])
+                : data[series[0].value]
               return {
-                name: data[series[0].value],
-                value: `${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
+                name: s,
+                value: `${v}${_data.isPercent ? '%' : ''}`,
               }
             } else {
-              return { name: y[0].name, value: `${data[y[0].value]}${_data.isPercent ? '%' : ''}` }
+              return {
+                name: y[0].name,
+                value: `${v}${_data.isPercent ? '%' : ''}`,
+              }
             }
           },
         },

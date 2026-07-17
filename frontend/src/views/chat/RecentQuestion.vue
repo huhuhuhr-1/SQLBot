@@ -38,7 +38,7 @@ defineExpose({
 
 <template>
   <div style="width: 100%; height: 100%">
-    <div v-if="computedQuestions.length > 0 || loading" class="recent-questions">
+    <div v-if="computedQuestions.length > 0 || loading" class="recent-questions flex-gap-fallback flex-col">
       <div class="question-grid-input">
         <div
           v-for="(question, index) in computedQuestions"
@@ -67,6 +67,7 @@ defineExpose({
   line-height: 22px;
   display: flex;
   flex-direction: column;
+  --gap-size: 4px;
   gap: 4px;
 
   .continue-ask {
@@ -90,7 +91,7 @@ defineExpose({
     font-weight: 400;
     cursor: pointer;
     height: 32px;
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 5px 8px;
     line-height: 22px;
     white-space: nowrap; /* 禁止换行 */

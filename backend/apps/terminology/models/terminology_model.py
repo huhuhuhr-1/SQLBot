@@ -20,6 +20,7 @@ class Terminology(SQLModel, table=True):
     specific_ds: Optional[bool] = Field(sa_column=Column(Boolean, default=False))
     datasource_ids: Optional[list[int]] = Field(sa_column=Column(JSONB), default=[])
     enabled: Optional[bool] = Field(sa_column=Column(Boolean, default=True))
+    advanced_application: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True))
 
 
 class TerminologyInfo(BaseModel):
@@ -32,3 +33,18 @@ class TerminologyInfo(BaseModel):
     datasource_ids: Optional[list[int]] = []
     datasource_names: Optional[list[str]] = []
     enabled: Optional[bool] = True
+    advanced_application: Optional[int] = None
+    advanced_application_name: Optional[str] = None
+
+class TerminologyInfoResult(BaseModel):
+    id: Optional[int] = None
+    create_time: Optional[datetime] = None
+    word: Optional[str] = None
+    description: Optional[str] = None
+    other_words: Optional[List[str]] = []
+    specific_ds: Optional[bool] = False
+    datasource_ids: Optional[list[int]] = []
+    datasource_names: Optional[list[str]] = []
+    enabled: Optional[bool] = True
+    advanced_application: Optional[str] = None
+    advanced_application_name: Optional[str] = None

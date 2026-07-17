@@ -1,4 +1,5 @@
 import datetime
+from decimal import Decimal
 from typing import List, Optional, Union, Dict, Any
 
 import orjson
@@ -186,7 +187,8 @@ def get_last_execute_sql_error(session: SessionDep, chart_id: int):
 
 
 def format_json_data(origin_data: dict):
-    result = {'fields': origin_data.get('fields') if origin_data.get('fields') else []}
+    result = {'fields': origin_data.get('fields') if origin_data.get('fields') else [],
+              'fields_info': origin_data.get('fields_info') if origin_data.get('fields_info') else None}
     _list = origin_data.get('data') if origin_data.get('data') else []
     data = format_json_list_data(_list)
     result['data'] = data
@@ -207,11 +209,11 @@ def format_json_list_data(origin_data: list[dict]):
                         value = str(value)
                     # 小数且超过15位有效数字 → 转字符串并标记为文本列
                     elif isinstance(value, float):
-                        decimal_str = format(value, '.16f').rstrip('0').rstrip('.')
+                        decimal_str = str(Decimal(str(value))).rstrip('0').rstrip('.')
                         if len(decimal_str) > 15:
                             value = str(value)
             _row[key] = value
-        data.append(_row)
+        data.append(DataFormat.normalize_qualified_sql_column_keys(_row))
 
     return data
 
@@ -237,22 +239,26 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
             pass
     return {}
 
-def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
-    stmt = select(ChatRecord.datasource,ChatRecord.sql).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
-    row = session.execute(stmt).first()
-    return get_chart_data_ds(session,row.datasource, row.sql)
 
-def get_chart_data_ds(session: SessionDep,ds_id,sql):
-    json_result: Dict[str, Any] = {'status': 'success','data':[],'message':''}
+def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    stmt = select(ChatRecord.datasource, ChatRecord.sql).where(
+        and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+    row = session.execute(stmt).first()
+    return get_chart_data_ds(session, row.datasource, row.sql)
+
+
+def get_chart_data_ds(session: SessionDep, ds_id, sql):
+    json_result: Dict[str, Any] = {'status': 'success', 'data': [], 'message': ''}
     try:
-        datasource = get_ds(session,ds_id)
+        datasource = get_ds(session, ds_id)
         if datasource is None:
             json_result['status'] = 'failed'
             json_result['message'] = 'Datasource not found'
             return json_result
         else:
-            result = exec_sql(ds=datasource,sql=sql, origin_column=False)
+            result = exec_sql(ds=datasource, sql=sql, origin_column=False)
             _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
+            _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)
             json_result['data'] = _data
             return json_result
     except Exception as e:
@@ -261,6 +267,7 @@ def get_chart_data_ds(session: SessionDep,ds_id,sql):
         json_result['message'] = f"{e}"
         pass
     return json_result
+
 
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
     stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id))
@@ -334,7 +341,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     predict_alias_log = aliased(ChatLog)
 
     stmt = (select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
-                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,ChatRecord.datasource,
+                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql, ChatRecord.datasource,
                    ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                    ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                    ChatRecord.regenerate_record_id,
@@ -361,7 +368,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         ChatRecord.create_time))
     if with_data:
         stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
-                      ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,ChatRecord.datasource,
+                      ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql, ChatRecord.datasource,
                       ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                       ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                       ChatRecord.regenerate_record_id,
@@ -427,7 +434,8 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                  finish_time=row.finish_time,
                                  duration=duration,
                                  total_tokens=total_tokens,
-                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql, datasource=row.datasource,
+                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                                 datasource=row.datasource,
                                  chart_answer=row.chart_answer, chart=row.chart,
                                  analysis=row.analysis, predict=row.predict,
                                  datasource_select_answer=row.datasource_select_answer,
@@ -446,7 +454,8 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                  finish_time=row.finish_time,
                                  duration=duration,
                                  total_tokens=total_tokens,
-                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql, datasource=row.datasource,
+                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                                 datasource=row.datasource,
                                  chart_answer=row.chart_answer, chart=row.chart,
                                  analysis=row.analysis, predict=row.predict,
                                  datasource_select_answer=row.datasource_select_answer,

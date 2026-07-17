@@ -22,6 +22,21 @@ from common.core.deps import Trans
 from common.core.response_middleware import ResponseMiddleware
 
 
+def _update_cors_middleware_instance(app: FastAPI, updated_origins: list[str]):
+    """遍历 middleware 栈，找到 CORSMiddleware 实例并更新其 allow_origins。
+
+    仅修改 middleware.kwargs 不会影响已构建的中间件实例，
+    需要直接更新实例的 allow_origins 属性。
+    """
+    stack = getattr(app, 'middleware_stack', None)
+    while stack is not None and hasattr(stack, 'app'):
+        if isinstance(stack, CORSMiddleware):
+            stack.allow_origins = updated_origins
+            return
+        stack = stack.app
+
+
+
 @cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
 async def get_assistant_info(*, session: Session, assistant_id: int) -> AssistantModel | None:
     db_model = session.get(AssistantModel, assistant_id)
@@ -94,10 +109,11 @@ def init_dynamic_cors(app: FastAPI):
                     response_middleware = middleware
                 if cors_middleware and response_middleware:
                     break
-                
+
             updated_origins = list(set(settings.all_cors_origins + unique_domains))
             if cors_middleware:
                 cors_middleware.kwargs['allow_origins'] = updated_origins
+                _update_cors_middleware_instance(app, updated_origins)
             if response_middleware:
                 for instance in ResponseMiddleware.instances:
                     instance.update_allow_origins(updated_origins)
@@ -181,12 +197,13 @@ class AssistantOutDs:
             raise Exception("Datasource list is not found.")
 
     def get_db_schema(self, ds_id: int, question: str = '', embedding: bool = True,
-                      table_list: list[str] = None) -> str:
+                      table_list: list[str] = None) -> tuple[str, list]:
         ds = self.get_ds(ds_id)
         schema_str = ""
         db_name = ds.db_schema if ds.db_schema is not None and ds.db_schema != "" else ds.dataBase
         schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
         tables = []
+        table_name_list = []
         i = 0
         for table in ds.tables:
             # 如果传入了 table_list，则只处理在列表中的表
@@ -213,6 +230,7 @@ class AssistantOutDs:
             schema_table += '\n]\n'
             t_obj = {"id": i, "schema_table": schema_table}
             tables.append(t_obj)
+            table_name_list.append(table.name)
 
         # do table embedding
         # if embedding and tables and settings.TABLE_EMBEDDING_ENABLED:
@@ -222,7 +240,7 @@ class AssistantOutDs:
             for s in tables:
                 schema_str += s.get('schema_table')
 
-        return schema_str
+        return schema_str, table_name_list
 
     def get_ds(self, ds_id: int, trans: Trans = None):
         if self.ds_list:
@@ -236,11 +254,11 @@ class AssistantOutDs:
 
     def convert2schema(self, ds_dict: dict, config: dict[any]) -> AssistantOutDsSchema:
         id_marker: str = ''
-        attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema', 'mode']
+        attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema', 'mode', 'lowVersion']
         if config.get('encrypt', False):
             key = config.get('aes_key', None)
             iv = config.get('aes_iv', None)
-            aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema', 'schema', 'mode']
+            aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema', 'schema', 'mode', 'lowVersion']
             for attr in aes_attrs:
                 if attr in ds_dict and ds_dict[attr]:
                     try:
@@ -248,7 +266,7 @@ class AssistantOutDs:
                     except Exception as e:
                         raise Exception(
                             f"Failed to encrypt {attr} for datasource {ds_dict.get('name')}, error: {str(e)}")
-        
+
         id = ds_dict.get('id', None)
         if not id:
             for attr in attr_list:
@@ -277,7 +295,8 @@ def get_out_ds_conf(ds: AssistantOutDsSchema, timeout: int = 30) -> str:
         "extraJdbc": ds.extraParams or '',
         "dbSchema": ds.db_schema or '',
         "timeout": timeout or 30,
-        "mode": ds.mode or ''
+        "mode": ds.mode or '',
+        "lowVersion": ds.lowVersion or False,
     }
     conf["extraJdbc"] = ''
     return aes_encrypt(json.dumps(conf))

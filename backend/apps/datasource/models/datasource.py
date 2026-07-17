@@ -122,6 +122,7 @@ class DatasourceConf(BaseModel):
     timeout: int = 30
     lowVersion: bool = False
     ssl: bool = False
+    poolSize: int = 5
 
     def to_dict(self):
         return {
@@ -138,12 +139,13 @@ class DatasourceConf(BaseModel):
             "mode": self.mode,
             "timeout": self.timeout,
             "lowVersion": self.lowVersion,
-            "ssl": self.ssl
+            "ssl": self.ssl,
+            "poolSize": self.poolSize
         }
 
 
 class TableSchema:
-    def __init__(self, attr1, attr2):
+    def __init__(self, attr1, attr2=None):
         self.tableName = attr1
         self.tableComment = attr2 if attr2 is None or isinstance(attr2, str) else attr2.decode("utf-8")
 
@@ -192,3 +194,18 @@ class PreviewResponse(BaseModel):
     fields: List | None = []
     data: List | None = []
     sql: str | None = ''
+
+
+class FieldInfo(BaseModel):
+    fieldName: object
+    fieldType: str
+
+
+class SheetFields(BaseModel):
+    sheetName: str
+    fields: List[FieldInfo]
+
+
+class ImportRequest(BaseModel):
+    filePath: str
+    sheets: List[SheetFields]

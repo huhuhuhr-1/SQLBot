@@ -6,7 +6,7 @@
     size="20"
     @click="showFloatPopover"
   >
-    <icon_sidebar_outlined></icon_sidebar_outlined>
+    <icon_sidebar_outlined_nofill />
   </el-icon>
   <el-container class="chat-container no-padding">
     <el-aside
@@ -112,15 +112,15 @@
         }"
       >
         <div v-if="computedMessages.length == 0 && !loading" class="welcome-content-block">
-          <div class="welcome-content">
+          <div class="welcome-content flex-gap-fallback flex-col">
             <template v-if="isCompletePage">
-              <div class="greeting">
+              <div class="greeting flex-gap-fallback">
                 <img v-if="loginBg" height="32" width="32" :src="loginBg" alt="" />
                 <el-icon v-else size="32"
                   ><custom_small v-if="appearanceStore.themeColor !== 'default'"></custom_small>
                   <LOGO_fold v-else></LOGO_fold
                 ></el-icon>
-                {{ appearanceStore.pc_welcome ?? '你好，我是 SQLBot' }}
+                <span>{{ appearanceStore.pc_welcome ?? '你好，我是 SQLBot' }}</span>
               </div>
               <div class="sub">
                 {{
@@ -190,6 +190,7 @@
             :class="{
               'no-sidebar': isCompletePage && !chatListSideBarShow,
               pad16: !isCompletePage,
+              pad8: isPhone,
             }"
           >
             <template v-for="(message, _index) in computedMessages" :key="_index">
@@ -468,6 +469,7 @@ import custom_small from '@/assets/svg/logo-custom_small.svg'
 import LOGO_fold from '@/assets/LOGO-fold.svg'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
+import icon_sidebar_outlined_nofill from '@/assets/embedded/icon_sidebar_outlined_nofill.svg'
 import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
 import icon_screen_outlined from '@/assets/svg/icon_screen_outlined.svg'
 import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
@@ -1209,6 +1211,9 @@ onMounted(() => {
     &.no-sidebar {
       padding-left: 96px;
     }
+    &.pad8 {
+      padding: 8px;
+    }
 
     &.pad16 {
       padding-left: 16px;
@@ -1386,6 +1391,7 @@ onMounted(() => {
     width: 100%;
     max-width: 800px;
     display: flex;
+    --gap-size: 16px;
     gap: 16px;
     padding: 0 16px;
     align-items: center;
@@ -1424,6 +1430,7 @@ onMounted(() => {
     .greeting {
       display: flex;
       align-items: center;
+      --gap-size: 16px;
       gap: 16px;
       line-height: 32px;
       font-size: 24px;
@@ -1501,6 +1508,8 @@ onMounted(() => {
   top: 18px;
   left: 16px;
   z-index: 199;
+  color: var(--ed-text-color-primary);
+
   &::after {
     content: '';
     background-color: #1f23291a;

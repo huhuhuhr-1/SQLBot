@@ -258,6 +258,9 @@ function stop() {
   emits('stop')
 }
 
+const enableThousandsSeparatorList = ref<Array<string>>([])
+const showLabel = ref<boolean>(false)
+
 onBeforeUnmount(() => {
   stop()
 })
@@ -274,6 +277,8 @@ defineExpose({ sendMessage, index: () => index.value, stop })
 <template>
   <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
     <ChartBlock
+      v-model:show-label="showLabel"
+      v-model:thousands-separator-list="enableThousandsSeparatorList"
       style="margin-top: 6px"
       :message="message"
       :record-id="recordId"

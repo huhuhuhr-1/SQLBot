@@ -262,10 +262,12 @@ const syncFields = () => {
     .syncFields(currentTable.value.id)
     .then(() => {
       btnSelectClick('d')
+      ElMessage.success(t('ds.sync_fields_success'))
       loading.value = false
     })
     .catch(() => {
       loading.value = false
+      ElMessage.warning(t('ds.sync_fields_failed'))
     })
 }
 
@@ -546,6 +548,7 @@ const btnSelectClick = (val: any) => {
             <el-button
               v-if="ds.type !== 'excel'"
               :icon="Refresh"
+              secondary
               style="margin-left: 12px"
               @click="syncFields()"
             >
@@ -815,7 +818,7 @@ const btnSelectClick = (val: any) => {
           display: flex;
           align-items: center;
           padding-left: 8px;
-          border-radius: 4px;
+          border-radius: 6px;
           cursor: pointer;
 
           &:not(:last-child) {
@@ -967,7 +970,7 @@ const btnSelectClick = (val: any) => {
           background: #ffffff;
           align-items: center;
           border: 1px solid #d0d3d6;
-          border-radius: 4px;
+          border-radius: 6px;
 
           .is-active {
             background: var(--ed-color-primary-1a, #1cba901a);

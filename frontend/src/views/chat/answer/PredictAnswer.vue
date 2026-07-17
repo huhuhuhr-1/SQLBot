@@ -217,7 +217,7 @@ function getChatPredictData(recordId?: number) {
           has = true
           record.predict_data = response ?? []
 
-          if (record.predict_data.length > 1) {
+          if (record.predict_data.length > 0) {
             getChatData(recordId)
           } else {
             loadingData.value = false
@@ -257,6 +257,9 @@ function stop() {
   emits('stop')
 }
 
+const enableThousandsSeparatorList = ref<Array<string>>([])
+const showLabel = ref<boolean>(false)
+
 onBeforeUnmount(() => {
   stop()
 })
@@ -276,6 +279,8 @@ defineExpose({ sendMessage, index: () => index.value, chatList: () => _chatList,
     <ChartBlock
       v-if="message.record?.predict_data?.length > 0 && message.record?.data"
       ref="chartBlockRef"
+      v-model:show-label="showLabel"
+      v-model:thousands-separator-list="enableThousandsSeparatorList"
       style="margin-top: 12px"
       :record-id="recordId"
       :message="message"

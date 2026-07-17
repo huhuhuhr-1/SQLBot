@@ -50,10 +50,12 @@ const reasoningContent = computed<Array<string>>(() => {
 })
 
 const hasReasoning = computed<boolean>(() => {
-  if (reasoningContent.value.length > 0) {
-    for (let i = 0; i < reasoningContent.value.length; i++) {
-      if (reasoningContent.value[i] && reasoningContent.value[i].trim() !== '') {
-        return true
+  if (!chatConfig.getHideThinkingBlock) {
+    if (reasoningContent.value.length > 0) {
+      for (let i = 0; i < reasoningContent.value.length; i++) {
+        if (reasoningContent.value[i] && reasoningContent.value[i].trim() !== '') {
+          return true
+        }
       }
     }
   }
@@ -88,7 +90,7 @@ onMounted(() => {
         </span>
       </div>
     </el-button>
-    <div v-if="hasReasoning && show" class="reasoning-content">
+    <div v-if="hasReasoning && show" class="reasoning-content flex-gap-fallback flex-col">
       <div v-for="(reason, _index) in reasoningContent" :key="_index" class="reasoning">
         <MdComponent :message="reason" />
       </div>
@@ -140,6 +142,7 @@ onMounted(() => {
     flex-direction: column;
     padding-left: 9px;
     border-left: 1px solid rgba(31, 35, 41, 0.15);
+    --gap-size: 8px;
     gap: 8px;
 
     .reasoning {

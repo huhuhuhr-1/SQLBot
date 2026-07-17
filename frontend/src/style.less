@@ -1,3 +1,23 @@
+/* ==========================================
+   老旧浏览器 Flex Gap 完美物理隔离补丁
+   ========================================== */
+
+/* 1. 当浏览器【不支持 flex gap】时，激活此特定命名空间 */
+:root[data-no-flex-gap='true'] .flex-gap-fallback {
+  display: flex;
+}
+
+/* 2. 仅对标记了该 class 的容器下的【相邻子元素】水平方向加间距 */
+:root[data-no-flex-gap='true'] .flex-gap-fallback > * + * {
+  margin-left: var(--gap-size, 16px); /* 默认 16px，可通过变量动态修改 */
+}
+
+/* 3. 如果需要处理垂直排列（flex-direction: column） */
+:root[data-no-flex-gap='true'] .flex-gap-fallback.flex-col > * + * {
+  margin-left: 0;
+  margin-top: var(--gap-size, 16px);
+}
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -25,12 +45,15 @@
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   --ed-border-radius-base: 6px !important;
   --ed-border-color: #d9dcdf !important;
+}
+
+:root:root {
   --ed-color-primary-light-7: #d2f1e9 !important;
   --ed-border-color: #d9dcdf !important;
-  --ed-border-radius-base: 6px !important;
   --ed-disabled-border-color: #d9dcdf !important;
   --ed-border-color-light: #dee0e3 !important;
   --ed-border-color-lighter: #dee0e3 !important;
+  --ed-border-radius-base: 6px !important;
 }
 
 a {
@@ -85,7 +108,7 @@ body {
 
 .list-item_primary {
   height: 40px;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 8px 12px;
   cursor: pointer;
   display: flex;
@@ -227,7 +250,11 @@ strong {
 .ed-select__popper {
   padding: 0 4px !important;
   .ed-select-dropdown__item {
-    border-radius: 4px;
+    border-radius: 6px;
+  }
+
+  .ed-select-dropdown__list {
+    padding: 4px 0 !important;
   }
 }
 
@@ -380,16 +407,6 @@ strong {
   line-height: 22px;
 }
 
-.ed-pager li.number.number.number {
-  &:hover {
-    background-color: var(--ed-color-primary-60);
-  }
-
-  &:active {
-    background-color: var(--ed-color-primary-80);
-  }
-}
-
 .ed-table.ed-table.ed-table {
   --ed-table-border-color: #1f232926;
 }
@@ -420,12 +437,44 @@ strong {
   }
 }
 
-.text-variables.text-variables {
+.text-variables.text-variables,
+.string-variables.string-variables {
   color: #3370ff;
 }
-.number-variables.number-variables {
+.number-variables.number-variables,
+.int-variables.int-variables,
+.float-variables.float-variables {
   color: #04b49c;
 }
 .datetime-variables.datetime-variables {
   color: #3370ff;
+}
+
+.ed-tree-node__content {
+  border-radius: 6px;
+}
+
+.login-content {
+  /* 针对 Webkit 浏览器的自动填充样式重置 */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    /* 1. 使用足够大的内阴影来覆盖背景色，把 #ffffff 替换成你输入框原本的背景色 */
+    -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+
+    /* 2. 由于常规的 color 属性也会失效，需要用这个属性修改文字颜色 */
+    -webkit-text-fill-color: #333333 !important;
+
+    /* 3. 保留光标的正常颜色 */
+    caret-color: #333333;
+  }
+}
+
+.ed-popper.is-pure:has(.ed-select-dropdown) {
+  padding: 0 !important;
+
+  .ed-select-dropdown {
+    padding: 0 4px !important;
+  }
 }
